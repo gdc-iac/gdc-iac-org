@@ -1,37 +1,76 @@
+# Introduction
+
+This framework is using [Helm](https://helm.sh/) as the resource config generator and can use either Helm or [Config-Sync](https://github.com/GoogleContainerTools/config-sync) as the resource state synchronization agent.
+
+Helm creates resources in a predefined way as described in [issue/1228](https://github.com/helm/helm/issues/1228). GDCag is heavily relying on custom resources, and these are created in alphabetical order. This means that for example IAMRole resource comes before Project resource. This blocks possibility of creating single Helm Chart to manage all the resources.
+
+Using sub-charts does not change the order as all resources are first merged into a single manifest, sorted and only uploaded afterwards. 
+
+Using hooks solves resource creation order, however hook resources' life cycle is not managed with the release. 
+
+Due to above, this framework is using layered approach, where single `org.yaml` configuration file is shared across multiple charts, a chart per layer. The layers are installed and updated in predefined order:
+- Organization wide roles
+- User Clusters
+- Projects (including adding role bindings for the IaC user to edit project afterwards as post-deployment hook)
+- Project Service Accounts
+- Role Bindings
+
 # Setup
 
 Helm is using the default kubeconfig path. Setup to use the same 
 export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubeconfig
 
-# Grant roles to IaC User
-
+# Bootstrap IaC
+0. Export environment variables (example):
+```
+export ORG_NAME="org-1"
+export IAC_PROJECT="iac-root"
+export IAC_USER="fop-iac001@example.com"
+```
+1. Grant IaC User or Service Account required Org roles:
+```
 for role in \
-organization-iam-admin \
-project-creator \
-project-editor \
-user-cluster-admin \
+  organization-iam-admin \
+  project-creator \
+  project-editor \
+  user-cluster-admin \
 ; do \
- gdcloud organizations add-iam-policy-binding org-1 \
- --member="user:fop-iac001@example.com" \
- --role="$role";\
+   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+   --member="user:$IAC_USER" \
+   --role="$role";\
 done
+```
+2. Create a project to host IaC resources
 
-gdcloud auth login (as fop-iac001@example.com)
-gdcloud projects create iac-root
+```
+gdcloud auth login (as $IAC_USER)
+gdcloud projects create $IAC_PROJECT
+```
 
+3. Grant IaC User or Service Account required `$IAC_PROJECT` roles:
+```
 for role in \
-secret-admin \
+  secret-admin \
 ; do \
-gdcloud projects add-iam-policy-binding iac-root \
---member=user:fop-iac001@example.com \
---role=$role;\
+  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+  --member=user:$IAC_USER \
+  --role=$role;\
 done
-
-# Deploy Org Resources
-export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-kubeconfig
-export HELM_NAMESPACE=iac-root
+```
+# Deploy Organization Resources
+1. Configure HELM to impersonate configured user:
+```
+gdcloud auth login (as $IAC_USER)
+gdcloud clusters get-credentials global-api
+export HELM_NAMESPACE=$IAC_PROJECT
+```
+2. Check if authentication works:
+```
 helm list
+```
 
+3. Validate configuration
+```
 for resource in \
  projects\
  projectserviceaccounts\
@@ -39,8 +78,9 @@ for resource in \
  ; do \
     helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
-
-
+```
+4. Install configuration
+```
 for resource in \
  projects\
  projectserviceaccounts\
@@ -48,7 +88,7 @@ for resource in \
  ; do \
     helm install --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
-
+```
 for resource in \
  projects\
  projectserviceaccounts\
@@ -57,11 +97,49 @@ for resource in \
     helm upgrade --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
 
-# Update Project
-helm upgrade --debug iacproj1 ./gdc-project -f projects.yaml
+# Mutate Organization
+Mutating organization includes operations like:
+- adding projects
+- removing (actually tombstoning) projects
+- adding and removing users and accounts
+- adding and removing roles
+- adding and removing role bindings
+- creating and deleting clusters
+- etc
 
+1. Configure HELM to impersonate configured user:
+```
+gdcloud auth login (as $IAC_USER)
+gdcloud clusters get-credentials global-api
+export HELM_NAMESPACE=$IAC_PROJECT
+```
+2. Check if authentication works:
+```
+helm list
+```
 
-# Debug
+3. Validate configuration
+```
+for resource in \
+ projects\
+ projectserviceaccounts\
+ iamrolebindings\
+ ; do \
+    helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
+done
+```
+4. Install configuration
+```
+for resource in \
+ projects\
+ projectserviceaccounts\
+ iamrolebindings\
+ ; do \
+    helm upgrade --debug org-$resource ./gdc-$resource -f org.yaml;\
+done
+```
+
+# Debuging
 
 for role in \
 $(gdcloud iam roles list | grep admin)\
