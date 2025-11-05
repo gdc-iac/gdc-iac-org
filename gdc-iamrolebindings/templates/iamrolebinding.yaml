@@ -1,0 +1,43 @@
+{{- if .Values.global.iamrolebindings }}
+{{- range $_, $value := .Values.global.iamrolebindings }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ regexReplaceAll "\\W+" $value.role "-" }}--{{ regexReplaceAll "\\W+" $value.subject_name "-" }}
+  namespace: "platform"
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: {{ $value.role | quote }}
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: {{ $value.subject_kind | quote }}
+    name: {{ $value.subject_name | quote }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.global.projects }}
+{{- range $key, $value := .Values.global.projects }}
+{{- if $value.iamrolebindings }}
+{{- range $_, $v := $value.iamrolebindings }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ regexReplaceAll "\\W+" $v.role "-" }}--{{ regexReplaceAll "\\W+" $v.subject_name "-" }}
+  namespace: {{ $value.name | quote }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: {{ $v.role | quote }}
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: {{ $v.subject_kind | quote }}
+    name: {{ $v.subject_name | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

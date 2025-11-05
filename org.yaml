@@ -1,17 +1,16 @@
-#organizationroles: #gpc-system
-#clusters: #platform
-#organizationnetworkpolicies: #gpc-system
-#organizationroles
-#organizationrolebindings
-projects:
-  iacproj3:
-    name: "iacproj3"
-    iam-role-bindings:
-    buckets:
-    network_policies:
-  # projectnetworkpolicies.networking.gdc.goog #namespace: project name
-  # projectrolebindings.resourcemanager.gdc.goog (?)
-  # projectroles.resourcemanager.gdc.goog #namespace: project name
-  # projectserviceaccounts.resourcemanager.gdc.goog
-    projectserviceaccounts:
-      - "dummy-sa"
+iac:
+  subject_name: "fop-iac001@example.com"
+global:
+  customroles:
+  iamrolebindings:
+    - role: "project-creator"
+      subject_kind: "User"
+      subject_name: "fop-iac001@example.com"
+  projects:
+    - name: "iacproj9"
+      iamrolebindings: 
+      - role: "project-editor"
+        subject_kind: "User"
+        subject_name: "fop-iac001@example.com"
+      projectserviceaccounts:
+      - "dummySA"
