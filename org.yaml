@@ -5,12 +5,21 @@ global:
   iamrolebindings:
     - role: "project-creator"
       subject_kind: "User"
-      subject_name: "fop-iac001@example.com"
+      subject_name: "fop-user001@example.com"
   projects:
-    - name: "iacproj9"
+    - name: "iacproj4"
       iamrolebindings: 
-      - role: "project-editor"
+      - role: "namespace-admin"
         subject_kind: "User"
-        subject_name: "fop-iac001@example.com"
+        subject_name: "fop-user001@example.com"
+      - role: "project-bucket-admin"
+        subject_kind: "User"
+        subject_name: "fop-user001@example.com"
+      - role: "project-bucket-object-admin"
+        subject_kind: "User"
+        subject_name: "fop-user001@example.com"
+      - role: "project-bucket-object-admin"
+        subject_kind: "User"
+        subject_name: "system:serviceaccount:iacproj4:samplesa"
       projectserviceaccounts:
-      - "dummySA"
+      - samplesa

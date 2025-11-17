@@ -17,7 +17,7 @@ Due to above, this framework is using layered approach, where single `org.yaml` 
 
 # Setup
 
-Helm is using the default kubeconfig path. Setup to use the same 
+Helm is using the default kubeconfig path. To use different one:
 export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubeconfig
 
 # Bootstrap IaC
@@ -68,13 +68,21 @@ export HELM_NAMESPACE=$IAC_PROJECT
 ```
 helm list
 ```
+expect empty output:
+```
+NAME	NAMESPACE	REVISION	UPDATED	STATUS	CHART	APP VERSION
+```
 
 3. Validate configuration
 ```
 for resource in \
  projects\
- projectserviceaccounts\
- iamrolebindings\
+ clusters\
+ organization-roles\
+ organization-role-bindings\
+ organization-network-policies\
+ project-service-accounts\
+ iam-role-bindings\
  ; do \
     helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
@@ -83,19 +91,16 @@ done
 ```
 for resource in \
  projects\
- projectserviceaccounts\
- iamrolebindings\
+ clusters\
+ organization-roles\
+ organization-role-bindings\
+ organization-network-policies\
+ project-service-accounts\
+ iam-role-bindings\
  ; do \
     helm install --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
 ```
-for resource in \
- projects\
- projectserviceaccounts\
- iamrolebindings\
- ; do \
-    helm upgrade --debug org-$resource ./gdc-$resource -f org.yaml;\
-done
 
 # Mutate Organization
 Mutating organization includes operations like:
@@ -122,13 +127,17 @@ helm list
 ```
 for resource in \
  projects\
- projectserviceaccounts\
- iamrolebindings\
+ clusters\
+ organization-roles\
+ organization-role-bindings\
+ organization-network-policies\
+ project-service-accounts\
+ iam-role-bindings\
  ; do \
     helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
 ```
-4. Install configuration
+4. Update configuration
 ```
 for resource in \
  projects\

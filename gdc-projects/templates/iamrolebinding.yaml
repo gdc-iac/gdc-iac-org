@@ -2,12 +2,12 @@
 {{- $iac_subject_name := required "A valid .subject_name is required for iac" .Values.iac.subject_name -}}
 {{- $iac_subject_kind := .Values.iac.subject_kind | default "User" -}}
 {{- range $_, $value := .Values.global.projects }}
-{{- range $role := list "project-iam-admin" "project-editor" }}
+{{- range $role := list "project-iam-admin" }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: project-iam-admin--{{ regexReplaceAll "\\W+" $iac_subject_name "-" }}
+  name: {{ regexReplaceAll "\\W+" $role "-" }}--{{ regexReplaceAll "\\W+" $iac_subject_name "-" }}
   namespace: {{ $value.name | quote }}
   annotations:
     "helm.sh/hook": post-install
