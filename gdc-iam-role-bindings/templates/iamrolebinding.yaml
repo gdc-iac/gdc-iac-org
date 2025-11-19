@@ -1,43 +1,42 @@
 {{- if .Values.global.iamrolebindings }}
-{{- range $_, $value := .Values.global.iamrolebindings }}
+{{- range $_, $iamrolebinding := .Values.global.iamrolebindings }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: {{ regexReplaceAll "\\W+" $value.role "-" }}--{{ regexReplaceAll "\\W+" $value.subject_name "-" }}
+  name: {{ regexReplaceAll "\\W+" $iamrolebinding.subject_name "-" }}--{{ regexReplaceAll "\\W+" $iamrolebinding.role "-" }}
   namespace: "platform"
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
     kind: IAMRole
-    name: {{ $value.role | quote }}
+    name: {{ $iamrolebinding.role | quote }}
   subjects:
   - apiGroup: rbac.authorization.k8s.io
-    kind: {{ $value.subject_kind | quote }}
-    name: {{ $value.subject_name | quote }}
+    kind: {{ $iamrolebinding.subject_kind | quote }}
+    name: {{ $iamrolebinding.subject_name | quote }}
 {{- end }}
 {{- end }}
 
 {{- if .Values.global.projects }}
-{{- range $key, $value := .Values.global.projects }}
-{{- if $value.iamrolebindings }}
-{{- range $_, $v := $value.iamrolebindings }}
+{{- range $_, $project := .Values.global.projects }}
+{{- if $project.iamrolebindings }}
+{{- range $_, $iamrolebinding := $project.iamrolebindings }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: {{ regexReplaceAll "\\W+" $v.role "-" }}--{{ regexReplaceAll "\\W+" $v.subject_name "-" }}
-  namespace: {{ $value.name | quote }}
+  name: {{ regexReplaceAll "\\W+" $iamrolebinding.subject_name "-" }}--{{ regexReplaceAll "\\W+" $iamrolebinding.role "-" }}
+  namespace: {{ $project.name | quote }}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
     kind: IAMRole
-    name: {{ $v.role | quote }}
+    name: {{ $iamrolebinding.role | quote }}
   subjects:
   - apiGroup: rbac.authorization.k8s.io
-    kind: {{ $v.subject_kind | quote }}
-    name: {{ $v.subject_name | quote }}
-    namespace: {{ $value.name | quote }}
+    kind: {{ $iamrolebinding.subject_kind | quote }}
+    name: {{ $iamrolebinding.subject_name | quote }}
 {{- end }}
 {{- end }}
 {{- end }}

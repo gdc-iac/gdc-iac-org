@@ -1,0 +1,21 @@
+{{- if .Values.global.projects }}
+{{- range $_, $project := .Values.global.projects }}
+{{- range $_, $role :=  list "project-iam-admin" }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ regexReplaceAll "\\W+" $.Values.iac.subject_name "-" }}--{{ regexReplaceAll "\\W+" $role "-" }}
+  namespace: {{ $project.name | quote }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: {{ $role | quote }}
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: {{ default "User" $.Values.iac.subject_kind | quote }}
+    name: {{ $.Values.iac.subject_name | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

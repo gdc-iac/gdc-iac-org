@@ -62,6 +62,7 @@ done
 ```
 gdcloud auth login (as $IAC_USER)
 gdcloud clusters get-credentials global-api
+export HELM_BURST_LIMIT=1 #required in adhoc env
 export HELM_NAMESPACE=$IAC_PROJECT
 ```
 2. Check if authentication works:
@@ -75,30 +76,29 @@ NAME	NAMESPACE	REVISION	UPDATED	STATUS	CHART	APP VERSION
 
 3. Validate configuration
 ```
+export config=ctie
 for resource in \
  projects\
+ iac-role-bindings\
  clusters\
- organization-roles\
- organization-role-bindings\
- organization-network-policies\
- project-service-accounts\
+ iam-roles\
  iam-role-bindings\
  ; do \
-    helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
+    helm template --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
 done
 ```
+
 4. Install configuration
 ```
+export config=ctie
 for resource in \
  projects\
+ iac-role-bindings\
  clusters\
- organization-roles\
- organization-role-bindings\
- organization-network-policies\
- project-service-accounts\
+ iam-roles\
  iam-role-bindings\
  ; do \
-    helm install --debug org-$resource ./gdc-$resource -f org.yaml;\
+    helm install --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
 done
 ```
 

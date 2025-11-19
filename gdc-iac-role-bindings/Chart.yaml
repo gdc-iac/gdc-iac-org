@@ -1,5 +1,5 @@
 apiVersion: v2
-name: gdc-organization-roles
+name: gdc-iac-role-bindings
 description: A Helm chart for Google Distributed Cloud organization management
 type: application
 version: 0.1.0
