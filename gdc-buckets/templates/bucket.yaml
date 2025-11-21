@@ -1,0 +1,21 @@
+{{- if hasKey .Values .Values.zone }}
+{{- with $zonal := get .Values .Values.zone }}
+{{- range $_, $project := $zonal.projects}}
+{{- range $_, $bucket := $project.buckets }}
+---
+apiVersion: object.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: {{ $bucket.name | quote }}
+  namespace: {{ $project.name | quote }}
+spec:
+  bucketPolicy:
+    corsPolicy:
+      enableCorsPolicy: {{ default "false" $bucket.enableCorsPolicy }}
+  description: {{ default "" $bucket.description | quote }}
+  location: {{ $.Values.zone | quote }}
+  storageClass:  {{ default "Standard" $bucket.storageClass | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

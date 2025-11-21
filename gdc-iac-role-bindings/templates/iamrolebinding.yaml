@@ -1,6 +1,6 @@
 {{- if .Values.global.projects }}
 {{- range $_, $project := .Values.global.projects }}
-{{- range $_, $role :=  list "project-iam-admin" }}
+{{- range $_, $role :=  list "project-iam-admin" "project-bucket-admin" }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding

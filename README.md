@@ -10,8 +10,10 @@ Using hooks solves resource creation order, however hook resources' life cycle i
 
 Due to above, this framework is using layered approach, where single `org.yaml` configuration file is shared across multiple charts, a chart per layer. The layers are installed and updated in predefined order:
 - Organization wide roles
-- User Clusters
-- Projects (including adding role bindings for the IaC user to edit project afterwards as post-deployment hook)
+- User Clusters [scope: zone]
+- Projects
+- Buckets [scope: zone]
+- Project roles
 - Project Service Accounts
 - Role Bindings
 
@@ -65,22 +67,15 @@ gdcloud clusters get-credentials global-api
 export HELM_BURST_LIMIT=1 #required in adhoc env
 export HELM_NAMESPACE=$IAC_PROJECT
 ```
-2. Check if authentication works:
-```
-helm list
-```
-expect empty output:
-```
-NAME	NAMESPACE	REVISION	UPDATED	STATUS	CHART	APP VERSION
-```
 
-3. Validate configuration
+2. Validate configuration
 ```
-export config=ctie
+export config=dga
 for resource in \
  projects\
  iac-role-bindings\
  clusters\
+ buckets\
  iam-roles\
  iam-role-bindings\
  ; do \
@@ -88,18 +83,35 @@ for resource in \
 done
 ```
 
-4. Install configuration
+3. Create global resources
 ```
-export config=ctie
+export config=dga
+gdcloud clusters get-credentials global-api
+
 for resource in \
  projects\
  iac-role-bindings\
- clusters\
  iam-roles\
  iam-role-bindings\
  ; do \
     helm install --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
 done
+```
+4. Create zonal resources 
+
+Note: The singlezone bucket resources and clusters are created using the zonal management API endpoint.
+```
+export config=dga
+export zone=zone1
+gdcloud clusters get-credentials ${ORG_NAME}-admin --zone ${zone}
+
+for resource in \
+ clusters\
+ buckets\
+ ; do \
+    helm install --debug ${config}-$resource ./gdc-$resource --set zone=${zone} -f ${config}.yaml;\
+done
+
 ```
 
 # Mutate Organization
