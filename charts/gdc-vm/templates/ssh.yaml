@@ -1,0 +1,36 @@
+{{- range $vm := .Values.virtualMachines }}
+{{- if and $vm.ssh $vm.ssh.uiAccessEnabled }}
+---
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineExternalAccess
+metadata:
+  name: {{ required "A valid VM name is required" $vm.name }}
+spec:
+  enabled: true
+  ports:
+  - name: ssh
+    protocol: TCP
+    port: 22
+{{- end }}
+{{- end }}
+
+{{- range $vm := .Values.virtualMachines }}
+{{- if and $vm.ssh $vm.ssh.externalAccess $vm.ssh.externalAccess.enabled }}
+{{- if $vm.ssh.externalAccess.publicKey }}
+---
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineAccessRequest
+metadata:
+  name: {{ required "A valid VM name is required" $vm.name }}-{{ randAlphaNum 5 | lower }}
+spec:
+  ssh:
+    key: |
+{{ required "A valid SSH public key is required when external access is enabled" $vm.ssh.externalAccess.publicKey | indent 6 }}
+    ttl: {{ $vm.ssh.externalAccess.ttl | default "24h" }}
+  user: {{ required "A valid SSH user is required when external access is enabled" $vm.ssh.externalAccess.user }}
+  vm: {{ required "A valid VM name is required" $vm.name }}
+{{- else }}
+{{- fail "External SSH access is enabled but 'publicKey' is not provided for VM '{{ $vm.name }}'. Please provide a valid SSH public key." }}
+{{- end }}
+{{- end }}
+{{- end }}

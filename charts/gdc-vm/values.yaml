@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=values.schema.json
+
+# Virtual Machine Configurations
+# Define one or more virtual machines to be deployed
+virtualMachines:
+  # Required: Name of the virtual machine
+  # -- Example: "my-vm"
+  - name: ""
+
+    # Required: Project namespace where the virtual machine will be deployed
+    # -- Example: "my-project"
+    namespace: ""
+
+    # Required: Name of the virtual machine image
+    # -- Example: "rocky-8-v20231229-gdch"
+    imageName: ""
+
+    # Optional: Namespace of the virtual machine image
+    # -- Default: "vm-system"
+    imageNamespace: ""
+
+    # Required: Size of the virtual machine's boot disk
+    # -- Example: "20Gi"
+    bootDiskSize: ""
+
+    # Optional: Enable or disable ingress for the virtual machine
+    # -- Default: false
+    ingressEnabled: false
+
+    # Optional: Enable or disable egress for the virtual machine
+    # -- Default: false
+    egressEnabled: false
+
+    # Optional: Machine type of the virtual machine
+    # Available options: n2-standard-2-gdc, n2-standard-4-gdc, etc.
+    # -- Default: "n2-standard-2-gdc"
+    machineType: ""
+
+    # Optional: Enable or disable secure boot for the virtual machine
+    # -- Default: false
+    enableSecureBoot: false
+
+    # Optional: Enable or disable automatic deletion of the boot disk when the virtual machine is deleted
+    # -- Default: true
+    bootDiskAutoDelete: true
+
+    # Optional: SSH configuration
+    ssh:
+      # Optional: Enable or disable SSH access from the GDCH UI to the Virtual Machine
+      # -- Default: false
+      uiAccessEnabled: false
+
+      # Optional: SSH access from the GDCH UI requires a Project Network Policy
+      # You can create this here (true), or manage externally (false)
+      # -- Default: false
+      createProjectNetworkPolicy: false
+
+      # Optional: External SSH access configuration
+      externalAccess:
+        # Optional: Enable or disable external SSH access
+        # -- Default: false
+        enabled: false
+        # If enabled is set to true, the following fields are required:
+        # publicKey: "" # Public SSH key for external access
+        # ttl: "24h"    # Time-to-live for the SSH access request (max 24 hours)
+        # user: ""      # Username for SSH access
+
+  # Add more virtual machines by appending new items to the array:
+  # - name: "another-vm"
+  #   namespace: "default"
+  #   imageName: "rocky-8-v20231229-gdch"
+  #   imageNamespace: "vm-system"
+  #   bootDiskSize: "40Gi"
+  #   ...

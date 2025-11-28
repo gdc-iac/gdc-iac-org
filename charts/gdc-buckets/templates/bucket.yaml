@@ -1,0 +1,16 @@
+{{- range $key, $bucket := .Values.buckets }}
+---
+apiVersion: object.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: {{ required "Bucket name is required" $bucket.name | quote }}
+  namespace: {{ required "Namespace is required" $bucket.namespace | quote }}
+spec:
+  bucketPolicy:
+    corsPolicy:
+      enableCorsPolicy: {{ default "false" $bucket.enableCorsPolicy }}
+  description: {{ default "" $bucket.description | quote }}
+  # Hardcode your zone here, or pass it as a simple string value "location"
+  location: {{ default "zone1" $.Values.location | quote }}
+  storageClass: {{ default "Standard" $bucket.storageClass | quote }}
+{{- end }}

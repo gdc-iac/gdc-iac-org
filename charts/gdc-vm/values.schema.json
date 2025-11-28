@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "virtualMachines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "namespace", "imageName", "imageNamespace", "bootDiskSize", "machineType"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the virtual machine. Must be 3-53 characters long, start with a lowercase letter, contain only lowercase letters, numbers, or hyphens, end with a letter or number, and not start with 'g-' or end with '-system' or '-cluster'.",
+            "pattern": "^$|^[a-z][a-z0-9-]{1,51}[a-z0-9]$",
+            "not": {
+              "pattern": "^g-|.*-system$|.*-cluster$"
+            },
+            "maxLength": 53
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Project namespace where the virtual machine will be deployed. Must be 6-30 characters long, start with a lowercase letter, contain only lowercase letters, numbers, or hyphens, end with a letter or number, and not start with 'g-' or end with '-system' or '-cluster'.",
+            "pattern": "^$|^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+            "not": {
+              "pattern": "^g-|.*-system$|.*-cluster$"
+            },
+            "maxLength": 30
+          },
+          "imageName": {
+            "type": "string",
+            "description": "Name of the virtual machine image. Must start with a lowercase letter, contain only lowercase letters, numbers, or hyphens, and end with a lowercase letter or number. Maximum length is 253 characters.",
+            "pattern": "^$|^[a-z][a-z0-9-]{1,251}[a-z0-9]$",
+            "maxLength": 253
+          },
+          "imageNamespace": {
+            "type": "string",
+            "description": "Project namespace of the virtual machine image. Must be 6-30 characters long, start with a lowercase letter, contain only lowercase letters, numbers, or hyphens, end with a letter or number, and not start with 'g-' or end with '-cluster'.",
+            "pattern": "^$|^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
+            "not": {
+              "pattern": "^g-|.*-cluster$"
+            },
+            "maxLength": 30
+          },
+          "bootDiskSize": {
+            "type": "string",
+            "description": "Size of the virtual machine's boot disk. Must be a string ending with 'Gi' (e.g., '20Gi').",
+            "pattern": "^$|^[0-9]+Gi$"
+          },
+          "ingressEnabled": {
+            "type": ["boolean", "string"],
+            "description": "Enable or disable ingress for the virtual machine. Accepts boolean or string 'true'/'false'."
+          },
+          "egressEnabled": {
+            "type": ["boolean", "string"],
+            "description": "Enable or disable egress for the virtual machine. Accepts boolean or string 'true'/'false'."
+          },
+          "machineType": {
+            "type": "string",
+            "description": "Machine type of the virtual machine (e.g., 'n2-standard-2-gdc', 'n2-standard-4-gdc')."
+          },
+          "enableSecureBoot": {
+            "type": "boolean",
+            "description": "Enable or disable secure boot for the virtual machine."
+          },
+          "bootDiskAutoDelete": {
+            "type": "boolean",
+            "description": "Enable or disable automatic deletion of the boot disk when the virtual machine is deleted."
+          },
+          "ssh": {
+            "type": "object",
+            "properties": {
+              "uiAccessEnabled": {
+                "type": "boolean",
+                "description": "Enable or disable SSH access from the GDCH UI to the Virtual Machine."
+              },
+              "createProjectNetworkPolicy": {
+                "type": "boolean",
+                "description": "Create a Project Network Policy for SSH access from the GDCH UI."
+              },
+              "externalAccess": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Enable or disable external SSH access."
+                  },
+                  "publicKey": {
+                    "type": "string",
+                    "description": "Public key for SSH access."
+                  },
+                  "ttl": {
+                    "type": "string",
+                    "pattern": "^$|^(([0-9]+h)?([0-9]+m)?([0-9]+s)?|24h0m0s)$",
+                    "description": "Time-to-live (TTL) for the SSH access request. Expressed in hours (h), minutes (m), and seconds (s). Must be in the format 'XhYmZs' where X, Y, and Z are numbers. The total duration must not exceed 24 hours. Default is '24h0m0s'.",
+                    "default": "24h0m0s"
+                  },
+                  "user": {
+                    "type": "string",
+                    "description": "Username for SSH access."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

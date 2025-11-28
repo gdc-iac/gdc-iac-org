@@ -1,0 +1,25 @@
+{{- if .Values.alloydbomni.enabled }}
+AlloyDBOmni DBCluster "{{ .Values.alloydbomni.clusterName }}" is being deployed.
+
+To check status:
+kubectl get dbcluster.alloydbomni.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.alloydbomni.clusterName }} -w
+
+{{- if .Values.oracle.enabled }}
+Oracle DBCluster "{{ .Values.oracle.clusterName }}" is being deployed.
+
+To check status:
+kubectl get dbcluster.oracle.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.oracle.clusterName }} -w
+
+CDB Name: {{ .Values.oracle.cdbName }}
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+PostgreSQL DBCluster "{{ .Values.postgresql.clusterName }}" is being deployed.
+
+To check status:
+kubectl get dbcluster.postgresql.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.postgresql.clusterName }} -w
+
+Admin user: dbsadmin
+Password Secret: db-pw-{{ .Values.clusterName }} is expected.
+{{- end }}
+

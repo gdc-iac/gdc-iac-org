@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=values.schema.json
+
+# This corresponds to {{ .Values.global.projects }}
+# The template iterates over this list to set the namespace
+# global:
+#   projects:
+#     - name: "lotus-prj"
+#     - name: "snowflake-prj"
+
+# This corresponds to {{ $.Values.iac }}
+# These values are used to define the subject of the RoleBinding
+# iac:
+#   subject_name: "fop-iac@example.com"
+#   # Optional: Defaults to "User" if not provided
+#   subject_kind: "User"

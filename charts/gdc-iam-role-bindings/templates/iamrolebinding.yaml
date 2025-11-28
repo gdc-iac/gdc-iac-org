@@ -1,0 +1,21 @@
+{{- if .Values.iamrolebindings }}
+{{- $ns := .Values.namespace }}
+{{- range $_, $iamrolebinding := .Values.iamrolebindings }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ regexReplaceAll "\\W+" $iamrolebinding.subject_name "-" }}--{{ regexReplaceAll "\\W+" $iamrolebinding.role "-" }}
+  namespace: {{ $ns | quote }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: {{ $iamrolebinding.role | quote }}
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: {{ $iamrolebinding.subject_kind | quote }}
+    name: {{ $iamrolebinding.subject_name | quote }}
+{{- end }}
+{{- end }}
+

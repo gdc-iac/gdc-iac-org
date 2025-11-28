@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=values.schema.json
+
+# This corresponds to {{ .Values.namespace }}
+# It sets the target namespace for the RoleBindings
+# namespace: {}
+
+# This corresponds to {{ .Values.iamrolebindings }}
+# It is a list of binding objects used in the range loop
+# iamrolebindings:
+#   - role: "project-admin"
+#     subject_kind: "User"
+#     subject_name: "alice@example.com"
+
+#   - role: "view-only"
+#     subject_kind: "Group"
+#     subject_name: "auditors@example.com"
+
+#   - role: "service-account-user"
+#     subject_kind: "ServiceAccount"
+#     subject_name: "my-service-account"
