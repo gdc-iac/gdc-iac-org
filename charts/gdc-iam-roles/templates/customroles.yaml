@@ -6,6 +6,8 @@
 apiVersion: iam.global.gdc.goog/v1
 kind: CustomRole
 metadata:
+  finalizers:
+  - global.gdc.goog/custom-role-finalizer
   name: {{ $role.name | quote }}
   namespace: {{ $project.name | quote }}
 spec:
@@ -36,6 +38,9 @@ spec:
 apiVersion: iam.global.gdc.goog/v1
 kind: CustomRole
 metadata:
+  finalizers:
+  - global.gdc.goog/custom-role-finalizer
+  - global.private.gdc.goog/finalizer
   name: {{ $role.name | quote }}
   namespace: platform
 spec:

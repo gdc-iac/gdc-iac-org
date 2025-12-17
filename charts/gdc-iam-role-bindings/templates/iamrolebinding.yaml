@@ -5,7 +5,7 @@ apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
   name: {{ regexReplaceAll "\\W+" $iamrolebinding.subject_name "-" }}--{{ regexReplaceAll "\\W+" $iamrolebinding.role "-" }}
-  namespace: "platform"
+  namespace: {{ default "platform" $iamrolebinding.namespace | quote }}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
