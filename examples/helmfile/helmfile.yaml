@@ -1,0 +1,31 @@
+helmDefaults:
+  args:
+    - "--burst-limit 1"
+    - "--namespace iac-root"
+releases:
+  - name: org-projects                                          
+    chart: charts/gdc-projects
+    values:
+    - "org.yaml"
+    wait: true
+  - name: org-iac-role-bindings
+    chart: charts/gdc-iac-role-bindings
+    values:
+    - "org.yaml"
+    wait: true
+    needs:
+      - org-projects
+  - name: org-iam-roles                                          
+    chart: charts/gdc-iam-roles
+    values:
+    - "org.yaml"
+    wait: true
+    needs:
+      - org-iac-role-bindings
+  - name: org-iam-role-bindings
+    chart: charts/gdc-iam-role-bindings
+    values:
+    - "org.yaml"
+    wait: true
+    needs:
+      - org-iam-roles

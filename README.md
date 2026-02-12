@@ -28,8 +28,9 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
 export ORG_NAME="org-1"
 export IAC_PROJECT="iac-root"
 export IAC_USER="fop-iac001@example.com"
+export IAC_SA="iac001-sa"
 ```
-1. Grant IaC User or Service Account required Org roles:
+1. Grant IaC Bootstrap User required Org roles:
 ```
 for role in \
   organization-iam-admin \
@@ -49,22 +50,71 @@ gdcloud auth login (as $IAC_USER)
 gdcloud projects create $IAC_PROJECT
 ```
 
-3. Grant IaC User or Service Account required `$IAC_PROJECT` roles:
+3. Grant IaC Bootstrap User required `$IAC_PROJECT` roles:
 ```
 for role in \
   secret-admin \
+  project-iam-admin \
 ; do \
   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
   --member=user:$IAC_USER \
   --role=$role;\
 done
 ```
-# Deploy Organization Resources
+
+4. Follow [documentation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#gdcloud) to create service account:
+```
+gdcloud iam service-accounts create $IAC_SA --project $IAC_PROJECT
+```
+
+5. Assign the permissions required by the service account:
+- organization:
+```
+for role in \
+  organization-iam-admin \
+  project-creator \
+  project-editor \
+  user-cluster-admin \
+; do \
+   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+   --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
+   --role="$role";\
+done
+```
+- project:
+```
+for role in \
+  secret-admin \
+; do \
+  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+  --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
+  --role=$role;\
+done
+```
+6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
+```
+gdcloud iam service-accounts keys create ${IAC_PROJECT}_${IAC_SA}.json \
+    --project=${IAC_PROJECT} \
+    --iam-account=$IAC_SA
+```
+
+7. [Generate kubeconfig](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig) file:
+```
+gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
+gdcloud auth print-identity-token --audiences=https://global-api.org-1.zone1.google.gdch.test
+gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.org-1.zone1.google.gdch.test
+export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
+gdcloud clusters get-credentials global-api
+export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
+gdcloud clusters get-credentials org-1-admin --zone zone1
+```
+
+# Deploy Organization Resources using HELM CLI
 1. Configure HELM to impersonate configured user:
 ```
 gdcloud auth login (as $IAC_USER)
 gdcloud clusters get-credentials global-api
-export HELM_BURST_LIMIT=1 #required in adhoc env
+export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
 export HELM_NAMESPACE=$IAC_PROJECT
 ```
 

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -x
+WORKDIR=$(dirname $0)
+CHARTSDIR=$( readlink -e $(dirname $0)/../../charts)
+docker run --rm --net=host -v "${HOME}/.kube:/helm/.kube" \
+    -v "${HOME}/.config/helm:/helm/.config/helm" \
+    -v "${WORKDIR}:/wd" \
+    -v "${CHARTSDIR}:/wd/charts" \
+    --workdir /wd ghcr.io/helmfile/helmfile:latest \
+    helmfile $@
