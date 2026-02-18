@@ -5751,8 +5751,6 @@ data:
           annotations:
             cluster-autoscaler.kubernetes.io/safe-to-evict: "true" # this annotation is needed so that pods doesn't block scale down
         spec:
-          # WARNING: workaround for sshuttle
-          hostNetwork: true 
           serviceAccountName: # this field will be assigned dynamically by the reconciler-manager
           containers:
           - name: hydration-controller

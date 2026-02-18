@@ -1,0 +1,27 @@
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRole
+metadata:
+  annotations:
+    iam.private.gdc.goog/owner-resource-name: global-sync-admin
+    iam.private.gdc.goog/owner-resource-name-zonal: sync-admin
+    iam.private.gdc.goog/owner-resource-namespace: iam-system
+    iam.private.gdc.goog/owner-resource-namespace-zonal: iam-system
+    user-roles.system.private.gdc.goog/binding-type: rolebinding
+    user-roles.system.private.gdc.goog/ui-display-name: Sync Admin
+    user-roles.system.private.gdc.goog/ui-role-description: Manages Config Repo Syncs
+      for projects
+  labels:
+    user-roles.system.private.gdc.goog/hierarchy-level: global-project
+    user-roles.system.private.gdc.goog/persona: app-operator
+    user-roles.system.private.gdc.goog/type: predefined
+  name: sync-admin
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: sync-admin
+  zonalRoleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: sync-admin

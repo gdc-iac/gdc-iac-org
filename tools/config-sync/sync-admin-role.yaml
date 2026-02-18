@@ -1,0 +1,27 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  annotations:
+    iam.private.gdc.goog/owner-resource-name: global-sync-admin
+    iam.private.gdc.goog/owner-resource-namespace: iam-system
+    user-roles.system.private.gdc.goog/binding-type: rolebinding
+    user-roles.system.private.gdc.goog/ui-display-name: Sync Admin
+  labels:
+    iam.private.gdc.goog/owner-operable-component: IAM
+    user-roles.system.private.gdc.goog/hierarchy-level: global-project
+    user-roles.system.private.gdc.goog/persona: app-operator
+    user-roles.system.private.gdc.goog/type: predefined
+  name: sync-admin
+  namespace: iac-root
+rules:
+- apiGroups:
+  - configsync.gke.io
+  resources:
+  - reposyncs
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - delete
+  - patch

@@ -24,99 +24,104 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
 
 # Bootstrap IaC
 0. Export environment variables (example):
-```
-export ORG_NAME="org-1"
-export IAC_PROJECT="iac-root"
-export IAC_USER="fop-iac001@example.com"
-export IAC_SA="iac001-sa"
-```
+   ```
+   export ORG_NAME="org-1"
+   export IAC_PROJECT="iac-root"
+   export IAC_USER="fop-iac001@example.com"
+   export IAC_SA="iac001-sa"
+   export GDCH_CONSOLE="console.org-1.zone1.google.gdch.test"
+   ```
 1. Grant IaC Bootstrap User required Org roles:
-```
-for role in \
-  organization-iam-admin \
-  project-creator \
-  project-editor \
-  user-cluster-admin \
-; do \
-   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-   --member="user:$IAC_USER" \
-   --role="$role";\
-done
-```
+   ```
+   for role in \
+   organization-iam-admin \
+   project-creator \
+   project-editor \
+   user-cluster-admin \
+   ; do \
+      gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+      --member="user:$IAC_USER" \
+      --role="$role";\
+   done
+   ```
 2. Create a project to host IaC resources
 
-```
-gdcloud auth login (as $IAC_USER)
-gdcloud projects create $IAC_PROJECT
-```
+   ```
+   gdcloud auth login (as $IAC_USER)
+   gdcloud projects create $IAC_PROJECT
+   ```
 
 3. Grant IaC Bootstrap User required `$IAC_PROJECT` roles:
-```
-for role in \
-  secret-admin \
-  project-iam-admin \
-; do \
-  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-  --member=user:$IAC_USER \
-  --role=$role;\
-done
-```
+   ```
+   for role in \
+   secret-admin \
+   project-iam-admin \
+   ; do \
+   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+   --member=user:$IAC_USER \
+   --role=$role;\
+   done
+   ```
 
 4. Follow [documentation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#gdcloud) to create service account:
-```
-gdcloud iam service-accounts create $IAC_SA --project $IAC_PROJECT
-```
+   ```
+   gdcloud iam service-accounts create $IAC_SA --project $IAC_PROJECT
+   ```
 
 5. Assign the permissions required by the service account:
 - organization:
-```
-for role in \
-  organization-iam-admin \
-  project-creator \
-  project-editor \
-  user-cluster-admin \
-; do \
-   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-   --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
-   --role="$role";\
-done
-```
+   ```
+   for role in \
+   organization-iam-admin \
+   project-creator \
+   project-editor \
+   user-cluster-admin \
+   ; do \
+      gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+      --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
+      --role="$role";\
+   done
+   ```
 - project:
-```
-for role in \
-  secret-admin \
-; do \
-  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-  --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
-  --role=$role;\
-done
-```
+   ```
+   for role in \
+   secret-admin \
+   ; do \
+   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+   --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
+   --role=$role;\
+   done
+   ```
 6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
-```
-gdcloud iam service-accounts keys create ${IAC_PROJECT}_${IAC_SA}.json \
-    --project=${IAC_PROJECT} \
-    --iam-account=$IAC_SA
-```
+   ```
+   gdcloud iam service-accounts keys create ${IAC_PROJECT}_${IAC_SA}.json \
+      --project=${IAC_PROJECT} \
+      --iam-account=$IAC_SA
+   ```
 
 7. [Generate kubeconfig](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig) file:
-```
-gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
-gdcloud auth print-identity-token --audiences=https://global-api.org-1.zone1.google.gdch.test
-gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.org-1.zone1.google.gdch.test
-export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
-gdcloud clusters get-credentials global-api
-export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
-gdcloud clusters get-credentials org-1-admin --zone zone1
-```
+   ```
+   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
+   gdcloud auth print-identity-token --audiences=https://global-api.org-1.zone1.google.gdch.test
+   gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.org-1.zone1.google.gdch.test --zone=zone1
+   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
+   gdcloud clusters get-credentials global-api
+   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
+   gdcloud clusters get-credentials org-1-admin --zone zone1
+   ```
 
 # Deploy Organization Resources using HELM CLI
-1. Configure HELM to impersonate configured user:
-```
-gdcloud auth login (as $IAC_USER)
-gdcloud clusters get-credentials global-api
-export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
-export HELM_NAMESPACE=$IAC_PROJECT
-```
+1. Configure HELM environment
+   ```
+   export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
+   export HELM_NAMESPACE=$IAC_PROJECT
+   ````
+1. Configure HELM to use service account:
+   ```
+   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
+   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
+   gdcloud clusters get-credentials global-api
+   ```
 
 2. Validate configuration
 ```
@@ -209,27 +214,6 @@ for resource in \
     helm upgrade --debug org-$resource ./gdc-$resource -f org.yaml;\
 done
 ```
-
-# Debuging
-
-for role in \
-$(gdcloud iam roles list | grep admin)\
-project-grafana-viewer \
-; do \
- gdcloud organizations add-iam-policy-binding org-1 \
- --member="user:fop-platform-admin@example.com" \
- --role="$role";\
-done
-
-for role in \
-$(gdcloud iam roles list | grep admin)\
-project-grafana-viewer \
-; do \
- gdcloud projects add-iam-policy-binding iacproj7 \
- --member="user:fop-platform-admin@example.com" \
- --role="$role";\
-done
-
 
 # Notes
 - https://github.com/helm/helm/issues/1228
