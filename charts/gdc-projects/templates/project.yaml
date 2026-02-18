@@ -1,5 +1,5 @@
-{{- if .Values.global.projects }}
-{{- range $key, $value := .Values.global.projects }}
+{{- if .Values.projects }}
+{{- range $key, $value := .Values.projects }}
 ---
 apiVersion: resourcemanager.global.gdc.goog/v1
 kind: Project

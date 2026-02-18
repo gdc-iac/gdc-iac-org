@@ -2,7 +2,7 @@
 
 # GDC Projects Configuration
 # Represents a namespace that spans across multiple user clusters in an organization. Define projects to be created
-projects: {}
+# projects: {}
   # Example project configuration:
   # project1:
   #   # Required: Name of the GDC project

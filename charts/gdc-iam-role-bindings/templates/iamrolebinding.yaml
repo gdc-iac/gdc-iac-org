@@ -1,11 +1,12 @@
-{{- if .Values.global.iamrolebindings }}
-{{- range $_, $iamrolebinding := .Values.global.iamrolebindings }}
+{{- if .Values.iamrolebindings }}
+{{- $ns := .Values.namespace }}
+{{- range $_, $iamrolebinding := .Values.iamrolebindings }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
   name: {{ regexReplaceAll "\\W+" $iamrolebinding.subject_name "-" }}--{{ regexReplaceAll "\\W+" $iamrolebinding.role "-" }}
-  namespace: {{ default "platform" $iamrolebinding.namespace | quote }}
+  namespace: {{ $ns | quote }}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
@@ -18,26 +19,3 @@ spec:
 {{- end }}
 {{- end }}
 
-{{- if .Values.global.projects }}
-{{- range $_, $project := .Values.global.projects }}
-{{- if $project.iamrolebindings }}
-{{- range $_, $iamrolebinding := $project.iamrolebindings }}
----
-apiVersion: iam.global.gdc.goog/v1
-kind: IAMRoleBinding
-metadata:
-  name: {{ regexReplaceAll "\\W+" $iamrolebinding.subject_name "-" }}--{{ regexReplaceAll "\\W+" $iamrolebinding.role "-" }}
-  namespace: {{ $project.name | quote }}
-spec:
-  roleRef:
-    apiGroup: iam.global.gdc.goog/v1
-    kind: IAMRole
-    name: {{ $iamrolebinding.role | quote }}
-  subjects:
-  - apiGroup: rbac.authorization.k8s.io
-    kind: {{ $iamrolebinding.subject_kind | quote }}
-    name: {{ $iamrolebinding.subject_name | quote }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
