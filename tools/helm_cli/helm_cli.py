@@ -11,7 +11,8 @@ import logging
 import sys
 import yaml
 from collections import defaultdict
-from typing import List, Optional, Union
+from typing import List, Optional
+import tempfile
 import subprocess
 
 RESOURCE_TYPES = defaultdict(lambda: {
@@ -25,6 +26,7 @@ RESOURCE_TYPES = defaultdict(lambda: {
             "iac-role-bindings": str,
         },
         "global": {
+            "iam-roles": str,
             "iam-roles": str,
             "projects": {
                 "iam-roles": str,
@@ -54,11 +56,20 @@ def resource_config(resource_type: str, obj: dict, parent: Optional[dict] = None
 
     
 
+
+def resource_config(resource_type: str, obj: dict, parent: Optional[dict] = None) -> dict:
+    match resource_type:
+        case "buckets":
+            return {resource_type.replace("-",""): [{**obj, 'namespace': parent.get('name')}]}
+        case "iam-role-bindings":
+            return {'namespace': parent.get('name'), resource_type.replace("-",""): [obj]}
+        case _:
+            return {resource_type.replace("-",""): [obj]}
+
+    
+
 def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict] = None) -> None:
-    if parent:
-        logging.debug(f"call_helm {action} {resource_type}/{parent.get('name', '')}/{obj}")
-    else:
-        logging.debug(f"call_helm {action} {resource_type}/{obj}")
+    release_name = f"{resource_type}-{obj.get('name','root')}"
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
             values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parent))
@@ -77,7 +88,10 @@ def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict]
     except subprocess.CalledProcessError as e:
             logging.error(f"Helm failed with return code {e.returncode}")
             logging.error(f"Error output (if captured): {e.output}")
+            logging.error(f"Helm failed with return code {e.returncode}")
+            logging.error(f"Error output (if captured): {e.output}")
     except FileNotFoundError as e:
+            logging.error(f"Error: Helm not found or could not be executed. {e}")
             logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
