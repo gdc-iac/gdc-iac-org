@@ -18,6 +18,19 @@
     -   gcr.io/config-management-release/reconciler-manager:v1.22.2
     -   gcr.io/config-management-release/resource-group-controller:v1.22.2
 
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+export shared_infra_project_name=data-ets-shared-infra
+export nb_project=data-ets-001-001
+
+gdcloud harbor instances create ${shared_infra_project_name:?}-mhs \
+  --project=${shared_infra_project_name:?}
+ gdcloud harbor harbor-projects create ${nb_project:?} \
+    --project=${shared_infra_project_name:?} \
+    --instance=${shared_infra_project_name:?}-mhs
+
+
 3. Create RepoSync CRD on substrate cluster and target clusters using manifest [reposync-crd.yaml](reposync-crd.yaml)
 
     - Global API
