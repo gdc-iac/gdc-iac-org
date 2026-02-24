@@ -204,11 +204,11 @@ EOF
 
     - Global API
     ```
-    kubectl apply -f reposync-crd.yaml
+    k-site2-org-15357-global-admin-api apply -f reposync-crd.yaml
     ```
     - Each Zone Management API
     ```
-    kubectl apply -f reposync-crd.yaml
+    k-site2-org-15357-admin-zone-management apply -f reposync-crd.yaml
     ```
 
     **Note:**
@@ -219,11 +219,11 @@ EOF
 
     - Global API IAMRole
     ```
-    kubectl apply -f sync-admin-iam-role.yaml
+    k-site2-org-15357-global-admin-api apply -f sync-admin-iam-role.yaml
     ```
     - Each Zone Management API RBAC
     ```
-    kubectl apply -f sync-admin-role.yaml
+    k-site2-org-15357-admin-zone-management apply -f sync-admin-role.yaml
     ```
     **Note:**
 
@@ -231,9 +231,10 @@ EOF
 
 4. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md):
     ```
-    kubectl -n config-management-system create secret generic kubeconfigs \
-    --from-file=global=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig \
-    --from-file=zone1=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
+    k-site2-org-15357-global-admin-api -n config-management-system create secret generic kubeconfigs \
+    --from-file=global=${CA_CERT_PATH}${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig \
+    --from-file=${ZONE}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig \
+    --from-file=${CLUSTER_NAME}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
     ```
 
     **Note:**
