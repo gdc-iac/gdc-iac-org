@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-validate.py - Helm config validation
+helm_cli.py - Helm config validation
+python3 helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d2-user.yaml --dry-run -v
+python3 helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --dry-run -v
+
 """
 
 import argparse
@@ -8,7 +11,7 @@ import logging
 import sys
 import yaml
 from collections import defaultdict
-from typing import List, Optional
+from typing import List, Optional, Union
 import subprocess
 
 RESOURCE_TYPES = defaultdict(lambda: {
@@ -42,7 +45,7 @@ def setup_logging(verbose: bool = False) -> None:
 
 def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict] = None) -> None:
     if parent:
-        logging.debug(f"call_helm {action} {resource_type}/{parent.get('name',"")}/{obj}")
+        logging.debug(f"call_helm {action} {resource_type}/{parent.get('name', '')}/{obj}")
     else:
         logging.debug(f"call_helm {action} {resource_type}/{obj}")
     try:
@@ -56,7 +59,7 @@ def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict]
             print(f"Error: Helm not found or could not be executed. {e}")
 
 
-def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parent: Optional[dict] = None) -> None:
+def process_type(action: str, type_path: str, resource_type: str, type_tree: Union[dict, type], config: dict, dry_run: bool, parent: Optional[dict] = None) -> None:
     logging.debug(f"process_type {type_path}/{resource_type}")
     if resource_type not in config:
         return
