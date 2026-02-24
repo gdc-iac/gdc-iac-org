@@ -9,6 +9,7 @@ import sys
 import yaml
 from collections import defaultdict
 from typing import List, Optional
+import subprocess
 
 RESOURCE_TYPES = defaultdict(lambda: {
         "clusters": str,
@@ -40,7 +41,19 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict] = None) -> None:
-    pass    
+    if parent:
+        logging.debug(f"call_helm {action} {resource_type}/{parent.get('name',"")}/{obj}")
+    else:
+        logging.debug(f"call_helm {action} {resource_type}/{obj}")
+    try:
+        output = subprocess.check_output(["helm", action, f"release-{resource_type}-{obj.get('name','')}", f"../../charts/gdc-{resource_type}", "-f",""], text=True) 
+        print("Helm Output:")
+        print(output)
+    except subprocess.CalledProcessError as e:
+            print(f"Helm failed with return code {e.returncode}")
+            print(f"Error output (if captured): {e.output}")
+    except FileNotFoundError as e:
+            print(f"Error: Helm not found or could not be executed. {e}")
 
 
 def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parent: Optional[dict] = None) -> None:
