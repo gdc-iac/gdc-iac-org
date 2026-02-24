@@ -1,37 +1,5 @@
-{{- if .Values.global.projects }}
-{{- range $k, $project := .Values.global.projects }}
-{{- if $project.customroles }}
-{{- range $_, $role := $project.customroles }}
----
-apiVersion: iam.global.gdc.goog/v1
-kind: CustomRole
-metadata:
-  name: {{ $role.name | quote }}
-  namespace: {{ $project.name | quote }}
-spec:
-  metadata:
-    id: {{ $role.name | quote }}
-    title: {{ $role.title | quote }}
-    description: {{ $role.description | quote }}
-    stage: {{ $role.stage | quote }}
-    scope: project
-    roleNamespaces:
-      - {{ $project.name | quote }}
-  {{- if $role.globalRules }}
-  globalRules:  
-   {{ $role.globalRules | toYaml | replace "|" "" | indent 4 }}
-   {{- end }}
-   {{- if $role.zonalRules }}
-  zonalRules:
-   {{ $role.zonalRules | toYaml | replace "|" "" | indent 4 }}
-   {{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- end }}
-
-{{- if .Values.global.customroles }}
-{{- range $_, $role := .Values.global.customroles }}
+{{- if .Values.iamroles }}
+{{- range $_, $role := .Values.iamroles }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: CustomRole

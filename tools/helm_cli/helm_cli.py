@@ -9,6 +9,7 @@ import sys
 import yaml
 from collections import defaultdict
 from typing import List, Optional
+import tempfile
 import subprocess
 
 RESOURCE_TYPES = defaultdict(lambda: {
@@ -22,7 +23,7 @@ RESOURCE_TYPES = defaultdict(lambda: {
             "iac-role-bindings": str,
         },
         "global": {
-            "customroles": str,
+            "iam-roles": str,
             "projects": {
                 "iam-roles": str,
                 "iam-role-bindings": str,
@@ -40,20 +41,39 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
+def resource_config(resource_type: str, obj: dict, parent: Optional[dict] = None) -> dict:
+    match resource_type:
+        case "buckets":
+            return {resource_type.replace("-",""): [{**obj, 'namespace': parent.get('name')}]}
+        case "iam-role-bindings":
+            return {'namespace': parent.get('name'), resource_type.replace("-",""): [obj]}
+        case _:
+            return {resource_type.replace("-",""): [obj]}
+
+    
+
 def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict] = None) -> None:
-    if parent:
-        logging.debug(f"call_helm {action} {resource_type}/{parent.get('name',"")}/{obj}")
-    else:
-        logging.debug(f"call_helm {action} {resource_type}/{obj}")
+    release_name = f"{resource_type}-{obj.get('name','root')}"
     try:
-        output = subprocess.check_output(["helm", action, f"release-{resource_type}-{obj.get('name','')}", f"../../charts/gdc-{resource_type}", "-f",""], text=True) 
-        print("Helm Output:")
-        print(output)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
+            values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parent))
+            logging.debug(values_yaml)
+            tmp.write(values_yaml)
+            tmp.flush()
+            if logging.getLogger().isEnabledFor(logging.DEBUG):
+                cmd = ["helm", "--debug", action, release_name, f"../../charts/gdc-{resource_type}", "-f", tmp.name]
+            else:
+                cmd = ["helm", action, release_name, f"../../charts/gdc-{resource_type}", "-f", tmp.name]
+            logging.info(f"{' '.join(cmd)}")
+            output = subprocess.check_output(cmd, text=True) 
+            logging.info(f"Helm {action} {release_name} finished")
+            if output:
+                logging.info(output)
     except subprocess.CalledProcessError as e:
-            print(f"Helm failed with return code {e.returncode}")
-            print(f"Error output (if captured): {e.output}")
+            logging.error(f"Helm failed with return code {e.returncode}")
+            logging.error(f"Error output (if captured): {e.output}")
     except FileNotFoundError as e:
-            print(f"Error: Helm not found or could not be executed. {e}")
+            logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
 def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parent: Optional[dict] = None) -> None:

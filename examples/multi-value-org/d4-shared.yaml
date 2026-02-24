@@ -9,7 +9,7 @@ global:
   rw_bucket_name: &rw_bucket_name "d4-ets-s3-rw1"
   rw_bucket_name: &rw_bucket_role "d4-ets-s3-rw1"
   shared_infra_project_name: &shared_infra_project_name "d4-ets-shared-infra"
-  customroles:
+  iam-roles:
     - name: *tools_bucket_role
       title: *tools_bucket_role
       description: *tools_bucket_role
@@ -61,7 +61,7 @@ global:
       - name: "data-ets-mhs"
         projects:
         - name: "data-ets-mhs"
-      iamrolebindings: 
+      iam-role-bindings: 
       - role: "project-grafana-viewer"
         subject_kind: "User"
         subject_name: *admin_subject_name
