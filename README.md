@@ -34,6 +34,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    export ROOT_ZONE="lux.clr"
    export CA_CERT_PATH="/mnt/Share/CTIE/dga/iac/"
    export CLUSTER_NAME="clstr-20260224"
+   export shared_infra_project_name=data-ets-shared-infra
    ```
 1. Grant IaC Bootstrap User required Org roles:
    ```
@@ -53,6 +54,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    ```
    gdcloud auth login (as $IAC_USER)
    gdcloud projects create $IAC_PROJECT
+   gdcloud projects create $shared_infra_project_name
    ```
 
 3. Grant IaC Bootstrap User required `$IAC_PROJECT` roles:
