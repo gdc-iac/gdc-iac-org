@@ -10,7 +10,6 @@ spec:
     corsPolicy:
       enableCorsPolicy: {{ default "false" $bucket.enableCorsPolicy }}
   description: {{ default "" $bucket.description | quote }}
-  # Hardcode your zone here, or pass it as a simple string value "location"
-  location: {{ default "zone1" $.Values.location | quote }}
+  location: {{ required "Location is required" $bucket.location | quote }}
   storageClass: {{ default "Standard" $bucket.storageClass | quote }}
 {{- end }}
