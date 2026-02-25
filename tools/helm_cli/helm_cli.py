@@ -44,16 +44,14 @@ def setup_logging(verbose: bool = False) -> None:
 
 def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
     parent = parents[-1]
-    match resource_type:
-        case "buckets":  
-            return {resource_type.replace("-",""): [{**obj, 
+    if resource_type == "buckets":
+        return {resource_type.replace("-",""): [{**obj, 
                 'namespace': parent.get('name'),
                 'location': obj.get('location', parents[0].get('name'))
                 }]}
-        case "iam-role-bindings":
-            return {'namespace': parent.get('name'), resource_type.replace("-",""): obj}
-        case _:
-            return {resource_type.replace("-",""): [obj]}
+    if resource_type == "iam-role-bindings":
+        return {'namespace': parent.get('name'), resource_type.replace("-",""): obj}
+    return {resource_type.replace("-",""): [obj]}
 
     
 def release_name(resource_type: str, obj: dict | list, parents: list[dict]) -> str:
