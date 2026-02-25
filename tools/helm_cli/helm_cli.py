@@ -42,27 +42,33 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def resource_config(resource_type: str, obj: dict, parent: dict) -> dict:
+def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
+    parent = parents[-1]
     match resource_type:
-        case "buckets":
-            return {resource_type.replace("-",""): [{**obj, 'namespace': parent.get('name')}]}
+        case "buckets":  
+            return {resource_type.replace("-",""): [{**obj, 
+                'namespace': parent.get('name'),
+                'location': obj.get('location', parents[0].get('name'))
+                }]}
         case "iam-role-bindings":
             return {'namespace': parent.get('name'), resource_type.replace("-",""): obj}
         case _:
             return {resource_type.replace("-",""): [obj]}
 
     
-def release_name(resource_type: str, obj: dict | list, parent: dict) -> str:
+def release_name(resource_type: str, obj: dict | list, parents: list[dict]) -> str:
+    parent = parents[-1]
     if isinstance(obj, list):
         return f"{parent.get('name','root')}-{resource_type}"
     return f"{parent.get('name','root')}-{resource_type}-{obj.get('name','root')}"
 
 
-def call_helm(action: str, resource_type: str, obj: dict | list, parent: dict) -> None:
-    release = release_name(resource_type, obj, parent)
+def call_helm(action: str, resource_type: str, obj: dict | list, parents: list[dict]) -> None:
+    parent = parents[-1]
+    release = release_name(resource_type, obj, parents)
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-            values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parent))
+            values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parents))
             logging.debug(values_yaml)
             tmp.write(values_yaml)
             tmp.flush()
@@ -82,21 +88,22 @@ def call_helm(action: str, resource_type: str, obj: dict | list, parent: dict) -
             logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
-def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parent: dict) -> None:
+def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parents: list[dict]) -> None:
     logging.debug(f"process_type {type_path}/{resource_type}")
+    parent = parents[-1]
     if resource_type not in config:
         return
     if type_tree is list:
         logging.debug(f"{action} list {parent.get('name', type_path)}/{resource_type}")
         obj = config[resource_type]
         if not dry_run:
-            call_helm(action, resource_type, obj, parent)
+            call_helm(action, resource_type, obj, parents)
         return
     if type_tree is str:
         for i, obj in enumerate(config[resource_type]):
             logging.debug(f"{action} object {parent.get('name', type_path)}/{resource_type}/{obj.get('name',obj)}")
             if not dry_run:
-                call_helm(action, resource_type, obj, parent)
+                call_helm(action, resource_type, obj, parents)
             return
     for i, obj in enumerate(config[resource_type]):
         logging.debug(f"{action} object {parent.get('name', type_path)}/{resource_type}/{obj.get('name',obj)}")
@@ -105,9 +112,10 @@ def process_type(action: str, type_path: str, resource_type: str, type_tree: dic
         if resource_scope != parent.get("name", type_path):
             skip_helm = True
         if not skip_helm:
-            call_helm(action, resource_type, obj, parent)
+            call_helm(action, resource_type, obj, parents)
         for t, v in type_tree.items():
-            process_type(action, f"{type_path}/{resource_type}", t, v, config[resource_type][i], dry_run, obj)
+            parents.append(obj)
+            process_type(action, f"{type_path}/{resource_type}", t, v, config[resource_type][i], dry_run, parents)
 
 
 def process(config: str, action: str, dry_run: bool) -> bool:
@@ -123,7 +131,7 @@ def process(config: str, action: str, dry_run: bool) -> bool:
 
     for api in config:
         for t, v in RESOURCE_TYPES[api].items():
-            process_type(action, api, t, v, config[api], dry_run, {'name': api})
+            process_type(action, api, t, v, config[api], dry_run, [{'name': api}])
     return True
 
 
