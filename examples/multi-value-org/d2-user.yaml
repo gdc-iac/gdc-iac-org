@@ -1,8 +1,8 @@
 iac:
-  subject_name: "fop-iac001@example.com"
+  subject_name: "gdch-infra-operator-fop-iac001@opscenter.local"
 global:
-  user_subject_name: &user_subject_name "fop-etsuser@example.com"
-  admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"
+  user_subject_name: &user_subject_name "gdch-infra-operator-fop-etsuser@opscenter.local"
+  admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
   tools_bucket_role: &tools_bucket_role "d2-ets-s3-tools"
   ro_bucket_role: &ro_bucket_role "d2-ets-s3-ro1"
   rw_bucket_name: &rw_bucket_role "d2-ets-s3-rw1"
