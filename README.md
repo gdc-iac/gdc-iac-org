@@ -25,11 +25,16 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
 # Bootstrap IaC
 0. Export environment variables (example):
    ```
-   export ORG_NAME="org-1"
+   export ORG_NAME="org-15357"
    export IAC_PROJECT="iac-root"
-   export IAC_USER="fop-iac001@example.com"
+   export IAC_USER="gdch-infra-operator-fop-iac001@opscenter.local"
    export IAC_SA="iac001-sa"
-   export GDCH_CONSOLE="console.org-1.zone1.google.gdch.test"
+   export GDCH_CONSOLE="console.org-19364.lux-central1-b.lux.clr"
+   export ZONE="lux-central1-b"
+   export ROOT_ZONE="lux.clr"
+   export CA_CERT_PATH="/mnt/Share/CTIE/dga/iac/"
+   export CLUSTER_NAME="clstr-20260224"
+   export shared_infra_project_name=data-ets-shared-infra
    ```
 1. Grant IaC Bootstrap User required Org roles:
    ```
@@ -40,7 +45,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    user-cluster-admin \
    ; do \
       gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-      --member="user:$IAC_USER" \
+      --member="user:${IAC_USER:?}" \
       --role="$role";\
    done
    ```
@@ -49,6 +54,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    ```
    gdcloud auth login (as $IAC_USER)
    gdcloud projects create $IAC_PROJECT
+   gdcloud projects create $shared_infra_project_name
    ```
 
 3. Grant IaC Bootstrap User required `$IAC_PROJECT` roles:
@@ -65,7 +71,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
 
 4. Follow [documentation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#gdcloud) to create service account:
    ```
-   gdcloud iam service-accounts create $IAC_SA --project $IAC_PROJECT
+   gdcloud iam service-accounts create "$IAC_SA" --project "$IAC_PROJECT"
    ```
 
 5. Assign the permissions required by the service account:
@@ -78,7 +84,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    user-cluster-admin \
    ; do \
       gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-      --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
+      --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
       --role="$role";\
    done
    ```
@@ -88,26 +94,33 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    secret-admin \
    ; do \
    gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-   --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
+   --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
    --role=$role;\
    done
    ```
 6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
    ```
-   gdcloud iam service-accounts keys create ${IAC_PROJECT}_${IAC_SA}.json \
-      --project=${IAC_PROJECT} \
-      --iam-account=$IAC_SA
+   gdcloud iam service-accounts keys create "${CA_CERT_PATH}${IAC_SA:?}.json" \
+    --project="$IAC_PROJECT" \
+    --iam-account="$IAC_SA"
    ```
 
 7. [Generate kubeconfig](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig) file:
    ```
-   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
-   gdcloud auth print-identity-token --audiences=https://global-api.org-1.zone1.google.gdch.test
-   gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.org-1.zone1.google.gdch.test --zone=zone1
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
+   gdcloud auth activate-service-account --key-file=${CA_CERT_PATH:?}${IAC_SA:?}.json
+   gdcloud auth print-identity-token --audiences=https://global-api.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?}
+   ERROR: no access token could be obtained from the current credentials: unable to obtain STS token using service account JWT: unable to reach server: Post "https://service-accounts.org-15357.lux.clr/authenticate": dial tcp: lookup service-accounts.org-15357.lux.clr on 10.255.255.254:53: no such host
+   gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?} --zone=${ZONE:?}
+   ERROR: no access token could be obtained from the current credentials: unable to obtain STS token using service account JWT: unable to reach server: Post "https://service-accounts.org-15357.lux.clr/authenticate": dial tcp: lookup service-accounts.org-15357.lux.clr on 10.255.255.254:53: no such host
+   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
+   gdcloud config set core/zone ""
    gdcloud clusters get-credentials global-api
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
-   gdcloud clusters get-credentials org-1-admin --zone zone1
+   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig
+   gdcloud config set core/zone ${ZONE:?}
+   gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${ZONE:?}
+   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
+   gdcloud config set core/zone ${ZONE:?}
+   gdcloud clusters get-credentials ${CLUSTER_NAME:?} --zone ${ZONE:?}
    ```
 
 # Deploy Organization Resources using HELM CLI
@@ -118,7 +131,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    ````
 1. Configure HELM to use service account:
    ```
-   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
+   gdcloud auth activate-service-account --key-file=${CA_CERT_PATH}${IAC_SA}.json
    export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
    gdcloud clusters get-credentials global-api
    ```
@@ -141,6 +154,7 @@ done
 3. Create global resources
 ```
 export config=dga
+gdcloud config set core/zone ""
 gdcloud clusters get-credentials global-api
 
 for resource in \
