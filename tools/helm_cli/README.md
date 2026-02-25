@@ -45,3 +45,11 @@ The tool expects a YAML configuration file that structures resources under speci
 2.  **Iterates Resources**: Traverses the configuration based on the defined `RESOURCE_TYPES` hierarchy.
 3.  **Generates Values**: Constructs a temporary values YAML file for each resource found.
 4.  **Executes Helm**: Calls the Helm CLI with the specified action (e.g., `helm template ...`) targeting the corresponding chart (e.g., `../../charts/gdc-<resource_type>`).
+
+## Running Tests
+
+Unit tests are provided in `test_helm_cli.py`. To run the tests, execute the following command from the `tools/helm_cli` directory:
+
+```bash
+python3 test_helm_cli.py
+```
