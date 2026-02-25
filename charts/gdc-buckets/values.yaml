@@ -2,7 +2,7 @@
 
 # This corresponds to {{ $.Values.location }}
 # Optional: If omitted, the template defaults to "zone1"
-# location: "zone1"
+location: "lux-central1-b"
 
 # This corresponds to {{ .Values.buckets }}
 # The template iterates over this list to create Bucket resources
