@@ -18,18 +18,19 @@ import subprocess
 RESOURCE_TYPES = defaultdict(lambda: {
         "clusters": str,
         "projects": {
+            "TYPE_SCOPE": "global",
             "buckets": str,
         }
     }, 
     {
         "iac": {
-            "iac-role-bindings": str,
+            "iac-role-bindings": list,
         },
         "global": {
             "iam-roles": str,
             "projects": {
                 "iam-roles": str,
-                "iam-role-bindings": str,
+                "iam-role-bindings": list,
             }
         },
     })
@@ -44,32 +45,41 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def resource_config(resource_type: str, obj: dict, parent: Optional[dict] = None) -> dict:
-    match resource_type:
-        case "buckets":
-            return {resource_type.replace("-",""): [{**obj, 'namespace': parent.get('name')}]}
-        case "iam-role-bindings":
-            return {'namespace': parent.get('name'), resource_type.replace("-",""): [obj]}
-        case _:
-            return {resource_type.replace("-",""): [obj]}
+def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
+    parent = parents[-1]
+    if resource_type == "buckets":
+        return {resource_type.replace("-",""): [{**obj, 
+                'namespace': parent.get('name'),
+                'location': obj.get('location', parents[0].get('name'))
+                }]}
+    if resource_type == "iam-role-bindings":
+        return {'namespace': parent.get('name'), resource_type.replace("-",""): obj}
+    return {resource_type.replace("-",""): [obj]}
 
     
+def release_name(resource_type: str, obj: dict | list, parents: list[dict]) -> str:
+    parent = parents[-1]
+    if isinstance(obj, list):
+        return f"{parent.get('name','root')}-{resource_type}"
+    return f"{parent.get('name','root')}-{resource_type}-{obj.get('name','root')}"
 
-def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict] = None) -> None:
-    release_name = f"{resource_type}-{obj.get('name','root')}"
+
+def call_helm(action: str, resource_type: str, obj: dict | list, parents: list[dict]) -> None:
+    parent = parents[-1]
+    release = release_name(resource_type, obj, parents)
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-            values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parent))
+            values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parents))
             logging.debug(values_yaml)
             tmp.write(values_yaml)
             tmp.flush()
             if logging.getLogger().isEnabledFor(logging.DEBUG):
-                cmd = ["helm", "--debug", action, release_name, f"../../charts/gdc-{resource_type}", "-f", tmp.name]
+                cmd = ["helm", "--debug", action, release, f"../../charts/gdc-{resource_type}", "-f", tmp.name]
             else:
-                cmd = ["helm", action, release_name, f"../../charts/gdc-{resource_type}", "-f", tmp.name]
+                cmd = ["helm", action, release, f"../../charts/gdc-{resource_type}", "-f", tmp.name]
             logging.info(f"{' '.join(cmd)}")
             output = subprocess.check_output(cmd, text=True) 
-            logging.info(f"Helm {action} {release_name} finished")
+            logging.info(f"Helm {action} {release} finished")
             if output:
                 logging.info(output)
     except subprocess.CalledProcessError as e:
@@ -79,20 +89,34 @@ def call_helm(action: str, resource_type: str, obj: dict, parent: Optional[dict]
             logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
-def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parent: Optional[dict] = None) -> None:
+def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parents: list[dict]) -> None:
     logging.debug(f"process_type {type_path}/{resource_type}")
+    parent = parents[-1]
     if resource_type not in config:
         return
-    for i, obj in enumerate(config[resource_type]):
-        if parent:
-            logging.debug(f"{action} object {type_path}/{parent.get('name',parent)}/{resource_type}/{obj.get('name',obj)}")
-        else:
-            logging.debug(f"{action} object {type_path}/{resource_type}/{obj.get('name',obj)}")
+    if type_tree is list:
+        logging.debug(f"{action} list {parent.get('name', type_path)}/{resource_type}")
+        obj = config[resource_type]
         if not dry_run:
-            call_helm(action, resource_type, obj, parent)
-        if isinstance(type_tree, dict):
-            for t, v in type_tree.items():
-                process_type(action, f"{type_path}/{resource_type}", t, v, config[resource_type][i], dry_run, obj)
+            call_helm(action, resource_type, obj, parents)
+        return
+    if type_tree is str:
+        for i, obj in enumerate(config[resource_type]):
+            logging.debug(f"{action} object {parent.get('name', type_path)}/{resource_type}/{obj.get('name',obj)}")
+            if not dry_run:
+                call_helm(action, resource_type, obj, parents)
+            return
+    for i, obj in enumerate(config[resource_type]):
+        logging.debug(f"{action} object {parent.get('name', type_path)}/{resource_type}/{obj.get('name',obj)}")
+        resource_scope = type_tree.get("TYPE_SCOPE", parent.get("name", type_path))
+        skip_helm = dry_run
+        if resource_scope != parent.get("name", type_path):
+            skip_helm = True
+        if not skip_helm:
+            call_helm(action, resource_type, obj, parents)
+        for t, v in type_tree.items():
+            parents.append(obj)
+            process_type(action, f"{type_path}/{resource_type}", t, v, config[resource_type][i], dry_run, parents)
 
 
 def process(config: str, action: str, dry_run: bool) -> bool:
@@ -108,7 +132,7 @@ def process(config: str, action: str, dry_run: bool) -> bool:
 
     for api in config:
         for t, v in RESOURCE_TYPES[api].items():
-            process_type(action, api, t, v, config[api], dry_run)
+            process_type(action, api, t, v, config[api], dry_run, [{'name': api}])
     return True
 
 
