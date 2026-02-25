@@ -112,12 +112,15 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    ERROR: no access token could be obtained from the current credentials: unable to obtain STS token using service account JWT: unable to reach server: Post "https://service-accounts.org-15357.lux.clr/authenticate": dial tcp: lookup service-accounts.org-15357.lux.clr on 10.255.255.254:53: no such host
    gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?} --zone=${ZONE:?}
    ERROR: no access token could be obtained from the current credentials: unable to obtain STS token using service account JWT: unable to reach server: Post "https://service-accounts.org-15357.lux.clr/authenticate": dial tcp: lookup service-accounts.org-15357.lux.clr on 10.255.255.254:53: no such host
+   rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
    export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
    gdcloud config set core/zone ""
    gdcloud clusters get-credentials global-api
+   rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig
    export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig
    gdcloud config set core/zone ${ZONE:?}
    gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${ZONE:?}
+   rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
    export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
    gdcloud config set core/zone ${ZONE:?}
    gdcloud clusters get-credentials ${CLUSTER_NAME:?} --zone ${ZONE:?}
