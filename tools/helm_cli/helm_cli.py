@@ -11,7 +11,7 @@ import logging
 import sys
 import yaml
 from collections import defaultdict
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
 import tempfile
 import subprocess
 
@@ -45,7 +45,7 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
+def resource_config(resource_type: str, obj: dict, parents: List[Dict]) -> dict:
     parent = parents[-1]
     if resource_type == "buckets":
         return {resource_type.replace("-",""): [{**obj, 
@@ -57,14 +57,14 @@ def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
     return {resource_type.replace("-",""): [obj]}
 
     
-def release_name(resource_type: str, obj: dict | list, parents: list[dict]) -> str:
+def release_name(resource_type: str, obj: Union[dict, list], parents: List[Dict]) -> str:
     parent = parents[-1]
     if isinstance(obj, list):
         return f"{parent.get('name','root')}-{resource_type}"
     return f"{parent.get('name','root')}-{resource_type}-{obj.get('name','root')}"
 
 
-def call_helm(action: str, resource_type: str, obj: dict | list, parents: list[dict]) -> None:
+def call_helm(action: str, resource_type: str, obj: Union[dict, list], parents: List[Dict]) -> None:
     parent = parents[-1]
     release = release_name(resource_type, obj, parents)
     try:
@@ -89,7 +89,7 @@ def call_helm(action: str, resource_type: str, obj: dict | list, parents: list[d
             logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
-def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parents: list[dict]) -> None:
+def process_type(action: str, type_path: str, resource_type: str, type_tree: Union[dict, type], config: dict, dry_run: bool, parents: List[Dict]) -> None:
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
     if resource_type not in config:
