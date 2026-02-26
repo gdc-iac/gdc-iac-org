@@ -29,7 +29,9 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    export IAC_PROJECT="iac-root"
    export IAC_USER="fop-iac001@example.com"
    export IAC_SA="iac001-sa"
-   export GDCH_CONSOLE="console.org-1.zone1.google.gdch.test"
+   export GDCH_DOMAIN="google.gdch.test"
+   export ZONE="zone1"
+   export GDCH_CONSOLE="console.${ORG_NAME}.${ZONE}.${GDCH_DOMAIN}"
    ```
 1. Grant IaC Bootstrap User required Org roles:
    ```
@@ -101,13 +103,14 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
 
 7. [Generate kubeconfig](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig) file:
    ```
-   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
-   gdcloud auth print-identity-token --audiences=https://global-api.org-1.zone1.google.gdch.test
-   gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.org-1.zone1.google.gdch.test --zone=zone1
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
+   gdcloud auth activate-service-account --key-file=${IAC_PROJECT:?}_${IAC_SA:?}.json
+   gdcloud auth print-identity-token --audiences=https://global-api.${ORG_NAME:?}.${ZONE:?}.${GDCH_DOMAIN:?}
+   
+   gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${GDCH_DOMAIN:?} --zone=${ZONE:?}
+   export KUBECONFIG=${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
    gdcloud clusters get-credentials global-api
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
-   gdcloud clusters get-credentials org-1-admin --zone zone1
+   export KUBECONFIG=${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig
+   gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${ZONE:?}
    ```
 
 # Deploy Organization Resources using HELM CLI
@@ -122,98 +125,6 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
    gdcloud clusters get-credentials global-api
    ```
-
-2. Validate configuration
-```
-export config=dga
-for resource in \
- projects\
- iac-role-bindings\
- clusters\
- buckets\
- iam-roles\
- iam-role-bindings\
- ; do \
-    helm template --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
-done
-```
-
-3. Create global resources
-```
-export config=dga
-gdcloud clusters get-credentials global-api
-
-for resource in \
- projects\
- iac-role-bindings\
- iam-roles\
- iam-role-bindings\
- ; do \
-    helm install --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
-done
-```
-4. Create zonal resources 
-
-Note: The singlezone bucket resources and clusters are created using the zonal management API endpoint.
-```
-export config=dga
-export zone=zone1
-gdcloud clusters get-credentials ${ORG_NAME}-admin --zone ${zone}
-
-for resource in \
- clusters\
- buckets\
- ; do \
-    helm install --debug ${config}-$resource ./gdc-$resource --set zone=${zone} -f ${config}.yaml;\
-done
-
-```
-
-# Mutate Organization
-Mutating organization includes operations like:
-- adding projects
-- removing (actually tombstoning) projects
-- adding and removing users and accounts
-- adding and removing roles
-- adding and removing role bindings
-- creating and deleting clusters
-- etc
-
-1. Configure HELM to impersonate configured user:
-```
-gdcloud auth login (as $IAC_USER)
-gdcloud clusters get-credentials global-api
-export HELM_NAMESPACE=$IAC_PROJECT
-```
-2. Check if authentication works:
-```
-helm list
-```
-
-3. Validate configuration
-```
-for resource in \
- projects\
- clusters\
- organization-roles\
- organization-role-bindings\
- organization-network-policies\
- project-service-accounts\
- iam-role-bindings\
- ; do \
-    helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
-done
-```
-4. Update configuration
-```
-for resource in \
- projects\
- projectserviceaccounts\
- iamrolebindings\
- ; do \
-    helm upgrade --debug org-$resource ./gdc-$resource -f org.yaml;\
-done
-```
 
 # Notes
 - https://github.com/helm/helm/issues/1228

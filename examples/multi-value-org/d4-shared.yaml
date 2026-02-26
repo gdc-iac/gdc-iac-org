@@ -14,9 +14,6 @@ global:
       title: *tools_bucket_role
       description: *tools_bucket_role
       stage: "GA"
-      scope: "project"
-      roleNamespaces:
-        - *shared_infra_project_name
       zonalRules: |
         - apiGroups:
           - object.gdc.goog
@@ -29,9 +26,6 @@ global:
       title: *ro_bucket_role
       description: *ro_bucket_role
       stage: "GA"
-      scope: "project"
-      roleNamespaces:
-        - *shared_infra_project_name
       zonalRules: |
         - apiGroups:
           - object.gdc.goog
@@ -44,9 +38,6 @@ global:
       title: *rw_bucket_role
       description: *rw_bucket_role
       stage: "GA"
-      scope: "project"
-      roleNamespaces:
-        - *shared_infra_project_name
       zonalRules: |
         - apiGroups:
           - object.gdc.goog
