@@ -1,6 +1,11 @@
 # Helm CLI Tool
 
-`helm_cli.py` is a Python script designed to automate the execution of Helm commands based on a structured configuration file. It iterates through defined resource types and applies Helm charts located in the `../../charts/` directory.
+`helm_cli.py` is a Python wrapper script for the Helm CLI. It serves two primary purposes:
+
+1.  **Automated Deployments**: It automates running Helm commands (`upgrade`, `install`, etc.) for multiple resources defined in a structured YAML configuration file.
+2.  **Direct Passthrough**: It can act as a simple passthrough to the `helm` command for actions that don't require a configuration file (e.g., `helm list`).
+
+The script iterates through defined resource types and applies Helm charts located in the `../../charts/` directory.
 
 ## Prerequisites
 
@@ -10,19 +15,22 @@
 
 ## Usage
 
+The script's command-line interface is designed to be similar to `helm` itself.
+
 ```bash
-python3 helm_cli.py <config_file> [options]
+python3 helm_cli.py <action> [config_file] [helm_flags]
 ```
 
 ### Arguments
 
-- `config_file`: (Required) Path to the YAML configuration file containing the resource definitions.
+- `<action>`: (Required) The Helm action to perform (e.g., `template`, `install`, `upgrade`, `lint`, `list`, etc.).
+- `[config_file]`: (Optional) Path to the YAML configuration file containing the resource definitions. If omitted, the action is executed globally without trying to iterate on nested objects.
+- `[helm_flags]`: (Optional) Any additional arguments or flags supported by the raw Helm CLI (e.g., `--set key=value`, `--namespace mynamespace`). These arguments are directly passed through to `helm`.
 
 ### Options
 
-- `-a`, `--action`: The Helm action to perform. Defaults to `template`. Common actions include `install`, `upgrade`, `lint`.
-- `--dry-run`: If set, the script will parse the configuration and log the intended actions but will not execute the Helm commands.
-- `-v`, `--verbose`: Enable verbose (debug) logging.
+- `--dry-run`: If set, the script will parse the configuration and log the intended actions but will not execute the specific Helm commands that modify the state.
+- `-v`, `--verbose`: Enable verbose (debug) logging output.
 
 ## Configuration
 
@@ -48,8 +56,19 @@ The tool expects a YAML configuration file that structures resources under speci
 
 ## Running Tests
 
-Unit tests are provided in `test_helm_cli.py`. To run the tests, execute the following command from the `tools/helm_cli` directory:
+Unit tests are provided using the standard Python `unittest` framework in `test_helm_cli.py`. You can run the tests using any of the following commands from the `tools/helm_cli` directory:
 
+1. **Direct execution:**
 ```bash
 python3 test_helm_cli.py
+```
+
+2. **Using the `unittest` module explicitly:**
+```bash
+python3 -m unittest test_helm_cli.py
+```
+
+3. **Running `unittest` with verbose logging:**
+```bash
+python3 -m unittest -v test_helm_cli.py
 ```
