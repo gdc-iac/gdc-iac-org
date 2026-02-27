@@ -1,14 +1,13 @@
-import unittest
-from unittest.mock import patch, MagicMock, call
-import sys
 import os
-import logging
-import yaml
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Add the directory containing helm_cli.py to the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-import helm_cli
+import helm_cli  # noqa: E402
+
 
 class TestHelmCli(unittest.TestCase):
 
@@ -19,15 +18,15 @@ class TestHelmCli(unittest.TestCase):
         resource_type = "buckets"
         obj = {"name": "my-bucket", "location": "us-west1"}
         parents = [{"name": "my-project"}]
-        
+
         expected = {
             "buckets": [{
-                "name": "my-bucket", 
-                "location": "us-west1", 
+                "name": "my-bucket",
+                "location": "us-west1",
                 "namespace": "my-project"
             }]
         }
-        
+
         result = helm_cli.resource_config(resource_type, obj, parents)
         self.assertEqual(result, expected)
 
@@ -36,15 +35,15 @@ class TestHelmCli(unittest.TestCase):
         obj = {"name": "my-bucket"}
         # parents[0] is the root api
         parents = [{"name": "global-region"}, {"name": "my-project"}]
-        
+
         expected = {
             "buckets": [{
-                "name": "my-bucket", 
-                "location": "global-region", 
+                "name": "my-bucket",
+                "location": "global-region",
                 "namespace": "my-project"
             }]
         }
-        
+
         result = helm_cli.resource_config(resource_type, obj, parents)
         self.assertEqual(result, expected)
 
@@ -52,12 +51,12 @@ class TestHelmCli(unittest.TestCase):
         resource_type = "iam-role-bindings"
         obj = [{"role": "roles/storage.admin", "member": "user:test@example.com"}]
         parents = [{"name": "my-project"}]
-        
+
         expected = {
             "namespace": "my-project",
             "iamrolebindings": obj
         }
-        
+
         result = helm_cli.resource_config(resource_type, obj, parents)
         self.assertEqual(result, expected)
 
@@ -65,11 +64,11 @@ class TestHelmCli(unittest.TestCase):
         resource_type = "some-resource"
         obj = {"name": "res1", "prop": "val"}
         parents = [{"name": "parent1"}]
-        
+
         expected = {
             "someresource": [obj]
         }
-        
+
         result = helm_cli.resource_config(resource_type, obj, parents)
         self.assertEqual(result, expected)
 
@@ -77,7 +76,7 @@ class TestHelmCli(unittest.TestCase):
         resource_type = "my-res"
         obj = {"name": "obj1"}
         parents = [{"name": "parent1"}]
-        
+
         result = helm_cli.release_name(resource_type, obj, parents)
         self.assertEqual(result, "parent1-my-res-obj1")
 
@@ -85,7 +84,7 @@ class TestHelmCli(unittest.TestCase):
         resource_type = "my-res"
         obj = ["item1", "item2"]
         parents = [{"name": "parent1"}]
-        
+
         result = helm_cli.release_name(resource_type, obj, parents)
         self.assertEqual(result, "parent1-my-res")
 
@@ -95,7 +94,7 @@ class TestHelmCli(unittest.TestCase):
         chart = "my-chart"
         values = "values.yaml"
         extra = ["--wait", "--timeout", "10m"]
-        
+
         expected = ["helm", "upgrade", "--install", release, chart, "-f", values, "--wait", "--timeout", "10m"]
         result = helm_cli.action_cmd(action, release_name=release, chart=chart, values_file=values, extra_args=extra)
         self.assertEqual(result, expected)
@@ -113,18 +112,18 @@ class TestHelmCli(unittest.TestCase):
         mock_file = MagicMock()
         mock_tempfile.return_value.__enter__.return_value = mock_file
         mock_file.name = "/tmp/values.yaml"
-        
+
         action = "upgrade"
         resource_type = "test-res"
         obj = {"name": "obj1"}
         parents = [{"name": "p1"}]
         extra_args = ["--dry-run"]
-        
+
         helm_cli.call_resource_action(action, resource_type, obj, parents, extra_args)
-        
+
         mock_file.write.assert_called()
         expected_cmd = [
-            "helm", "upgrade", "--install", "p1-test-res-obj1", 
+            "helm", "upgrade", "--install", "p1-test-res-obj1",
             "../../charts/gdc-test-res", "-f", "/tmp/values.yaml", "--dry-run"
         ]
         mock_subprocess.assert_called_with(expected_cmd, text=True)
@@ -139,10 +138,12 @@ class TestHelmCli(unittest.TestCase):
         dry_run = False
         parents = [{"name": "root"}]
         extra_args = []
-        
+
         helm_cli.process_type(action, type_path, resource_type, type_tree, config, dry_run, parents, extra_args)
-        
-        mock_call_resource_action.assert_called_once_with(action, resource_type, ["item1", "item2"], parents, extra_args)
+
+        mock_call_resource_action.assert_called_once_with(
+            action, resource_type, ["item1", "item2"], parents, extra_args
+        )
 
     @patch("helm_cli.process_type")
     def test_process(self, mock_process_type):
@@ -150,7 +151,7 @@ class TestHelmCli(unittest.TestCase):
         action = "template"
         dry_run = False
         extra_args = ["--debug"]
-        
+
         helm_cli.process(config, action, dry_run, extra_args)
         mock_process_type.assert_called()
         args, _ = mock_process_type.call_args
@@ -160,7 +161,7 @@ class TestHelmCli(unittest.TestCase):
     def test_parse_args(self):
         sys_args = ["upgrade", "config.yaml", "--dry-run", "--set", "foo=bar"]
         args, extra = helm_cli.parse_args(sys_args)
-        
+
         self.assertEqual(args.action, "upgrade")
         self.assertEqual(args.config, "config.yaml")
         self.assertTrue(args.dry_run)
@@ -169,10 +170,11 @@ class TestHelmCli(unittest.TestCase):
     def test_parse_args_optional_config(self):
         sys_args = ["list", "-A"]
         args, extra = helm_cli.parse_args(sys_args)
-        
+
         self.assertEqual(args.action, "list")
         self.assertIsNone(args.config)
         self.assertEqual(extra, ["-A"])
+
 
 if __name__ == "__main__":
     unittest.main()
