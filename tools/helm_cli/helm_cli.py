@@ -47,6 +47,17 @@ def setup_logging(verbose: bool = False) -> None:
 def resource_config(
     resource_type: str, obj: dict, parents: List[dict]
 ) -> dict:
+    """
+    Constructs the configuration dictionary for a specific resource type.
+
+    Args:
+        resource_type: The type of the resource (e.g., 'buckets').
+        obj: The resource properties dictionary.
+        parents: A list of parent objects providing context (e.g. namespaces).
+
+    Returns:
+        A dictionary representing the transformed config for the resource.
+    """
     parent = parents[-1]
     if resource_type == "buckets":
         return {"buckets": [{
@@ -65,6 +76,17 @@ def resource_config(
 def release_name(
     resource_type: str, obj: Union[dict, list], parents: List[dict]
 ) -> str:
+    """
+    Generates a standardized Helm release name for a resource.
+
+    Args:
+        resource_type: The type of the resource.
+        obj: The resource object or list of objects.
+        parents: Contextual parent objects.
+
+    Returns:
+        A formatted string to be used as the Helm release name.
+    """
     parent = parents[-1]
     if isinstance(obj, list):
         return f"{parent.get('name', 'root')}-{resource_type}"
@@ -80,6 +102,22 @@ def action_cmd(
     values_file: str = None,
     extra_args: List[str] = None
 ) -> List[str]:
+    """
+    Constructs the corresponding helm command line for a given action.
+
+    Args:
+        action: The helm action to perform (e.g., 'upgrade', 'template').
+        release_name: The name of the helm release (optional).
+        chart: The path to the local helm chart (optional).
+        values_file: The path to the values YAML file (optional).
+        extra_args: Any extra arguments to append to the command (optional).
+
+    Returns:
+        A list of strings representing the helm command to execute.
+
+    Raises:
+        ValueError: If an unsupported action is provided.
+    """
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         cmd = ["helm", "--debug"]
     else:
@@ -113,6 +151,14 @@ def action_cmd(
 def call_global_action(
     action: str, dry_run: bool, extra_args: List[str]
 ) -> None:
+    """
+    Executes a global helm action (e.g., 'list') that does not require a chart.
+
+    Args:
+        action: The helm action to perform.
+        dry_run: If True, skips actual execution and only logs.
+        extra_args: Extra arguments to append to the command.
+    """
     cmd = action_cmd(action=action, extra_args=extra_args)
     logging.info(f"{' '.join(cmd)}")
     if not dry_run:
@@ -132,6 +178,19 @@ def call_resource_action(
     action: str, resource_type: str, obj: Union[dict, list],
     parents: List[dict], extra_args: List[str]
 ) -> None:
+    """
+    Executes a helm action for a specific resource.
+
+    It creates a temporary YAML values file for the resource config and
+    invokes helm with the proper chart and release name.
+
+    Args:
+        action: The helm action to perform.
+        resource_type: The type of the resource.
+        obj: The resource object or list.
+        parents: The parent context.
+        extra_args: Extra arguments for the helm command.
+    """
     release = release_name(resource_type, obj, parents)
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
@@ -166,6 +225,19 @@ def process_type(
     parents: List[dict],
     extra_args: List[str]
 ) -> None:
+    """
+    Recursively processes a node in the resource tree configuration.
+
+    Args:
+        action: The action to perform on each resource.
+        type_path: The logical path of the resource type.
+        resource_type: The current resource type being processed.
+        type_tree: The nested tree structure defining resource relationships.
+        config: The extracted configuration fragment.
+        dry_run: If True, prints actions without executing them.
+        parents: A list of parent nodes accumulating context.
+        extra_args: Extra arguments to pass down to helm executions.
+    """
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
     if resource_type not in config:
@@ -215,10 +287,16 @@ def process(
     config: dict, action: str, dry_run: bool, api: str, extra_args: List[str]
 ) -> bool:
     """
-    Performs the logic.
+    Entry point for traversing the configuration dictionary
+    and validating APIs.
 
     Args:
-        config: Configuration object
+        config: The complete configuration dictionary loaded from YAML.
+        action: The helm action to perform (e.g., 'template', 'upgrade').
+        dry_run: If True, skips execution and only logs actions.
+        api: A comma-separated string of APIs to process,
+             or None for all.
+        extra_args: Extra arguments appending to the helm commands.
 
     Returns:
         True if validation succeeds, False otherwise.
