@@ -97,7 +97,6 @@ def call_global_action(action: str, dry_run: bool, extra_args: list[str]) -> Non
     if not dry_run:
         try:
             output = subprocess.check_output(cmd, text=True)
-            logging.info(output)
             if output:
                 logging.info(output)
         except subprocess.CalledProcessError as e:
