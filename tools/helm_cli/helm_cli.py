@@ -14,12 +14,12 @@ from typing import List, Tuple, Union
 import yaml
 
 RESOURCE_TYPES = defaultdict(lambda: {
-        "clusters": str,
-        "projects": {
-            "TYPE_SCOPE": "global",
-            "buckets": str,
-        }
-    },
+    "clusters": str,
+    "projects": {
+        "TYPE_SCOPE": "global",
+        "buckets": str,
+    }
+},
     {
         "iac": {
             "iac-role-bindings": list,
@@ -31,7 +31,7 @@ RESOURCE_TYPES = defaultdict(lambda: {
                 "iam-role-bindings": list,
             }
         }
-    })
+})
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -44,23 +44,33 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def resource_config(resource_type: str, obj: dict, parents: List[dict]) -> dict:
+def resource_config(
+    resource_type: str, obj: dict, parents: List[dict]
+) -> dict:
     parent = parents[-1]
     if resource_type == "buckets":
-        return {resource_type.replace("-", ""): [{**obj,
-                'namespace': parent.get('name'),
-                'location': obj.get('location', parents[0].get('name'))
-                }]}
+        return {"buckets": [{
+            **obj,
+            'namespace': parent.get('name'),
+            'location': obj.get('location', parents[0].get('name'))
+        }]}
     if resource_type == "iam-role-bindings":
-        return {'namespace': parent.get('name'), resource_type.replace("-", ""): obj}
+        return {
+            'namespace': parent.get('name'),
+            'iamrolebindings': obj
+        }
     return {resource_type.replace("-", ""): [obj]}
 
 
-def release_name(resource_type: str, obj: Union[dict, list], parents: List[dict]) -> str:
+def release_name(
+    resource_type: str, obj: Union[dict, list], parents: List[dict]
+) -> str:
     parent = parents[-1]
     if isinstance(obj, list):
         return f"{parent.get('name', 'root')}-{resource_type}"
-    return f"{parent.get('name', 'root')}-{resource_type}-{obj.get('name', 'root')}"
+    parent_name = parent.get('name', 'root')
+    obj_name = obj.get('name', 'root')
+    return f"{parent_name}-{resource_type}-{obj_name}"
 
 
 def action_cmd(
@@ -80,7 +90,8 @@ def action_cmd(
     elif action == "template":
         cmd.extend(["template", release_name, chart, "-f", values_file])
     elif action == "upgrade":
-        cmd.extend(["upgrade", "--install", release_name, chart, "-f", values_file])
+        cmd.extend(["upgrade", "--install", release_name,
+                   chart, "-f", values_file])
     elif action == "install":
         cmd.extend(["install", release_name, chart, "-f", values_file])
     elif action == "lint":
@@ -99,7 +110,9 @@ def action_cmd(
     return cmd
 
 
-def call_global_action(action: str, dry_run: bool, extra_args: List[str]) -> None:
+def call_global_action(
+    action: str, dry_run: bool, extra_args: List[str]
+) -> None:
     cmd = action_cmd(action=action, extra_args=extra_args)
     logging.info(f"{' '.join(cmd)}")
     if not dry_run:
@@ -111,7 +124,8 @@ def call_global_action(action: str, dry_run: bool, extra_args: List[str]) -> Non
             logging.error(f"Helm failed with return code {e.returncode}")
             logging.error(f"Error output (if captured): {e.output}")
         except FileNotFoundError as e:
-            logging.error(f"Error: Helm not found or could not be executed. {e}")
+            logging.error(
+                f"Error: Helm not found or could not be executed. {e}")
 
 
 def call_resource_action(
@@ -121,11 +135,15 @@ def call_resource_action(
     release = release_name(resource_type, obj, parents)
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-            values_yaml = yaml.safe_dump(resource_config(resource_type, obj, parents))
+            values_yaml = yaml.safe_dump(
+                resource_config(resource_type, obj, parents))
             logging.debug(values_yaml)
             tmp.write(values_yaml)
             tmp.flush()
-            cmd = action_cmd(action, release, f"../../charts/gdc-{resource_type}", tmp.name, extra_args)
+            cmd = action_cmd(
+                action, release, f"../../charts/gdc-{resource_type}",
+                tmp.name, extra_args
+            )
             logging.info(f"{' '.join(cmd)}")
             output = subprocess.check_output(cmd, text=True)
             logging.info(f"Helm {action} {release} finished")
@@ -153,33 +171,49 @@ def process_type(
     if resource_type not in config:
         return
     if type_tree is list:
-        logging.debug(f"{action} list {parent.get('name', type_path)}/{resource_type}")
+        logging.debug(
+            f"{action} list {parent.get('name', type_path)}/{resource_type}")
         obj = config[resource_type]
         if not dry_run:
-            call_resource_action(action, resource_type, obj, parents, extra_args)
+            call_resource_action(action, resource_type,
+                                 obj, parents, extra_args)
         return
     if type_tree is str:
         for i, obj in enumerate(config[resource_type]):
-            logging.debug(f"{action} object {parent.get('name', type_path)}/{resource_type}/{obj.get('name', obj)}")
+            parent_name = parent.get('name', type_path)
+            obj_name = obj.get('name', obj)
+            logging.debug(
+                f"{action} object {parent_name}/{resource_type}/{obj_name}"
+            )
             if not dry_run:
-                call_resource_action(action, resource_type, obj, parents, extra_args)
+                call_resource_action(action, resource_type,
+                                     obj, parents, extra_args)
             return
     for i, obj in enumerate(config[resource_type]):
-        logging.debug(f"{action} object {parent.get('name', type_path)}/{resource_type}/{obj.get('name', obj)}")
-        resource_scope = type_tree.get("TYPE_SCOPE", parent.get("name", type_path))
+        parent_name = parent.get('name', type_path)
+        obj_name = obj.get('name', obj)
+        logging.debug(
+            f"{action} object {parent_name}/{resource_type}/{obj_name}"
+        )
+        resource_scope = type_tree.get(
+            "TYPE_SCOPE", parent.get("name", type_path))
         skip_helm = dry_run
         if resource_scope != parent.get("name", type_path):
             skip_helm = True
         if not skip_helm:
-            call_resource_action(action, resource_type, obj, parents, extra_args)
+            call_resource_action(action, resource_type,
+                                 obj, parents, extra_args)
         for t, v in type_tree.items():
             parents.append(obj)
             process_type(
-                action, f"{type_path}/{resource_type}", t, v, config[resource_type][i], dry_run, parents, extra_args
+                action, f"{type_path}/{resource_type}", t, v,
+                config[resource_type][i], dry_run, parents, extra_args
             )
 
 
-def process(config: dict, action: str, dry_run: bool, extra_args: List[str]) -> bool:
+def process(
+    config: dict, action: str, dry_run: bool, api: str, extra_args: List[str]
+) -> bool:
     """
     Performs the logic.
 
@@ -189,10 +223,14 @@ def process(config: dict, action: str, dry_run: bool, extra_args: List[str]) -> 
     Returns:
         True if validation succeeds, False otherwise.
     """
-
-    for api in config:
-        for t, v in RESOURCE_TYPES[api].items():
-            process_type(action, api, t, v, config[api], dry_run, [{'name': api}], extra_args)
+    selected_apis = config.keys()
+    if api:
+        apis = api.split(",")
+        selected_apis = [api for api in selected_apis if api in apis]
+    for selected_api in selected_apis:
+        for t, v in RESOURCE_TYPES[selected_api].items():
+            process_type(action, api, t, v, config[api], dry_run, [
+                         {'name': selected_api}], extra_args)
     return True
 
 
@@ -211,6 +249,13 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
         help="Path to configuration file",
         type=str,
         nargs="?"
+    )
+
+    parser.add_argument(
+        "--api",
+        help="APIs to process, comma separated",
+        type=str,
+        default=None
     )
 
     parser.add_argument(
@@ -235,7 +280,8 @@ def main() -> int:
         with open(args.config, "r") as f:
             logging.info(f"Processing file {args.config}")
             config = yaml.safe_load(f)
-            process(config, args.action, args.dry_run, extra_args)
+            process(config=config, action=args.action,
+                    dry_run=args.dry_run, api=args.api, extra_args=extra_args)
     else:
         call_global_action(
             action=args.action,

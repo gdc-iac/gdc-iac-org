@@ -49,7 +49,10 @@ class TestHelmCli(unittest.TestCase):
 
     def test_resource_config_iam_role_bindings(self):
         resource_type = "iam-role-bindings"
-        obj = [{"role": "roles/storage.admin", "member": "user:test@example.com"}]
+        obj = [{
+            "role": "roles/storage.admin",
+            "member": "user:test@example.com"
+        }]
         parents = [{"name": "my-project"}]
 
         expected = {
@@ -95,8 +98,14 @@ class TestHelmCli(unittest.TestCase):
         values = "values.yaml"
         extra = ["--wait", "--timeout", "10m"]
 
-        expected = ["helm", "upgrade", "--install", release, chart, "-f", values, "--wait", "--timeout", "10m"]
-        result = helm_cli.action_cmd(action, release_name=release, chart=chart, values_file=values, extra_args=extra)
+        expected = [
+            "helm", "upgrade", "--install", release, chart, "-f", values,
+            "--wait", "--timeout", "10m"
+        ]
+        result = helm_cli.action_cmd(
+            action, release_name=release, chart=chart, values_file=values,
+            extra_args=extra
+        )
         self.assertEqual(result, expected)
 
     def test_action_cmd_list(self):
@@ -119,7 +128,9 @@ class TestHelmCli(unittest.TestCase):
         parents = [{"name": "p1"}]
         extra_args = ["--dry-run"]
 
-        helm_cli.call_resource_action(action, resource_type, obj, parents, extra_args)
+        helm_cli.call_resource_action(
+            action, resource_type, obj, parents, extra_args
+        )
 
         mock_file.write.assert_called()
         expected_cmd = [
@@ -139,7 +150,10 @@ class TestHelmCli(unittest.TestCase):
         parents = [{"name": "root"}]
         extra_args = []
 
-        helm_cli.process_type(action, type_path, resource_type, type_tree, config, dry_run, parents, extra_args)
+        helm_cli.process_type(
+            action, type_path, resource_type, type_tree, config,
+            dry_run, parents, extra_args
+        )
 
         mock_call_resource_action.assert_called_once_with(
             action, resource_type, ["item1", "item2"], parents, extra_args
@@ -150,9 +164,10 @@ class TestHelmCli(unittest.TestCase):
         config = {"clusters": {}}
         action = "template"
         dry_run = False
+        api = "clusters"
         extra_args = ["--debug"]
 
-        helm_cli.process(config, action, dry_run, extra_args)
+        helm_cli.process(config, action, dry_run, api, extra_args)
         mock_process_type.assert_called()
         args, _ = mock_process_type.call_args
         self.assertEqual(args[0], action)
@@ -165,6 +180,8 @@ class TestHelmCli(unittest.TestCase):
         self.assertEqual(args.action, "upgrade")
         self.assertEqual(args.config, "config.yaml")
         self.assertTrue(args.dry_run)
+        self.assertIsNone(args.api)
+        self.assertFalse(args.verbose)
         self.assertEqual(extra, ["--set", "foo=bar"])
 
     def test_parse_args_optional_config(self):
@@ -173,7 +190,21 @@ class TestHelmCli(unittest.TestCase):
 
         self.assertEqual(args.action, "list")
         self.assertIsNone(args.config)
+        self.assertIsNone(args.api)
+        self.assertFalse(args.verbose)
         self.assertEqual(extra, ["-A"])
+
+    def test_parse_args_with_api_and_verbose(self):
+        sys_args = [
+            "validate", "config.yaml", "--api", "clusters,projects", "-v"
+        ]
+        args, extra = helm_cli.parse_args(sys_args)
+
+        self.assertEqual(args.action, "validate")
+        self.assertEqual(args.config, "config.yaml")
+        self.assertEqual(args.api, "clusters,projects")
+        self.assertTrue(args.verbose)
+        self.assertEqual(extra, [])
 
 
 if __name__ == "__main__":
