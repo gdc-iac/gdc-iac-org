@@ -1,5 +1,14 @@
 # Introduction
 
+This repository provides a flexible toolkit for managing infrastructure as code (IaC) using predefined YAML configuration files and Helm charts. 
+
+The toolkit allows you to use different tools to template and synchronize configurations based on your operational needs:
+
+- **`helm_cli`**: A custom wrapper script for local or CI/CD usage to process configurations, template charts, and natively deploy to the cluster.
+- **Helmfile**: A declarative tool for managing multiple Helm releases and enforcing deployment order.
+- **Config Sync**: A GitOps operator (optional) for continuously synchronizing cluster state from this repository.
+- **Charts**: A collection of local Helm charts (`charts/` directory) acting as templates for Custom Resources.
+- **YAML Configs**: Unified data files (like `org.yaml` or `tenants.yaml`) used to declare the desired state of resources.
 This framework is using [Helm](https://helm.sh/) as the resource config generator and can use either Helm or [Config-Sync](https://github.com/GoogleContainerTools/config-sync) as the resource state synchronization agent.
 
 Helm creates resources in a predefined way as described in [issue/1228](https://github.com/helm/helm/issues/1228). GDCag is heavily relying on custom resources, and these are created in alphabetical order. This means that for example IAMRole resource comes before Project resource. This blocks possibility of creating single Helm Chart to manage all the resources.
@@ -20,8 +29,9 @@ Due to above, this framework is using layered approach, where single `org.yaml` 
 # Setup
 
 Helm is using the default kubeconfig path. To use different one:
-export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubeconfig
-
+```
+export KUBECONFIG=<path_to_kubeconfig>
+```
 # Bootstrap IaC
 0. Export environment variables (example):
    ```
@@ -113,19 +123,17 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${ZONE:?}
    ```
 
-# Deploy Organization Resources using HELM CLI
-1. Configure HELM environment
-   ```
-   export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
-   export HELM_NAMESPACE=$IAC_PROJECT
-   ````
-1. Configure HELM to use service account:
-   ```
-   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
-   gdcloud clusters get-credentials global-api
-3. 
-   ```
+# Manage Organization Resources using HELM CLI
+
+You can manage and deploy resources using our custom `helm_cli.py` wrapper tool. It provides a convenient way to validate, template, and deploy Helm charts based on a unified configuration.
+
+For full usage instructions, examples, and testing details, please refer to the dedicated [Helm CLI README](./tools/helm_cli/README.md).
+
+# Manage Organization Resources using HELMFILE
+
+Helmfile is a declarative tool for managing multiple Helm releases, allowing you to orchestrate the deployment of the entire GDC resources suite efficiently. It relies on a `tenants.yaml` configuration to dynamically generate the required Helm releases in the correct order.
+
+For a comprehensive guide, architecture diagram, and deployment instructions using Helmfile, please refer to the dedicated [Helmfile README](./tools/helmfile/README.md).
 
 # Notes
 - https://github.com/helm/helm/issues/1228
