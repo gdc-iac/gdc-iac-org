@@ -8,7 +8,7 @@ import logging
 import sys
 import yaml
 from collections import defaultdict
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import tempfile
 import subprocess
 
@@ -42,7 +42,7 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
+def resource_config(resource_type: str, obj: dict, parents: List[dict]) -> dict:
     parent = parents[-1]
     if resource_type == "buckets":
         return {resource_type.replace("-",""): [{**obj, 
@@ -54,14 +54,14 @@ def resource_config(resource_type: str, obj: dict, parents: list[dict]) -> dict:
     return {resource_type.replace("-",""): [obj]}
 
     
-def release_name(resource_type: str, obj: dict | list, parents: list[dict]) -> str:
+def release_name(resource_type: str, obj: Union[dict, list], parents: List[dict]) -> str:
     parent = parents[-1]
     if isinstance(obj, list):
         return f"{parent.get('name','root')}-{resource_type}"
     return f"{parent.get('name','root')}-{resource_type}-{obj.get('name','root')}"
 
 
-def action_cmd(action: str, release_name: str = None, chart: str = None, values_file: str = None, extra_args: list[str] = None) -> list[str]:
+def action_cmd(action: str, release_name: str = None, chart: str = None, values_file: str = None, extra_args: List[str] = None) -> List[str]:
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         cmd = ["helm", "--debug"]
     else:
@@ -91,7 +91,7 @@ def action_cmd(action: str, release_name: str = None, chart: str = None, values_
     return cmd
 
 
-def call_global_action(action: str, dry_run: bool, extra_args: list[str]) -> None:
+def call_global_action(action: str, dry_run: bool, extra_args: List[str]) -> None:
     cmd = action_cmd(action=action, extra_args=extra_args)
     logging.info(f"{' '.join(cmd)}")
     if not dry_run:
@@ -106,7 +106,7 @@ def call_global_action(action: str, dry_run: bool, extra_args: list[str]) -> Non
             logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
-def call_resource_action(action: str, resource_type: str, obj: dict | list, parents: list[dict], extra_args: list[str]) -> None:
+def call_resource_action(action: str, resource_type: str, obj: Union[dict, list], parents: List[dict], extra_args: List[str]) -> None:
     parent = parents[-1]
     release = release_name(resource_type, obj, parents)
     try:
@@ -128,7 +128,7 @@ def call_resource_action(action: str, resource_type: str, obj: dict | list, pare
             logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
-def process_type(action: str, type_path: str, resource_type: str, type_tree: dict | type, config: dict, dry_run: bool, parents: list[dict], extra_args: list[str]) -> None:
+def process_type(action: str, type_path: str, resource_type: str, type_tree: Union[dict, type], config: dict, dry_run: bool, parents: List[dict], extra_args: List[str]) -> None:
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
     if resource_type not in config:
@@ -158,7 +158,7 @@ def process_type(action: str, type_path: str, resource_type: str, type_tree: dic
             process_type(action, f"{type_path}/{resource_type}", t, v, config[resource_type][i], dry_run, parents, extra_args)
 
 
-def process(config: dict, action: str, dry_run: bool, extra_args: list[str]) -> bool:
+def process(config: dict, action: str, dry_run: bool, extra_args: List[str]) -> bool:
     """
     Performs the logic.
 
