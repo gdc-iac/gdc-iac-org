@@ -12,6 +12,7 @@ The script iterates through defined resource types and applies Helm charts locat
 - Python 3
 - Helm installed and available in the system PATH.
 - Python packages: `PyYAML`
+- Bootstrapping of the GDC environment described in the global [README.md](./../../README.md)
 
 ## Usage
 
@@ -20,6 +21,55 @@ The script's command-line interface is designed to be similar to `helm` itself.
 ```bash
 python3 helm_cli.py <action> [config_file] [helm_flags]
 ```
+
+### Manual Example
+1. Assuming you have bootstrapped the GDC environment, set the following environment variables (example):
+    ```bash
+    export ORG_NAME="gdchservices"
+    export IAC_PROJECT="iac-root"
+    export IAC_USER="fop-iac001@example.com"
+    export IAC_SA="iac001-sa"
+    export GDCH_DOMAIN="google.gdch.test"
+    export GDCH_ZONE="us-east67-b"
+    export GDCH_CONSOLE="console.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+    ```
+2. Log in as user $IAC_USER:
+    ```bash
+    gdcloud auth login (as $IAC_USER)"
+    ```
+
+4. Global configuration:
+    ```bash
+    gdcloud clusters get-credentials global-api
+    python3 helm_cli.py list \
+        --namespace=${IAC_PROJECT:?}
+    ```
+    ```bash
+    gdcloud clusters get-credentials global-api
+    python3 helm_cli.py template ../../examples/multi-value-org/shared-infra.yaml \
+        --namespace=${IAC_PROJECT:?} \
+        --api=iac,global
+    ```
+    ```bash
+    gdcloud clusters get-credentials global-api
+    python3 helm_cli.py upgrade ../../examples/multi-value-org/shared-infra.yaml \
+        --namespace=${IAC_PROJECT:?} \
+        --api=iac,global
+    ```
+
+3. Zonal configuration (for each zone):
+    ```bash
+    gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${GDCH_ZONE:?}
+    python3 helm_cli.py list \
+        --namespace=${IAC_PROJECT:?}
+    ```
+
+    ```bash
+    gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${GDCH_ZONE:?}
+    python3 helm_cli.py template ../../examples/multi-value-org/shared-infra.yaml \
+        --namespace=${IAC_PROJECT:?} \
+        --api=iac,${GDCH_ZONE:?}
+    ```
 
 ### Arguments
 

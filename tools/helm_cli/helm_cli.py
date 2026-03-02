@@ -307,7 +307,7 @@ def process(
         selected_apis = [api for api in selected_apis if api in apis]
     for selected_api in selected_apis:
         for t, v in RESOURCE_TYPES[selected_api].items():
-            process_type(action, api, t, v, config[api], dry_run, [
+            process_type(action, selected_api, t, v, config[selected_api], dry_run, [
                          {'name': selected_api}], extra_args)
     return True
 
