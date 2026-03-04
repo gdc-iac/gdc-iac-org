@@ -109,9 +109,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    ```
    gdcloud auth activate-service-account --key-file=${CA_CERT_PATH:?}${IAC_SA:?}.json
    gdcloud auth print-identity-token --audiences=https://global-api.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?}
-   ERROR: no access token could be obtained from the current credentials: unable to obtain STS token using service account JWT: unable to reach server: Post "https://service-accounts.org-15357.lux.clr/authenticate": dial tcp: lookup service-accounts.org-15357.lux.clr on 10.255.255.254:53: no such host
    gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?} --zone=${ZONE:?}
-   ERROR: no access token could be obtained from the current credentials: unable to obtain STS token using service account JWT: unable to reach server: Post "https://service-accounts.org-15357.lux.clr/authenticate": dial tcp: lookup service-accounts.org-15357.lux.clr on 10.255.255.254:53: no such host
    rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
    export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
    gdcloud config set core/zone ""
@@ -455,3 +453,67 @@ Note: `helmfile sync` does not try to read the state first. It will simply execu
 ```bash
 helmfile apply
 ```
+
+
+# Billing Account/s configuration
+
+## Create a new billing account
+
+A billing account is uniquely identified by its name and namespace. To create a billing account, use a custom resource to establish the name and namespace:
+
+Create a YAML file, and add the BillingAccount custom resource and the following contents:
+
+apiVersion: billing.global.gdc.goog/v1
+kind: BillingAccount
+metadata:
+  namespace: platform
+  name: data-ets-shared-infra
+spec:
+  displayName: data-ets-shared-infra
+  paymentSystemConfig:
+    cloudBillingConfig:
+      accountID: "Organization Billing Account"
+
+Save the YAML file. Run the kubectl CLI to apply the resource in the Global API server:
+
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+
+kubectl apply -f billingaccount.yaml
+
+## Link an organization or project to a billing account
+
+To link a project to a BillingAccount, do the following:
+
+Add the following contents to the file: billingaccountbinding.yaml:
+
+In the billingAccountRef section, populate the name field with the content from the name field in the BillingAccount you want to link.
+In the metadata section, populate the namespace field with the content from the identical field in the BillingAccount resource.
+
+apiVersion: billing.global.gdc.goog/v1
+kind: BillingAccountBinding
+metadata:
+  name: billing
+  namespace: data-ets-shared-infra
+spec:
+  billingAccountRef:
+    name: data-ets-shared-infra
+    namespace: platform
+
+Run the following kubectl command to apply the billingaccountbinding.yaml file:
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+kubectl apply -f billingaccountbinding.yaml
+
+Check the status of the BillingAccountBinding and verify that there are no errors:
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+kubectl describe billingaccountbinding billing -n data-ets-shared-infra
+
+## List billing account bindings
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+kubectl get billingaccountbinding -A -o 'custom-columns=NAME:metadata.name,NAMESPACE:metadata.namespace,BillingAccountName:spec.billingAccountRef.name,STATUS:status.conditions[0].status'
