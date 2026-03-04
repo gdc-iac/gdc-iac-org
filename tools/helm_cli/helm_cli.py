@@ -4,6 +4,9 @@ helm_cli.py - Helm config validation
 python3 helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d2-user.yaml --dry-run -v
 python3 helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --dry-run -v
 
+python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d2-user.yaml -a install -a upgrade -v
+python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml -a install -a upgrade -v
+
 """
 
 import argparse
