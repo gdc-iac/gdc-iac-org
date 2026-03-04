@@ -242,7 +242,7 @@ def process_type(
     parent = parents[-1]
     if resource_type not in config:
         return
-    if type_tree is list:
+    if type_tree is list: #generate one release per object list
         logging.debug(
             f"{action} list {parent.get('name', type_path)}/{resource_type}")
         obj = config[resource_type]
@@ -250,7 +250,7 @@ def process_type(
             call_resource_action(action, resource_type,
                                  obj, parents, extra_args)
         return
-    if type_tree is str:
+    if type_tree is str: #generate one release per object
         for i, obj in enumerate(config[resource_type]):
             parent_name = parent.get('name', type_path)
             obj_name = obj.get('name', obj)
@@ -260,7 +260,7 @@ def process_type(
             if not dry_run:
                 call_resource_action(action, resource_type,
                                      obj, parents, extra_args)
-            return
+        return
     for i, obj in enumerate(config[resource_type]):
         parent_name = parent.get('name', type_path)
         obj_name = obj.get('name', obj)
