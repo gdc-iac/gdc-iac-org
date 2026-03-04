@@ -32,7 +32,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    export GDCH_CONSOLE="console.org-19364.lux-central1-b.lux.clr"
    export ZONE="lux-central1-b"
    export ROOT_ZONE="lux.clr"
-   export CA_CERT_PATH="/mnt/Share/CTIE/dga/iac/"
+   export CA_CERT_PATH="/mnt/c/temp/DGA/cert/"
    export CLUSTER_NAME="clstr-20260224"
    export shared_infra_project_name=data-ets-shared-infra
    ```
@@ -153,7 +153,7 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    --role=$role;\
    done
    ```
-   
+
 6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
    ```
    rm -rf "${CA_CERT_PATH}${IAC_SA:?}.json"
