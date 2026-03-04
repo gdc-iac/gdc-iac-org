@@ -143,7 +143,17 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
    --role=$role;\
    done
+
+   for role in \
+   project-bucket-admin \
+   project-iam-admin \
+   ; do \
+   gdcloud projects add-iam-policy-binding $shared_infra_project_name \
+   --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
+   --role=$role;\
+   done
    ```
+   
 6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
    ```
    rm -rf "${CA_CERT_PATH}${IAC_SA:?}.json"
