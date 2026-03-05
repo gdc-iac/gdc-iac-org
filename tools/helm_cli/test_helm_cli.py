@@ -115,6 +115,82 @@ class TestHelmCli(unittest.TestCase):
         result = helm_cli.action_cmd(action, extra_args=extra)
         self.assertEqual(result, expected)
 
+    def test_action_cmd_kubeconfig(self):
+        action = "list"
+        kubeconfig = "/path/to/kubeconfig"
+        extra = ["-A"]
+        expected = [
+            "helm", "--kubeconfig", "/path/to/kubeconfig", "list", "-A"
+        ]
+        result = helm_cli.action_cmd(
+            action=action, kubeconfig=kubeconfig, extra_args=extra
+        )
+        self.assertEqual(result, expected)
+
+    def test_action_cmd_other_actions(self):
+        self.assertEqual(
+            helm_cli.action_cmd(
+                "install", release_name="r", chart="c",
+                values_file="v", extra_args=[]
+            ),
+            ["helm", "install", "r", "c", "-f", "v"]
+        )
+        self.assertEqual(
+            helm_cli.action_cmd(
+                "lint", chart="c", values_file="v", extra_args=[]
+            ),
+            ["helm", "lint", "c", "-f", "v"]
+        )
+        self.assertEqual(
+            helm_cli.action_cmd("show", chart="c", extra_args=[]),
+            ["helm", "show", "all", "c"]
+        )
+        self.assertEqual(
+            helm_cli.action_cmd(
+                "uninstall", release_name="r", extra_args=[]
+            ),
+            ["helm", "uninstall", "r"]
+        )
+        self.assertEqual(
+            helm_cli.action_cmd("status", release_name="r", extra_args=[]),
+            ["helm", "status", "r"]
+        )
+        self.assertEqual(
+            helm_cli.action_cmd("get all", release_name="r", extra_args=[]),
+            ["helm", "get", "all", "r"]
+        )
+
+        with self.assertRaises(ValueError):
+            helm_cli.action_cmd("invalid", extra_args=[])
+
+    @patch("helm_cli.subprocess.check_output")
+    def test_call_global_action(self, mock_subprocess):
+        mock_subprocess.return_value = "success"
+        helm_cli.call_global_action(
+            action="list", dry_run=False, kubeconfig=None, extra_args=["-A"]
+        )
+        mock_subprocess.assert_called_with(["helm", "list", "-A"], text=True)
+
+    @patch("helm_cli.subprocess.check_output")
+    @patch("helm_cli.logging.error")
+    def test_call_global_action_exception(
+        self, mock_logging_error, mock_subprocess
+    ):
+        import subprocess
+        mock_subprocess.side_effect = subprocess.CalledProcessError(
+            1, ["helm"]
+        )
+        # Should not raise
+        helm_cli.call_global_action(
+            action="list", dry_run=False, kubeconfig=None, extra_args=[]
+        )
+
+        mock_subprocess.side_effect = FileNotFoundError()
+        # Should not raise
+        helm_cli.call_global_action(
+            action="list", dry_run=False, kubeconfig=None, extra_args=[]
+        )
+
     @patch("helm_cli.subprocess.check_output")
     @patch("helm_cli.tempfile.NamedTemporaryFile")
     def test_call_resource_action(self, mock_tempfile, mock_subprocess):
@@ -129,7 +205,8 @@ class TestHelmCli(unittest.TestCase):
         extra_args = ["--dry-run"]
 
         helm_cli.call_resource_action(
-            action, resource_type, obj, parents, extra_args
+            kubeconfig=None, action=action, resource_type=resource_type,
+            obj=obj, parents=parents, extra_args=extra_args
         )
 
         mock_file.write.assert_called()
@@ -152,26 +229,34 @@ class TestHelmCli(unittest.TestCase):
 
         helm_cli.process_type(
             action, type_path, resource_type, type_tree, config,
-            dry_run, parents, extra_args
+            None, None, dry_run, parents, extra_args
         )
 
         mock_call_resource_action.assert_called_once_with(
-            action, resource_type, ["item1", "item2"], parents, extra_args
+            kubeconfig=None,
+            action=action,
+            resource_type=resource_type,
+            obj=["item1", "item2"],
+            parents=parents,
+            extra_args=extra_args
         )
 
     @patch("helm_cli.process_type")
     def test_process(self, mock_process_type):
-        config = {"clusters": {}}
+        config = {"clusters": {}, "iac": {}}
         action = "template"
         dry_run = False
         api = "clusters"
+        api_kubeconfig = None
         extra_args = ["--debug"]
 
-        helm_cli.process(config, action, dry_run, api, extra_args)
+        helm_cli.process(
+            config, action, dry_run, api, api_kubeconfig, extra_args
+        )
         mock_process_type.assert_called()
-        args, _ = mock_process_type.call_args
-        self.assertEqual(args[0], action)
-        self.assertEqual(args[7], extra_args)
+        _, kwargs = mock_process_type.call_args
+        self.assertEqual(kwargs["action"], action)
+        self.assertEqual(kwargs["extra_args"], extra_args)
 
     def test_parse_args(self):
         sys_args = ["upgrade", "config.yaml", "--dry-run", "--set", "foo=bar"]
@@ -205,6 +290,106 @@ class TestHelmCli(unittest.TestCase):
         self.assertEqual(args.api, "clusters,projects")
         self.assertTrue(args.verbose)
         self.assertEqual(extra, [])
+
+    @patch("helm_cli.logging.error")
+    @patch("helm_cli.subprocess.check_output")
+    @patch("helm_cli.tempfile.NamedTemporaryFile")
+    def test_call_resource_action_exception(
+        self, mock_tempfile, mock_subprocess, mock_logging_error
+    ):
+        mock_file = MagicMock()
+        mock_tempfile.return_value.__enter__.return_value = mock_file
+        mock_file.name = "/tmp/values.yaml"
+        import subprocess
+        mock_subprocess.side_effect = subprocess.CalledProcessError(
+            1, ["helm"]
+        )
+        helm_cli.call_resource_action(
+            kubeconfig=None, action="upgrade", resource_type="test-res",
+            obj={"name": "obj1"}, parents=[{"name": "p1"}], extra_args=[]
+        )
+        mock_subprocess.side_effect = FileNotFoundError()
+        helm_cli.call_resource_action(
+            kubeconfig=None, action="upgrade", resource_type="test-res",
+            obj={"name": "obj1"}, parents=[{"name": "p1"}], extra_args=[]
+        )
+
+    @patch("helm_cli.call_resource_action")
+    def test_process_type_iac(self, mock_call_resource_action):
+        helm_cli.process_type(
+            "template", "root", "IAC", {}, {}, {"some": "iac"},
+            None, False, [{"name": "root"}], []
+        )
+        mock_call_resource_action.assert_called_once_with(
+            kubeconfig=None, action="template", resource_type="iac",
+            obj={"some": "iac"}, parents=[{"name": "root"}], extra_args=[]
+        )
+
+    def test_process_type_not_in_config(self):
+        result = helm_cli.process_type(
+            "template", "root", "missing-res", list, {"other-res": []},
+            {}, None, False, [{"name": "root"}], []
+        )
+        self.assertIsNone(result)
+
+    @patch("helm_cli.call_resource_action")
+    def test_process_type_str(self, mock_call_resource_action):
+        helm_cli.process_type(
+            "template", "root", "my-str-res", str,
+            {"my-str-res": [{"name": "o1"}]}, None, None, False,
+            [{"name": "root"}], []
+        )
+        mock_call_resource_action.assert_called_once()
+
+    @patch("helm_cli.call_resource_action")
+    def test_process_type_dict(self, mock_call_resource_action):
+        type_tree = {"nested-res": str}
+        config = {
+            "my-dict-res": [{"name": "o1", "nested-res": [{"name": "n1"}]}]
+        }
+        helm_cli.process_type(
+            "template", "root", "my-dict-res", type_tree, config, None,
+            None, False, [{"name": "root"}], []
+        )
+        self.assertEqual(mock_call_resource_action.call_count, 2)
+
+    @patch("helm_cli.call_global_action")
+    @patch("helm_cli.parse_args")
+    def test_main_no_config(self, mock_parse_args, mock_call_global_action):
+        mock_args = MagicMock()
+        mock_args.action = "list"
+        mock_args.config = None
+        mock_args.dry_run = False
+        mock_args.verbose = False
+        mock_parse_args.return_value = (mock_args, ["-A"])
+
+        with patch("helm_cli.sys.argv", ["helm_cli.py", "list", "-A"]):
+            helm_cli.main()
+            mock_call_global_action.assert_called_once_with(
+                kubeconfig=mock_args.api_kubeconfig, action="list",
+                dry_run=False, extra_args=["-A"]
+            )
+
+    @patch("helm_cli.process")
+    @patch("helm_cli.yaml.safe_load")
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("helm_cli.parse_args")
+    def test_main_with_config(
+        self, mock_parse_args, mock_open, mock_yaml_load, mock_process
+    ):
+        mock_args = MagicMock()
+        mock_args.action = "template"
+        mock_args.config = "config.yaml"
+        mock_args.api = None
+        mock_args.api_kubeconfig = None
+        mock_args.dry_run = False
+        mock_args.verbose = True
+        mock_parse_args.return_value = (mock_args, [])
+        mock_yaml_load.return_value = {"iac": {}}
+
+        with patch("helm_cli.sys.argv", ["helm_cli.py", "template"]):
+            helm_cli.main()
+            mock_process.assert_called_once()
 
 
 if __name__ == "__main__":

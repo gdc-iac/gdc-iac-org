@@ -1,19 +1,19 @@
 iac:
-- role: "project-iam-admin"
-  subject_kind: "User"
-  subject_name: "fop-iac001@example.com"
-- role: "project-bucket-admin"
-  subject_kind: "User"
-  subject_name: "fop-iac001@example.com"
+  iac-role-bindings:
+    - role: "project-iam-admin"
+      subject_kind: "User"
+      subject_name: "fop-iac001@example.com"
+    - role: "project-bucket-admin"
+      subject_kind: "User"
 global:
   admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"
-  tools_bucket_name: &tools_bucket_name "d4-ets-s3-tools"
-  tools_bucket_role: &tools_bucket_role "d4-ets-s3-tools"
-  ro_bucket_name: &ro_bucket_name "d4-ets-s3-ro1"
-  ro_bucket_role: &ro_bucket_role "d4-ets-s3-ro1"
-  rw_bucket_name: &rw_bucket_name "d4-ets-s3-rw1"
-  rw_bucket_name: &rw_bucket_role "d4-ets-s3-rw1"
-  shared_infra_project_name: &shared_infra_project_name "d4-ets-shared-infra"
+  tools_bucket_name: &tools_bucket_name "shared-s3-tools-1"
+  tools_bucket_role: &tools_bucket_role "shared-s3-tools-1"
+  ro_bucket_name: &ro_bucket_name "shared-s3-ro-1"
+  ro_bucket_role: &ro_bucket_role "shared-s3-ro-1"
+  rw_bucket_name: &rw_bucket_name "shared-s3-rw-1"
+  rw_bucket_name: &rw_bucket_role "shared-s3-rw-1"
+  shared_infra_project_name: &shared_infra_project_name "shared-infra-1"
   iam-roles:
     - name: *tools_bucket_role
       title: *tools_bucket_role
@@ -53,10 +53,6 @@ global:
           - read-object
   projects:
     - name: *shared_infra_project_name
-      harbor:
-      - name: "data-ets-mhs"
-        projects:
-        - name: "data-ets-mhs"
       iam-role-bindings: 
       - role: "project-grafana-viewer"
         subject_kind: "User"
@@ -82,7 +78,7 @@ global:
       - role: "harbor-project-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name
-zone1:
+us-east67-b:
   projects:
   - name: *shared_infra_project_name
     buckets:

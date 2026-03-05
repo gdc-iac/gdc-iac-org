@@ -21,12 +21,11 @@ RESOURCE_TYPES = defaultdict(lambda: {
     }
 },
     {
-        "iac": {
-            "iac-role-bindings": list,
-        },
         "global": {
             "iam-roles": str,
             "projects": {
+                "TYPE_SCOPE": "global",
+                "IAC": list,
                 "iam-roles": str,
                 "iam-role-bindings": list,
             }
@@ -59,6 +58,11 @@ def resource_config(
         A dictionary representing the transformed config for the resource.
     """
     parent = parents[-1]
+    if resource_type == "iac":
+        return {
+            'namespace': parent.get('name'),
+            'iamrolebindings': obj
+        }
     if resource_type == "buckets":
         return {"buckets": [{
             **obj,
@@ -97,6 +101,7 @@ def release_name(
 
 def action_cmd(
     action: str,
+    kubeconfig: str = None,
     release_name: str = None,
     chart: str = None,
     values_file: str = None,
@@ -107,6 +112,7 @@ def action_cmd(
 
     Args:
         action: The helm action to perform (e.g., 'upgrade', 'template').
+        kubeconfig: The path to the kubeconfig file (optional).
         release_name: The name of the helm release (optional).
         chart: The path to the local helm chart (optional).
         values_file: The path to the values YAML file (optional).
@@ -122,7 +128,8 @@ def action_cmd(
         cmd = ["helm", "--debug"]
     else:
         cmd = ["helm"]
-
+    if kubeconfig:
+        cmd.extend(["--kubeconfig", kubeconfig])
     if action == "list":
         cmd.extend(["list"])
     elif action == "template":
@@ -149,7 +156,7 @@ def action_cmd(
 
 
 def call_global_action(
-    action: str, dry_run: bool, extra_args: List[str]
+    action: str, dry_run: bool, kubeconfig: str, extra_args: List[str]
 ) -> None:
     """
     Executes a global helm action (e.g., 'list') that does not require a chart.
@@ -157,9 +164,12 @@ def call_global_action(
     Args:
         action: The helm action to perform.
         dry_run: If True, skips actual execution and only logs.
+        kubeconfig: The path to the kubeconfig file.
         extra_args: Extra arguments to append to the command.
     """
-    cmd = action_cmd(action=action, extra_args=extra_args)
+    cmd = action_cmd(
+        kubeconfig=kubeconfig, action=action, extra_args=extra_args
+    )
     logging.info(f"{' '.join(cmd)}")
     if not dry_run:
         try:
@@ -175,6 +185,7 @@ def call_global_action(
 
 
 def call_resource_action(
+    kubeconfig: str,
     action: str, resource_type: str, obj: Union[dict, list],
     parents: List[dict], extra_args: List[str]
 ) -> None:
@@ -185,6 +196,7 @@ def call_resource_action(
     invokes helm with the proper chart and release name.
 
     Args:
+        kubeconfig: The path to the kubeconfig file.
         action: The helm action to perform.
         resource_type: The type of the resource.
         obj: The resource object or list.
@@ -200,8 +212,9 @@ def call_resource_action(
             tmp.write(values_yaml)
             tmp.flush()
             cmd = action_cmd(
-                action, release, f"../../charts/gdc-{resource_type}",
-                tmp.name, extra_args
+                kubeconfig=kubeconfig, action=action, release_name=release,
+                chart=f"../../charts/gdc-{resource_type}",
+                values_file=tmp.name, extra_args=extra_args
             )
             logging.info(f"{' '.join(cmd)}")
             output = subprocess.check_output(cmd, text=True)
@@ -221,6 +234,8 @@ def process_type(
     resource_type: str,
     type_tree: Union[dict, type],
     config: dict,
+    iac_config: dict,
+    kubeconfig: str,
     dry_run: bool,
     parents: List[dict],
     extra_args: List[str]
@@ -234,23 +249,38 @@ def process_type(
         resource_type: The current resource type being processed.
         type_tree: The nested tree structure defining resource relationships.
         config: The extracted configuration fragment.
+        iac_config: The iac configuration fragment.
+        kubeconfig: The kubeconfig to use for this action.
         dry_run: If True, prints actions without executing them.
         parents: A list of parent nodes accumulating context.
         extra_args: Extra arguments to pass down to helm executions.
     """
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
+    if resource_type == "IAC":
+        logging.debug(
+            f"{action} iac {parent.get('name', type_path)}/{resource_type}")
+        if not dry_run:
+            call_resource_action(
+                kubeconfig=kubeconfig,
+                action=action, resource_type="iac",
+                obj=iac_config, parents=parents, extra_args=extra_args
+            )
+        return
     if resource_type not in config:
         return
-    if type_tree is list: #generate one release per object list
+    if type_tree is list:  # generate one release per object list
         logging.debug(
             f"{action} list {parent.get('name', type_path)}/{resource_type}")
         obj = config[resource_type]
         if not dry_run:
-            call_resource_action(action, resource_type,
-                                 obj, parents, extra_args)
+            call_resource_action(
+                kubeconfig=kubeconfig,
+                action=action, resource_type=resource_type,
+                obj=obj, parents=parents, extra_args=extra_args
+            )
         return
-    if type_tree is str: #generate one release per object
+    if type_tree is str:  # generate one release per object
         for i, obj in enumerate(config[resource_type]):
             parent_name = parent.get('name', type_path)
             obj_name = obj.get('name', obj)
@@ -258,8 +288,11 @@ def process_type(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
             )
             if not dry_run:
-                call_resource_action(action, resource_type,
-                                     obj, parents, extra_args)
+                call_resource_action(
+                    kubeconfig=kubeconfig,
+                    action=action, resource_type=resource_type,
+                    obj=obj, parents=parents, extra_args=extra_args
+                )
         return
     for i, obj in enumerate(config[resource_type]):
         parent_name = parent.get('name', type_path)
@@ -273,18 +306,25 @@ def process_type(
         if resource_scope != parent.get("name", type_path):
             skip_helm = True
         if not skip_helm:
-            call_resource_action(action, resource_type,
-                                 obj, parents, extra_args)
+            call_resource_action(
+                kubeconfig=kubeconfig,
+                action=action, resource_type=resource_type,
+                obj=obj, parents=parents, extra_args=extra_args
+            )
         for t, v in type_tree.items():
             parents.append(obj)
             process_type(
-                action, f"{type_path}/{resource_type}", t, v,
-                config[resource_type][i], dry_run, parents, extra_args
+                action=action, type_path=f"{type_path}/{resource_type}",
+                resource_type=t, type_tree=v,
+                config=config[resource_type][i],
+                iac_config=iac_config, kubeconfig=kubeconfig,
+                dry_run=dry_run, parents=parents, extra_args=extra_args
             )
 
 
 def process(
-    config: dict, action: str, dry_run: bool, api: str, extra_args: List[str]
+    config: dict, action: str, dry_run: bool, api: str,
+    api_kubeconfig: str, extra_args: List[str]
 ) -> bool:
     """
     Entry point for traversing the configuration dictionary
@@ -296,25 +336,41 @@ def process(
         dry_run: If True, skips execution and only logs actions.
         api: A comma-separated string of APIs to process,
              or None for all.
+        api_kubeconfig: A comma-separated string of kubeconfig files
+                        corresponding to the APIs.
         extra_args: Extra arguments appending to the helm commands.
 
     Returns:
         True if validation succeeds, False otherwise.
     """
-    selected_apis = config.keys()
+    selected_apis = [api for api in config.keys() if api not in ["iac"]]
+    api_kubeconfigs = []
+    iac_config = config["iac"]
     if api:
         apis = api.split(",")
         selected_apis = [api for api in selected_apis if api in apis]
-    for selected_api in selected_apis:
+    if api_kubeconfig:
+        api_kubeconfigs = api_kubeconfig.split(",")
+        if len(api_kubeconfigs) != len(selected_apis):
+            raise ValueError(
+                "Number of api_kubeconfigs must match number of apis"
+            )
+    for i, selected_api in enumerate(selected_apis):
+        kubeconfig = api_kubeconfigs[i] if api_kubeconfig else None
         for t, v in RESOURCE_TYPES[selected_api].items():
-            process_type(action, selected_api, t, v, config[selected_api], dry_run, [
-                         {'name': selected_api}], extra_args)
+            process_type(
+                action=action, type_path=selected_api, resource_type=t,
+                type_tree=v, config=config[selected_api],
+                iac_config=iac_config, kubeconfig=kubeconfig,
+                dry_run=dry_run, parents=[{'name': selected_api}],
+                extra_args=extra_args
+            )
     return True
 
 
 def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
     """Parses command-line arguments."""
-    parser = argparse.ArgumentParser(description="Validation CLI Tool")
+    parser = argparse.ArgumentParser(description="GDCH Helm CLI Wrapper")
 
     parser.add_argument(
         "action",
@@ -332,6 +388,13 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
     parser.add_argument(
         "--api",
         help="APIs to process, comma separated",
+        type=str,
+        default=None
+    )
+
+    parser.add_argument(
+        "--api-kubeconfig",
+        help="Kubeconfigs to use for API calls, comma separated",
         type=str,
         default=None
     )
@@ -358,10 +421,14 @@ def main() -> int:
         with open(args.config, "r") as f:
             logging.info(f"Processing file {args.config}")
             config = yaml.safe_load(f)
-            process(config=config, action=args.action,
-                    dry_run=args.dry_run, api=args.api, extra_args=extra_args)
+            process(
+                config=config, action=args.action,
+                dry_run=args.dry_run, api=args.api,
+                api_kubeconfig=args.api_kubeconfig, extra_args=extra_args
+            )
     else:
         call_global_action(
+            kubeconfig=args.api_kubeconfig,
             action=args.action,
             dry_run=args.dry_run,
             extra_args=extra_args

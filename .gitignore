@@ -36,3 +36,20 @@ Session.vim
 
 .history
 
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.coverage
+htmlcov/
+coverage.xml
+coverage.txt
+coverage_report.txt
+
+# Kubeconfigs
+*kubeconfig*
+.kube/
+
+# Vscode
+.vscode/
