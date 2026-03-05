@@ -229,9 +229,10 @@ EOF
 
     This one time action requires IO privileges. IO should use IaC to create these resources and ensure their persistence. 
 
-4. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md):
+4. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md) in the user cluster (where config-sync is running):
     ```
-    k-site2-org-15357-global-admin-api -n config-management-system create secret generic kubeconfigs \
+    export KUBECONFIG=${CLUSTER_NAME}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
+    kubectl -n config-management-system create secret generic kubeconfigs \
     --from-file=global=${CA_CERT_PATH}${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig \
     --from-file=${ZONE}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig \
     --from-file=${CLUSTER_NAME}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
