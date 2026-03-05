@@ -23,7 +23,7 @@ global:
     namespace: *shared_infra_project_name
   projects:
     - name: *user_project_name
-      iamrolebindings: 
+      iam-role-bindings: 
       - role: "project-grafana-viewer"
         subject_kind: "User"
         subject_name: *admin_subject_name
