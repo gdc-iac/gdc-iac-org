@@ -1,0 +1,40 @@
+{{- range $cluster := .Values.clusters -}}
+apiVersion: cluster.gdc.goog/v1
+kind: Cluster
+metadata:
+  name: {{ required "A valid cluster name is required" $cluster.name }}
+  namespace: {{ required "A valid namespace is required" $cluster.namespace }}
+  {{- with $cluster.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $cluster.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $cluster.clusterNetwork }}
+  clusterNetwork:
+    podCIDRSize: {{ default 21 $cluster.clusterNetwork.podCIDRSize }}
+    serviceCIDRSize: {{ default 23 $cluster.clusterNetwork.serviceCIDRSize }}
+  {{- end }}
+  {{- if $cluster.initialVersion }}
+  initialVersion:
+    kubernetesVersion: {{ required "kubernetesVersion is required if initialVersion is specified" $cluster.initialVersion.kubernetesVersion }}
+  {{- end }}
+  {{- if $cluster.loadBalancer }}
+  loadBalancer:
+    ingressServiceIPSize: {{ default 21 $cluster.loadBalancer.ingressServiceIPSize }}
+  {{- end }}
+  {{- if $cluster.nodePools }}
+  nodePools:
+  {{- range $pool := $cluster.nodePools }}
+  - name: {{ required "nodePool name is required" $pool.name }}
+    machineTypeName: {{ required "machineTypeName is required" $pool.machineTypeName }}
+    nodeCount: {{ default 1 $pool.nodeCount }}
+  {{- end }}
+  {{- end }}
+  releaseChannel:
+    channel: {{ default "UNSPECIFIED" $cluster.releaseChannel }}
+---
+{{ end -}}

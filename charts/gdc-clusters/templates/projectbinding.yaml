@@ -1,0 +1,19 @@
+{{- range $cluster := .Values.clusters }}
+{{- range $project := $cluster.projectBindings }}
+---
+apiVersion: resourcemanager.gdc.goog/v1
+kind: ProjectBinding
+metadata:
+  name: {{ $cluster.name }}-{{ $project }}
+  namespace: {{ required "A valid namespace is required" $cluster.namespace }}
+  labels:
+    resourcemanager.gdc.goog/projectbinding-for-user-project: "true"
+spec:
+  clusterRef:
+    name: {{ $cluster.name }}
+  selector:
+    nameSelector:
+      matchNames:
+      - {{ $project }}
+{{- end }}
+{{- end }}
