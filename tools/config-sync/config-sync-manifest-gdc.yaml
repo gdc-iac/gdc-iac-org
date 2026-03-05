@@ -12,29 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    configmanagement.gke.io/system: "true"
-  name: config-management-monitoring
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    configmanagement.gke.io/system: "true"
-  name: config-management-system
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    configmanagement.gke.io/arch: csmr
-    configmanagement.gke.io/system: "true"
-    control-plane: controller-manager
-  name: resource-group-system
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -5334,7 +5311,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: reconciler-manager
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -5343,7 +5320,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-sa
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -5352,7 +5329,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-leader-election-role
-  namespace: resource-group-system
+  namespace: iac-root
 rules:
 - apiGroups:
   - ""
@@ -5546,7 +5523,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-leader-election-rolebinding
-  namespace: resource-group-system
+  namespace: iac-root
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -5554,7 +5531,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: resource-group-sa
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -5570,7 +5547,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: reconciler-manager
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -5586,7 +5563,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: resource-group-sa
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5620,7 +5597,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-collector
-  namespace: config-management-monitoring
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5658,7 +5635,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-agent
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5716,7 +5693,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-agent-reconciler
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5725,7 +5702,7 @@ data:
     kind: Deployment
     metadata:
       name: # this field will be assigned dynamically by the reconciler-manager
-      namespace: config-management-system
+      namespace: iac-root
       labels:
         app: reconciler
         configmanagement.gke.io/system: "true"
@@ -6020,7 +5997,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: reconciler-manager-cm
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -6057,7 +6034,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-otel-agent
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: v1
 kind: Service
@@ -6067,7 +6044,7 @@ metadata:
     configmanagement.gke.io/system: "true"
     monitored: "true"
   name: otel-collector
-  namespace: config-management-monitoring
+  namespace: iac-root
 spec:
   ports:
   - name: opencensus
@@ -6090,7 +6067,7 @@ metadata:
   labels:
     configmanagement.gke.io/system: "true"
   name: container-limits
-  namespace: config-management-system
+  namespace: iac-root
 spec:
   limits:
   - defaultRequest:
@@ -6107,7 +6084,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-collector
-  namespace: config-management-monitoring
+  namespace: iac-root
 spec:
   minReadySeconds: 5
   progressDeadlineSeconds: 120
@@ -6183,7 +6160,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: reconciler-manager
-  namespace: config-management-system
+  namespace: iac-root
 spec:
   minReadySeconds: 10
   replicas: 1
@@ -6312,7 +6289,7 @@ metadata:
     configmanagement.gke.io/system: "true"
     control-plane: controller-manager
   name: resource-group-controller-manager
-  namespace: resource-group-system
+  namespace: iac-root
 spec:
   replicas: 1
   selector:
