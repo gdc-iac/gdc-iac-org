@@ -1,10 +1,9 @@
 iac:
-  iac-role-bindings:
-    - role: "project-iam-admin"
-      subject_kind: "User"
-      subject_name: "fop-iac001@example.com"
-    - role: "project-bucket-admin"
-      subject_kind: "User"
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: "fop-iac001@example.com"
+- role: "project-bucket-admin"
+  subject_kind: "User"
 global:
   admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"
   tools_bucket_name: &tools_bucket_name "shared-s3-tools-1"
