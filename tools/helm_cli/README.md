@@ -80,7 +80,7 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 ### Options
 
 - `--api`: (Optional) Comma-separated list of APIs to process from the configuration file. If omitted, all APIs are processed.
-- `--api-kubeconfig`: (Optional) Comma-separated list of kubeconfigs to use for parallel API processing. It must match the number of specified APIs if `--api` is used.
+- `--api-kubeconfig`: (Optional) Comma-separated list of kubeconfigs to use for API processing. It must match the number of specified APIs if `--api` is used and specify kubeconfig for each API. If not specified, the script will use the default kubeconfig for each API.
 - `--dry-run`: If set, the script will parse the configuration and log the intended actions but will not execute the specific Helm commands that modify the state.
 - `-v`, `--verbose`: Enable verbose (debug) logging output.
 
