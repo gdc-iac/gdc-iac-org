@@ -39,9 +39,9 @@ export KUBECONFIG=<path_to_kubeconfig>
    export IAC_PROJECT="iac-root"
    export IAC_USER="gdch-infra-operator-fop-iac001@opscenter.local"
    export IAC_SA="iac001-sa"
-   export GDCH_CONSOLE="console.org-19364.lux-central1-b.lux.clr"
    export ZONE="lux-central1-b"
    export ROOT_ZONE="lux.clr"
+   export GDCH_CONSOLE="console.${ORG_NAME}.${ZONE}.${ROOT_ZONE}"
    export CA_CERT_PATH="/mnt/c/temp/DGA/cert/"
    export CLUSTER_NAME="clstr-20260224"
    export shared_infra_project_name=data-ets-shared-infra
@@ -148,6 +148,13 @@ export KUBECONFIG=<path_to_kubeconfig>
    ```
    for role in \
    secret-admin \
+   standard-cluster-admin \
+   namespace-admin \
+   workload-viewer \
+   cluster-developer \
+   project-networkpolicy-admin \
+   project-bucket-admin \
+   project-bucket-object-admin \
    ; do \
    gdcloud projects add-iam-policy-binding $IAC_PROJECT \
    --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \

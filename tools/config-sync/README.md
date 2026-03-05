@@ -23,6 +23,7 @@ gdcloud config set core/zone ""
 gdcloud clusters get-credentials global-api
 export shared_infra_project_name=data-ets-shared-infra
 export nb_project=data-ets-001-001
+export config_man_prj=config-management-system
 
 for role in \
  harbor-instance-admin \
@@ -42,7 +43,6 @@ for role in \
  --member="user:${IAC_USER:?}" \
  --role="$role";\
 done
-
 
 gdcloud harbor instances create ${shared_infra_project_name:?}-mhs \
   --project=${shared_infra_project_name:?}
@@ -227,12 +227,40 @@ EOF
     ```
     **Note:**
 
-    This one time action requires IO privileges. IO should use IaC to create these resources and ensure their persistence. 
+    This action requires IO privileges. IO should use IaC to create these resources and ensure their persistence. 
 
-4. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md) in the user cluster (where config-sync is running):
+4. Install config-sync:
+
+   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
+
+    kubectl apply -f - <<EOF
+    apiVersion: networking.global.gdc.goog/v1
+    kind: ProjectNetworkPolicy
+    metadata:
+    namespace: iac-root
+    name: allow-inbound-traffic-from-to-mhs-service
+    spec:
+    subject:
+        subjectType: ManagedService
+        managedServices:
+        matchTypes:
+        - 'mhs'
+    ingress:
+    - from:
+        - projectSelector:
+            projects:
+            matchNames:
+            - iac-root
+    EOF
+
+   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
+
+   kubectl -n iac-root apply -f config-sync-manifest-gdc.yaml
+
+5. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md) in the user cluster (where config-sync is running):
     ```
-    export KUBECONFIG=${CLUSTER_NAME}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
-    kubectl -n config-management-system create secret generic kubeconfigs \
+    export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
+    kubectl -n iac-root create secret generic kubeconfigs \
     --from-file=global=${CA_CERT_PATH}${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig \
     --from-file=${ZONE}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig \
     --from-file=${CLUSTER_NAME}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
@@ -241,12 +269,13 @@ EOF
     **Note:**
      Follow [documentation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#gdcloud) to create service account and obtain kubeconfig.
 
-5. Configure GDC CA certificate
+6. Configure GDC CA certificate
 
     ```
-    curl -k  https://${GDCH_CONSOLE}/.well-known/certificate-authority -o cachain.crt
-    kubectl -n config-management-system create secret generic certs \
-    --from-file=cachain.crt
+    curl -k  https://${GDCH_CONSOLE}/.well-known/certificate-authority -o ${CA_CERT_PATH:?}cachain.crt
+    export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
+    kubectl -n iac-root create secret generic certs \
+    --from-file=${CA_CERT_PATH:?}cachain.crt
     ```
 
 6. Create objects for synchronisation state tracking:
