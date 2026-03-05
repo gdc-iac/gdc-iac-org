@@ -1,21 +1,23 @@
 # yaml-language-server: $schema=values.schema.json
 
 # GDC Clusters Configuration
-# Defines the Google Distributed Cloud Hosted user clusters to be created.
 clusters:
-  # Example cluster configuration:
-  # - name: "tenant-cluster-1"
-  #   namespace: "cluster-tenant-cluster-1"
-  #   type: "user"
-  #   projectID: "iac-root"
-  #   version: "1.16.0"
-  #   controlPlaneVIP: "10.0.0.100"
-  #   ingressVIP: "10.0.0.101"
-  #   controlPlaneNodes:
-  #     - address: "10.0.1.10"
-  #     - address: "10.0.1.11"
-  #     - address: "10.0.1.12"
-  #   podCIDRs:
-  #     - "192.168.0.0/16"
-  #   serviceCIDRs:
-  #     - "10.96.0.0/12"
+  # Example cluster configuration based on cluster.gdc.goog/v1
+  #
+  # - name: "user-vm-3"                         # Required: Name of the cluster
+  #   namespace: "platform"                     # Required: Namespace in the admin cluster
+  #   clusterNetwork:                           # Optional: Networking sizes
+  #     podCIDRSize: 21
+  #     serviceCIDRSize: 23
+  #   initialVersion:
+  #     kubernetesVersion: "1.30.12-gke.300"    # Version of GDCH Kubernetes
+  #   loadBalancer:
+  #     ingressServiceIPSize: 21
+  #   nodePools:                                # Optional: Defines node pools to deploy
+  #     - name: "worker-node-pool"
+  #       machineTypeName: "n3-standard-16-gdc"
+  #       nodeCount: 3
+  #   releaseChannel: "UNSPECIFIED"
+  #   projectBindings:                          # Optional: Binds GDCH projects to this cluster
+  #     - "agtest-project"
+  #     - "other-project"
