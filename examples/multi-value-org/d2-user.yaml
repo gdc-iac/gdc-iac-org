@@ -8,7 +8,7 @@ global:
   rw_bucket_name: &rw_bucket_role "d2-ets-s3-rw1"
   shared_infra_project_name: &shared_infra_project_name "d2-ets-shared-infra"
   user_project_name: &user_project_name "d2-ets-user-1"
-  iamrolebindings: 
+  iam-role-bindings: 
   - role: *tools_bucket_role
     subject_kind: "User"
     subject_name: *user_subject_name
