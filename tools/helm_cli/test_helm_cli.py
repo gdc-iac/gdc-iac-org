@@ -76,14 +76,17 @@ class TestHelmCli(unittest.TestCase):
         result = helm_cli.resource_config(resource_type, obj, parents)
         self.assertEqual(result, expected)
 
-    def test_resource_config_project_network_policies(self):
-        resource_type = "project-network-policies"
-        obj = [{"name": "my-policy"}]
+    def test_resource_config_notebooks(self):
+        resource_type = "notebooks"
+        obj = {"name": "my-notebook", "prop": "val"}
         parents = [{"name": "my-project"}]
 
         expected = {
-            "namespace": "my-project",
-            "projectnetworkpolicies": obj
+            "notebooks": [{
+                "name": "my-notebook",
+                "prop": "val",
+                "namespace": "my-project"
+            }]
         }
 
         result = helm_cli.resource_config(resource_type, obj, parents)

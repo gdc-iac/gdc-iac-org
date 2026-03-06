@@ -30,6 +30,7 @@ RESOURCE_TYPES = defaultdict(lambda: {
     "projects": {
         "TYPE_SCOPE": "global",
         "buckets": str,
+        "notebooks": str
     }
 },
     {
@@ -93,6 +94,11 @@ def resource_config(
             'namespace': parent.get('name'),
             'projectnetworkpolicies': obj
         }
+    if resource_type == "notebooks":
+        return {"notebooks": [{
+            **obj,
+            'namespace': parent.get('name')
+        }]}
     return {resource_type.replace("-", ""): [obj]}
 
 

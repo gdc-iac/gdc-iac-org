@@ -1,0 +1,56 @@
+{{- if .Values.notebooks }}
+{{- range $notebook := .Values.notebooks }}
+---
+apiVersion: aiplatform.gdc.goog/v1
+kind: Notebook
+metadata:
+  finalizers:
+  - notebooks.aiplatform.gdc.goog/notebook-controller-finalizer
+  labels:
+    app: {{ required "A valid name is required" $notebook.name }}
+  name: {{ $notebook.name }}
+  namespace: {{ required "A valid namespace is required" $notebook.namespace | quote }}
+spec:
+  template:
+    spec:
+      containers:
+      - args:
+        - jupyter labextension disable beatrix_jupyterlab dataproc_jupyter_plugin;
+          jupyter lab --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+          --NotebookApp.ip='0.0.0.0' --NotebookApp.base_url='\$(NB_PREFIX)'
+        command:
+        - bash
+        - -c
+        image: {{ required "A valid nb_jupyter_image is required" $notebook.nb_jupyter_image }}
+        imagePullPolicy: IfNotPresent
+        name: {{ $notebook.name }}
+        resources:
+          limits:
+            cpu: {{ default "1" $notebook.cpu_limit | quote }}
+            memory: {{ default "2Gi" $notebook.memory_limit }}
+          requests:
+            cpu: {{ default "1" $notebook.cpu_request | quote }}
+            memory: {{ default "2Gi" $notebook.memory_request }}
+        volumeMounts:
+        - mountPath: /home/jovyan
+          name: {{ $notebook.name }}
+        - mountPath: /dev/shm
+          name: dshm
+      - name: s3-proxy
+        image: {{ required "A valid nb_proxy_image is required" $notebook.nb_proxy_image }}
+        volumeMounts:
+        - mountPath: /proxy/conf
+          name: s3-proxy-config
+      volumes:
+      - name: {{ $notebook.name }}
+        persistentVolumeClaim:
+          claimName: {{ $notebook.name }}
+      - emptyDir:
+          medium: Memory
+        name: dshm
+      - name: s3-proxy-config
+        persistentVolumeClaim:
+          claimName: {{ $notebook.name }}-s3-proxy-config
+    userCluster: {{ required "A valid user_cluster_name is required" $notebook.user_cluster_name }}
+{{- end }}
+{{- end }}

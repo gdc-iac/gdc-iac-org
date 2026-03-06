@@ -1,0 +1,12 @@
+# Default values for gdc-notebooks.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+namespace: ""
+
+notebooks: []
+#  - name: my-notebook
+#    nb_project: project-name
+#    nb_jupyter_image: jupyter-image:1.0
+#    nb_proxy_image: s3-proxy:latest
+#    user_cluster_name: my-user-cluster

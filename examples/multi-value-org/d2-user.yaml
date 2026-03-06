@@ -50,3 +50,11 @@ global:
       - role: "namespace-admin"
         subject_kind: "User"
         subject_name: *admin_subject_name
+lux-central1-b:
+  projects:
+  - name: *user_project_name
+    notebooks:
+    - name: "d2-ets-user-1-nb-01"
+      nb_jupyter_image: "us-east67-b-docker.pkg.dev/d2-ets-user-1/repo/jupyter:latest"
+      nb_proxy_image: "us-east67-b-docker.pkg.dev/d2-ets-user-1/repo/s3-proxy:latest"
+      user_cluster_name: "shared-user-vm"
