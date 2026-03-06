@@ -85,19 +85,19 @@ lux-central1-b:
     - name: *ro_bucket_name
     - name: *rw_bucket_name
   clusters:
-  - name: "shared-user-vm"
+  - name: "clstr-20260224"
     namespace: "platform"
     clusterNetwork:
-      podCIDRSize: 21
-      serviceCIDRSize: 23
+      podCIDRSize: 18
+      serviceCIDRSize: 20
     initialVersion:
-      kubernetesVersion: "1.30.12-gke.300"
+      kubernetesVersion: "1.29.12-gke.800"
     loadBalancer:
-      ingressServiceIPSize: 21
+      ingressServiceIPSize: 20
     nodePools:
-    - name: "worker-node-pool"
+    - name: "pool-20260224"
       machineTypeName: "n3-standard-16-gdc"
-      nodeCount: 3
+      nodeCount: 5
     releaseChannel: "UNSPECIFIED"
     projectBindings:
     - *shared_infra_project_name

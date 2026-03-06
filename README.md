@@ -164,6 +164,7 @@ export KUBECONFIG=<path_to_kubeconfig>
    for role in \
    project-bucket-admin \
    project-iam-admin \
+   harbor-instance-admin \
    ; do \
    gdcloud projects add-iam-policy-binding $shared_infra_project_name \
    --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
