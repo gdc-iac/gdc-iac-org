@@ -72,28 +72,6 @@ def setup_logging(verbose: bool = False) -> None:
     )
 
 
-def release_name(
-    resource_type: str, obj: Union[dict, list], parents: List[dict]
-) -> str:
-    """
-    Generates a standardized predictable Helm release name for a resource instance.
-
-    Args:
-        resource_type: The type of the resource (e.g., 'project-network-policies').
-        obj: The resource object or list of objects.
-        parents: Contextual parent objects.
-
-    Returns:
-        A formatted string to be used as the Helm release name.
-    """
-    parent = parents[-1]
-    if isinstance(obj, list):
-        return f"{parent.get('name', 'root')}-{resource_type}"
-    parent_name = parent.get('name', 'root')
-    obj_name = obj.get('name', 'root')
-    return f"{parent_name}-{resource_type}-{obj_name}"
-
-
 def action_cmd(
     action: str,
     kubeconfig: str = None,
@@ -182,6 +160,7 @@ def call_global_action(
 def call_resource_action(
     kubeconfig: str,
     action: str, 
+    resource_type: str,
     resource_config: dict,
     release_name: str,
     extra_args: List[str]
@@ -213,7 +192,7 @@ def call_resource_action(
             )
             logging.info(f"{' '.join(cmd)}")
             output = subprocess.check_output(cmd, text=True)
-            logging.info(f"Helm {action} {release} finished")
+            logging.info(f"Helm {action} {release_name} finished")
             if output:
                 logging.info(output)
     except subprocess.CalledProcessError as e:
@@ -256,7 +235,7 @@ def process_type(
     if resource_type == "IAC":
         logging.debug(
             f"{action} iac {parent.get('name', type_path)}/{resource_type}")
-        release = release_name(resource_type, iac_config, parents)
+        release_name = f"{parent.get('name', 'root')}-iac"
         resource_config = {
             'namespace': parent.get('name'),
             'iamrolebindings': iac_config
@@ -264,8 +243,11 @@ def process_type(
         if not dry_run:
             call_resource_action(
                 kubeconfig=kubeconfig,
-                action=action, resource_type="iac",
-                obj=resource_config, parents=parents, extra_args=extra_args
+                action=action, 
+                resource_type="iac",
+                resource_config=resource_config,
+                release_name=release_name,
+                extra_args=extra_args
             )
         return
     if resource_type not in config:
@@ -274,7 +256,7 @@ def process_type(
         logging.debug(
             f"{action} list {parent.get('name', type_path)}/{resource_type}")
         obj = config[resource_type]
-        release = release_name(resource_type, obj, parents)
+        release_name = f"{parent.get('name', 'root')}-{resource_type}"
         resource_config = {
             'namespace': parent.get('name'),
             resource_type.replace("-", "") : obj
@@ -282,8 +264,11 @@ def process_type(
         if not dry_run:
             call_resource_action(
                 kubeconfig=kubeconfig,
-                action=action, resource_type=resource_type,
-                obj=obj, parents=parents, extra_args=extra_args
+                action=action, 
+                resource_type=resource_type,
+                resource_config=resource_config,
+                release_name=release_name,
+                extra_args=extra_args
             )
         return
     if type_tree is str:  # generate one release per object
@@ -293,20 +278,20 @@ def process_type(
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
             )
-            release = release_name(resource_type, obj, parents)
+            release_name = f"{parent_name}-{resource_type}-{obj_name}"
             resource_config = {resource_type: [{
                 **obj,
-                'namespace': parent.get('name')
+                'namespace': parent.get('name'),
+                'location': obj.get('location', parents[0].get('name'))
             }]}
-            if resource_type == "buckets":
-                resource_config.update({
-                    'location': obj.get('location', parents[0].get('name'))
-            })
             if not dry_run:
                 call_resource_action(
                     kubeconfig=kubeconfig,
-                    action=action, resource_type=resource_type,
-                    obj=obj, parents=parents, extra_args=extra_args
+                    action=action, 
+                    resource_type=resource_type,
+                    resource_config=resource_config,
+                    release_name=release_name,
+                    extra_args=extra_args
                 )
         return
     # type_tree is a dict, generate one release per object if TYPE_SCOPE matches parent and recurse
@@ -321,6 +306,7 @@ def process_type(
         skip_helm = dry_run
         if resource_scope != parent.get("name", type_path):
             skip_helm = True
+        release_name = f"{parent_name}-{resource_type}-{obj_name}"
         resource_config = {resource_type: [{
             **obj,
             'namespace': parent.get('name')
@@ -328,8 +314,11 @@ def process_type(
         if not skip_helm:
             call_resource_action(
                 kubeconfig=kubeconfig,
-                action=action, resource_type=resource_type,
-                obj=obj, parents=parents, extra_args=extra_args
+                action=action, 
+                resource_type=resource_type,
+                resource_config=resource_config,
+                release_name=release_name,
+                extra_args=extra_args
             )
         for t, v in type_tree.items():
             parents.append(obj)
