@@ -97,6 +97,20 @@ us-east67-b:
     - name: *tools_bucket_name
     - name: *ro_bucket_name
     - name: *rw_bucket_name
+    notebooks:
+    - name: "shared-infra-1-nb-01"
+      nb_jupyter_image: "us-east67-b-docker.pkg.dev/shared-infra-1/repo/jupyter:latest"
+      user_cluster_name: "shared-user-vm"
+      sidecars:
+      - name: "s3-proxy"
+        image: "us-east67-b-docker.pkg.dev/shared-infra-1/repo/s3-proxy:latest"
+        volumeMounts:
+        - mountPath: /proxy/conf
+          name: s3-proxy-config
+        volumes:
+        - name: s3-proxy-config
+          persistentVolumeClaim:
+            claimName: "shared-infra-1-nb-01-s3-proxy-config"
   clusters:
   - name: "shared-user-vm"
     namespace: "platform"

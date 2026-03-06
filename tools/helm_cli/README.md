@@ -46,13 +46,13 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
     ```
     ```bash
     gdcloud clusters get-credentials global-api
-    python3 helm_cli.py template ../../examples/multi-value-org/shared-infra.yaml \
+    python3 helm_cli.py template ../../examples/multi-value-org/example-infra.yaml \
         --namespace=${IAC_PROJECT:?} \
         --api=iac,global
     ```
     ```bash
     gdcloud clusters get-credentials global-api
-    python3 helm_cli.py upgrade ../../examples/multi-value-org/shared-infra.yaml \
+    python3 helm_cli.py upgrade ../../examples/multi-value-org/example-infra.yaml \
         --namespace=${IAC_PROJECT:?} \
         --api=iac,global
     ```
@@ -66,7 +66,7 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 
     ```bash
     gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${GDCH_ZONE:?}
-    python3 helm_cli.py template ../../examples/multi-value-org/shared-infra.yaml \
+    python3 helm_cli.py template ../../examples/multi-value-org/example-infra.yaml \
         --namespace=${IAC_PROJECT:?} \
         --api=iac,${GDCH_ZONE:?}
     ```
@@ -86,24 +86,27 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 
 ## Configuration
 
-The tool expects a YAML configuration file that structures resources under specific API groups. The supported structure includes:
+The tool expects a YAML configuration file that structures resources under specific API groups. A comprehensive example can be found at `examples/multi-value-org/example-infra.yaml`.
+
+The supported structure maps specific list keys directly to their respective underlying charts:
 ```yaml
-iac:
+iac: # Mapped to: charts/gdc-iac
 - role: "project-iam-admin"
   subject_kind: "User"
   subject_name: "fop-iac001@example.com"
 global:
-    - iam-roles
-    - projects
-        - iam-roles
-        - iam-role-bindings
-        - project-network-policies
+    - iam-roles # Mapped to: charts/gdc-iam-roles
+    - projects: # Mapped to: charts/gdc-projects
+        - iam-roles # Mapped to: charts/gdc-iam-roles
+        - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
+        - project-network-policies # Mapped to: charts/gdc-project-network-policies
 <zone>:
-    clusters:
-    - projects:
-        - buckets
-        - iam-role-bindings
-        - project-network-policies
+    clusters: # Mapped to: charts/gdc-clusters
+    - projects: # Mapped to: charts/gdc-projects
+        - buckets # Mapped to: charts/gdc-buckets
+        - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
+        - project-network-policies # Mapped to: charts/gdc-project-network-policies
+        - notebooks # Mapped to: charts/gdc-notebooks
 ```
 ## How it works
 
