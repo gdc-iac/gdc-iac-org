@@ -18,6 +18,7 @@ class TestHelmCli(unittest.TestCase):
         resource_type = "buckets"
         obj = {"name": "my-bucket", "location": "us-west1"}
         parents = [{"name": "my-project"}]
+        _ = (resource_type, obj, parents)
 
     def test_action_cmd_upgrade(self):
         action = "upgrade"
@@ -131,10 +132,12 @@ class TestHelmCli(unittest.TestCase):
         obj = {"name": "obj1"}
         parents = [{"name": "p1"}]
         extra_args = ["--dry-run"]
+        _ = (obj, parents)
 
         helm_cli.call_resource_action(
             kubeconfig=None, action=action, resource_type=resource_type,
-            resource_config={"name": "obj1"}, release_name="p1-test-res-obj1", extra_args=extra_args
+            resource_config={"name": "obj1"},
+            release_name="p1-test-res-obj1", extra_args=extra_args
         )
 
         mock_file.write.assert_called()
@@ -164,7 +167,8 @@ class TestHelmCli(unittest.TestCase):
             kubeconfig=None,
             action=action,
             resource_type=resource_type,
-            resource_config={'namespace': 'root', 'mylistres': ['item1', 'item2']}, 
+            resource_config={'namespace': 'root',
+                             'mylistres': ['item1', 'item2']},
             release_name='root-my-list-res',
             extra_args=extra_args
         )
@@ -196,8 +200,9 @@ class TestHelmCli(unittest.TestCase):
         mock_process_type.assert_called()
         _, kwargs = mock_process_type.call_args
         self.assertEqual(kwargs["resource_type"], "user-cluster-workloads")
-        self.assertEqual(kwargs["parents"], [{'name': 'clstr-1', 'namespace': 'clstr-1'}])
-        
+        self.assertEqual(kwargs["parents"], [
+                         {'name': 'clstr-1', 'namespace': 'clstr-1'}])
+
     @patch("helm_cli.process_type")
     def test_process_with_global_api(self, mock_process_type):
         config = {"global": {"iam-roles": []}, "iac": {}}
@@ -207,8 +212,8 @@ class TestHelmCli(unittest.TestCase):
         )
         mock_process_type.assert_called()
         _, kwargs = mock_process_type.call_args
-        self.assertEqual(kwargs["parents"], [{'name': 'global', 'namespace': 'platform'}])
-
+        self.assertEqual(kwargs["parents"], [
+                         {'name': 'global', 'namespace': 'platform'}])
 
     def test_parse_args(self):
         sys_args = ["upgrade", "config.yaml", "--dry-run", "--set", "foo=bar"]
@@ -258,23 +263,27 @@ class TestHelmCli(unittest.TestCase):
         )
         helm_cli.call_resource_action(
             kubeconfig=None, action="upgrade", resource_type="test-res",
-            resource_config={"name": "obj1"}, release_name="p1-test-res-obj1", extra_args=[]
+            resource_config={"name": "obj1"},
+            release_name="p1-test-res-obj1", extra_args=[]
         )
         mock_subprocess.side_effect = FileNotFoundError()
         helm_cli.call_resource_action(
             kubeconfig=None, action="upgrade", resource_type="test-res",
-            resource_config={"name": "obj1"}, release_name="p1-test-res-obj1", extra_args=[]
+            resource_config={"name": "obj1"},
+            release_name="p1-test-res-obj1", extra_args=[]
         )
 
     @patch("helm_cli.call_resource_action")
     def test_process_type_iac(self, mock_call_resource_action):
         helm_cli.process_type(
-            "template", "root", "IAC", {}, {"iac": {"some": "iac"}}, {"some": "iac"},
+            "template", "root", "IAC", {}, {"iac": {"some": "iac"}},
+            {"some": "iac"},
             None, False, [{"name": "root"}], []
         )
         mock_call_resource_action.assert_called_once_with(
             kubeconfig=None, action="template", resource_type="iac",
-            resource_config={'namespace': 'root', 'iamrolebindings': {'some': 'iac'}}, 
+            resource_config={'namespace': 'root',
+                             'iamrolebindings': {'some': 'iac'}},
             release_name='root-iac', extra_args=[]
         )
 

@@ -2,24 +2,37 @@
 """
 helm_cli.py - GDCH Configured Helm execution wrapper
 
-This script is designed to parse GDCH (Google Distributed Cloud Hosted) specific YAML
-configuration objects (like 'global', 'projects', 'iac') and iterate through nested lists 
-to dispatch contextual variables into local GDCH helm charts (such as 'gdc-iac', 
-'gdc-iam-role-bindings', 'gdc-project-network-policies').
+This script is designed to parse GDCH (Google Distributed Cloud Hosted)
+specific YAML configuration objects (like 'global', 'projects', 'iac')
+and iterate through nested lists to dispatch contextual variables into
+local GDCH helm charts (such as 'gdc-iac', 'gdc-iam-role-bindings',
+'gdc-project-network-policies').
 
 Usage Examples:
 
 D2 user
 
-python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py template /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+python3 tools/helm_cli/helm_cli.py template \
+    examples/multi-value-org/d4-shared.yaml \
+    --api global,lux-central1-b \
+    --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
-python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py upgrade /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+python3 tools/helm_cli/helm_cli.py upgrade \
+    examples/multi-value-org/d4-shared.yaml \
+    --api global,lux-central1-b \
+    --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
 D4 shared
 
-python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py template /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+python3 tools/helm_cli/helm_cli.py template \
+    examples/multi-value-org/d4-shared.yaml \
+    --api global,lux-central1-b \
+    --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
-python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py upgrade /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+python3 tools/helm_cli/helm_cli.py upgrade \
+    examples/multi-value-org/d4-shared.yaml \
+    --api global,lux-central1-b \
+    --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
 """
 
@@ -28,7 +41,6 @@ import logging
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
 from typing import List, Tuple, Union
 
 import yaml
@@ -61,7 +73,6 @@ RESOURCE_SCHEMA = {
 }
 
 
-
 def setup_logging(verbose: bool = False) -> None:
     """Configures the logging settings."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -92,7 +103,8 @@ def action_cmd(
         extra_args: Any extra arguments to append to the command (optional).
 
     Returns:
-        A list of strings representing the literal helm subprocess command to execute.
+        A list of strings representing the literal helm subprocess command
+        to execute.
 
     Raises:
         ValueError: If an explicitly mapped helm action string is not found.
@@ -159,7 +171,7 @@ def call_global_action(
 
 def call_resource_action(
     kubeconfig: str,
-    action: str, 
+    action: str,
     resource_type: str,
     resource_config: dict,
     release_name: str,
@@ -186,7 +198,8 @@ def call_resource_action(
             tmp.write(values_yaml)
             tmp.flush()
             cmd = action_cmd(
-                kubeconfig=kubeconfig, action=action, release_name=release_name,
+                kubeconfig=kubeconfig, action=action,
+                release_name=release_name,
                 chart=f"../../charts/gdc-{resource_type}",
                 values_file=tmp.name, extra_args=extra_args
             )
@@ -233,7 +246,7 @@ def process_type(
     parent = parents[-1]
     parent_name = parent.get('name', type_path)
     parent_namespace = parent.get('namespace', parent_name)
-    # IAC is a special case, it's not a resource type but a configuration fragment
+    # IAC is a special case. It's not a resource type, but a config fragment
     if resource_type == "IAC":
         logging.debug(
             f"{action} iac {parent_name}/{resource_type}")
@@ -245,7 +258,7 @@ def process_type(
         if not dry_run:
             call_resource_action(
                 kubeconfig=kubeconfig,
-                action=action, 
+                action=action,
                 resource_type="iac",
                 resource_config=resource_config,
                 release_name=release_name,
@@ -261,12 +274,12 @@ def process_type(
         release_name = f"{parent_name}-{resource_type}"
         resource_config = {
             'namespace': parent_namespace,
-            resource_type.replace("-", "") : obj
+            resource_type.replace("-", ""): obj
         }
         if not dry_run:
             call_resource_action(
                 kubeconfig=kubeconfig,
-                action=action, 
+                action=action,
                 resource_type=resource_type,
                 resource_config=resource_config,
                 release_name=release_name,
@@ -288,14 +301,15 @@ def process_type(
             if not dry_run:
                 call_resource_action(
                     kubeconfig=kubeconfig,
-                    action=action, 
+                    action=action,
                     resource_type=resource_type,
                     resource_config=resource_config,
                     release_name=release_name,
                     extra_args=extra_args
                 )
         return
-    # type_tree is a dict, generate one release per object if TYPE_SCOPE matches parent and recurse
+    # type_tree is a dict. Generate one release per object if TYPE_SCOPE
+    # matches parent and recurse
     for i, obj in enumerate(config[resource_type]):
         obj_name = obj.get('name', obj)
         logging.debug(
@@ -314,7 +328,7 @@ def process_type(
         if not skip_helm:
             call_resource_action(
                 kubeconfig=kubeconfig,
-                action=action, 
+                action=action,
                 resource_type=resource_type,
                 resource_config=resource_config,
                 release_name=release_name,
@@ -336,14 +350,16 @@ def process(
     api_kubeconfig: str, extra_args: List[str]
 ) -> bool:
     """
-    Entry point for traversing the extracted Python dictionary generated by PyYAML 
-    loading the custom YAML config, iteratively generating targeted Helm executions 
-    against specific Kubernetes GDCH API scopes based on RESOURCE_SCHEMA definitions.
+    Entry point for traversing the extracted Python dictionary generated by
+    PyYAML loading the custom YAML config, iteratively generating targeted
+    Helm executions against specific Kubernetes GDCH API scopes based on
+    RESOURCE_SCHEMA definitions.
 
     Args:
         config: The complete configuration dictionary loaded from YAML.
-        action: The string helm action to perform (e.g., 'template', 'upgrade').
-        dry_run: If True, skips subprocess execution and only logs generated strings.
+        action: The string helm action to perform (e.g., 'template').
+        dry_run: If True, skips subprocess execution and only logs
+            generated strings.
         api: A comma-separated string of APIs to process,
              or None for all.
         api_kubeconfig: A comma-separated string of kubeconfig files
@@ -367,7 +383,7 @@ def process(
             )
     for i, selected_api in enumerate(selected_apis):
         kubeconfig = api_kubeconfigs[i] if api_kubeconfig else None
-        
+
         if selected_api == "global":
             api_type = "global"
             actual_name = "global"
@@ -378,15 +394,16 @@ def process(
         else:
             api_type = "zone"
             actual_name = selected_api
-            namespace = actual_name            
+            namespace = actual_name
         api_schema = RESOURCE_SCHEMA.get(api_type, RESOURCE_SCHEMA["zone"])
-            
+
         for t, v in api_schema.items():
             process_type(
                 action=action, type_path=selected_api, resource_type=t,
                 type_tree=v, config=config[selected_api],
                 iac_config=iac_config, kubeconfig=kubeconfig,
-                dry_run=dry_run, parents=[{'name': actual_name, 'namespace': namespace}],
+                dry_run=dry_run, parents=[
+                    {'name': actual_name, 'namespace': namespace}],
                 extra_args=extra_args
             )
     return True
@@ -441,7 +458,7 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
 def main() -> int:
     """
     Main entry point for executing helm_cli.py.
-    Initializes standard stdout formatting layout and delegates directly to 
+    Initializes standard stdout formatting layout and delegates directly to
     core process execution flow logic.
     """
     args, extra_args = parse_args(sys.argv[1:])
