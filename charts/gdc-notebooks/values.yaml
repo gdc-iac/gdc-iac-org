@@ -8,5 +8,14 @@ notebooks: []
 #  - name: my-notebook
 #    nb_project: project-name
 #    nb_jupyter_image: jupyter-image:1.0
-#    nb_proxy_image: s3-proxy:latest
 #    user_cluster_name: my-user-cluster
+#    sidecars:
+#    - name: "s3-proxy"
+#      image: "s3-proxy:latest"
+#      volumeMounts:
+#      - mountPath: /proxy/conf
+#        name: s3-proxy-config
+#      volumes:
+#      - name: s3-proxy-config
+#        persistentVolumeClaim:
+#          claimName: "my-notebook-s3-proxy-config"

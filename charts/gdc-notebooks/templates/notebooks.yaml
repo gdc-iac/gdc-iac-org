@@ -36,11 +36,16 @@ spec:
           name: {{ $notebook.name }}
         - mountPath: /dev/shm
           name: dshm
-      - name: s3-proxy
-        image: {{ required "A valid nb_proxy_image is required" $notebook.nb_proxy_image }}
+      {{- if $notebook.sidecars }}
+      {{- range $sidecar := $notebook.sidecars }}
+      - name: {{ required "A sidecar name is required" $sidecar.name | quote }}
+        image: {{ required "A sidecar image is required" $sidecar.image | quote }}
+        {{- if $sidecar.volumeMounts }}
         volumeMounts:
-        - mountPath: /proxy/conf
-          name: s3-proxy-config
+{{ toYaml $sidecar.volumeMounts | indent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
       volumes:
       - name: {{ $notebook.name }}
         persistentVolumeClaim:
@@ -48,9 +53,13 @@ spec:
       - emptyDir:
           medium: Memory
         name: dshm
-      - name: s3-proxy-config
-        persistentVolumeClaim:
-          claimName: {{ $notebook.name }}-s3-proxy-config
+      {{- if $notebook.sidecars }}
+      {{- range $sidecar := $notebook.sidecars }}
+      {{- if $sidecar.volumes }}
+{{ toYaml $sidecar.volumes | indent 6 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
     userCluster: {{ required "A valid user_cluster_name is required" $notebook.user_cluster_name }}
 {{- end }}
 {{- end }}
