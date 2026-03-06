@@ -39,7 +39,7 @@ RESOURCE_SCHEMA = {
     "zone": {
         "clusters": str,
         "projects": {
-            "TYPE_SCOPE": "platform",
+            "TYPE_SCOPE": "global",
             "buckets": str,
             "notebooks": str,
             "harbors": str
@@ -51,7 +51,7 @@ RESOURCE_SCHEMA = {
     "global": {
         "iam-roles": str,
         "projects": {
-            "TYPE_SCOPE": "platform",
+            "TYPE_SCOPE": "global",
             "IAC": list,
             "iam-roles": str,
             "iam-role-bindings": list,
@@ -231,11 +231,13 @@ def process_type(
     """
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
+    parent_name = parent.get('name', type_path)
+    parent_namespace = parent.get('namespace', parent_name)
     # IAC is a special case, it's not a resource type but a configuration fragment
     if resource_type == "IAC":
         logging.debug(
-            f"{action} iac {parent.get('name', type_path)}/{resource_type}")
-        release_name = f"{parent.get('name', 'root')}-iac"
+            f"{action} iac {parent_name}/{resource_type}")
+        release_name = f"{parent_name}-iac"
         resource_config = {
             'namespace': parent.get('name'),
             'iamrolebindings': iac_config
@@ -254,11 +256,11 @@ def process_type(
         return
     if type_tree is list:  # generate one release per object list
         logging.debug(
-            f"{action} list {parent.get('name', type_path)}/{resource_type}")
+            f"{action} list {parent_name}/{resource_type}")
         obj = config[resource_type]
-        release_name = f"{parent.get('name', 'root')}-{resource_type}"
+        release_name = f"{parent_name}-{resource_type}"
         resource_config = {
-            'namespace': parent.get('name'),
+            'namespace': parent_namespace,
             resource_type.replace("-", "") : obj
         }
         if not dry_run:
@@ -273,7 +275,6 @@ def process_type(
         return
     if type_tree is str:  # generate one release per object
         for i, obj in enumerate(config[resource_type]):
-            parent_name = parent.get('name', type_path)
             obj_name = obj.get('name', obj)
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
@@ -281,7 +282,7 @@ def process_type(
             release_name = f"{parent_name}-{resource_type}-{obj_name}"
             resource_config = {resource_type: [{
                 **obj,
-                'namespace': parent.get('name'),
+                'namespace': parent_namespace,
                 'location': obj.get('location', parents[0].get('name'))
             }]}
             if not dry_run:
@@ -296,7 +297,6 @@ def process_type(
         return
     # type_tree is a dict, generate one release per object if TYPE_SCOPE matches parent and recurse
     for i, obj in enumerate(config[resource_type]):
-        parent_name = parent.get('name', type_path)
         obj_name = obj.get('name', obj)
         logging.debug(
             f"{action} object {parent_name}/{resource_type}/{obj_name}"
@@ -309,7 +309,7 @@ def process_type(
         release_name = f"{parent_name}-{resource_type}-{obj_name}"
         resource_config = {resource_type: [{
             **obj,
-            'namespace': parent.get('name')
+            'namespace': parent_namespace
         }]}
         if not skip_helm:
             call_resource_action(
@@ -370,13 +370,15 @@ def process(
         
         if selected_api == "global":
             api_type = "global"
-            actual_name = "platform"
+            actual_name = "global"
+            namespace = "platform"
         elif ":" in selected_api:
             api_type, actual_name = selected_api.split(":", 1)
+            namespace = actual_name
         else:
             api_type = "zone"
             actual_name = selected_api
-            
+            namespace = actual_name            
         api_schema = RESOURCE_SCHEMA.get(api_type, RESOURCE_SCHEMA["zone"])
             
         for t, v in api_schema.items():
@@ -384,7 +386,7 @@ def process(
                 action=action, type_path=selected_api, resource_type=t,
                 type_tree=v, config=config[selected_api],
                 iac_config=iac_config, kubeconfig=kubeconfig,
-                dry_run=dry_run, parents=[{'name': actual_name}],
+                dry_run=dry_run, parents=[{'name': actual_name, 'namespace': namespace}],
                 extra_args=extra_args
             )
     return True

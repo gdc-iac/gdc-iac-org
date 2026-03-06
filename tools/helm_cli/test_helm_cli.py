@@ -19,107 +19,6 @@ class TestHelmCli(unittest.TestCase):
         obj = {"name": "my-bucket", "location": "us-west1"}
         parents = [{"name": "my-project"}]
 
-        expected = {
-            "buckets": [{
-                "name": "my-bucket",
-                "location": "us-west1",
-                "namespace": "my-project"
-            }]
-        }
-
-        result = helm_cli.resource_config(resource_type, obj, parents)
-        self.assertEqual(result, expected)
-
-    def test_resource_config_buckets_inherit_location(self):
-        resource_type = "buckets"
-        obj = {"name": "my-bucket"}
-        # parents[0] is the root api
-        parents = [{"name": "global-region"}, {"name": "my-project"}]
-
-        expected = {
-            "buckets": [{
-                "name": "my-bucket",
-                "location": "global-region",
-                "namespace": "my-project"
-            }]
-        }
-
-        result = helm_cli.resource_config(resource_type, obj, parents)
-        self.assertEqual(result, expected)
-
-    def test_resource_config_iam_role_bindings(self):
-        resource_type = "iam-role-bindings"
-        obj = [{
-            "role": "roles/storage.admin",
-            "member": "user:test@example.com"
-        }]
-        parents = [{"name": "my-project"}]
-
-        expected = {
-            "namespace": "my-project",
-            "iamrolebindings": obj
-        }
-
-        result = helm_cli.resource_config(resource_type, obj, parents)
-        self.assertEqual(result, expected)
-
-    def test_resource_config_iac(self):
-        resource_type = "iac"
-        obj = [{"role": "project-iam-admin", "subject_name": "user@example.com"}]
-        parents = [{"name": "my-project"}]
-
-        expected = {
-            "namespace": "my-project",
-            "iamrolebindings": obj
-        }
-
-        result = helm_cli.resource_config(resource_type, obj, parents)
-        self.assertEqual(result, expected)
-
-    def test_resource_config_notebooks(self):
-        resource_type = "notebooks"
-        obj = {"name": "my-notebook", "prop": "val"}
-        parents = [{"name": "my-project"}]
-
-        expected = {
-            "notebooks": [{
-                "name": "my-notebook",
-                "prop": "val",
-                "namespace": "my-project"
-            }]
-        }
-
-        result = helm_cli.resource_config(resource_type, obj, parents)
-        self.assertEqual(result, expected)
-
-    def test_resource_config_generic(self):
-        resource_type = "some-resource"
-        obj = {"name": "res1", "prop": "val"}
-        parents = [{"name": "parent1"}]
-
-        expected = {
-            "someresource": [obj]
-        }
-
-        result = helm_cli.resource_config(resource_type, obj, parents)
-        self.assertEqual(result, expected)
-
-    def test_release_name_dict(self):
-        resource_type = "my-res"
-        obj = {"name": "obj1"}
-        parents = [{"name": "parent1"}]
-
-        result = helm_cli.release_name(resource_type, obj, parents)
-        self.assertEqual(result, "parent1-my-res-obj1")
-
-    def test_release_name_list(self):
-        resource_type = "my-res"
-        obj = ["item1", "item2"]
-        parents = [{"name": "parent1"}]
-
-        result = helm_cli.release_name(resource_type, obj, parents)
-        self.assertEqual(result, "parent1-my-res")
-
     def test_action_cmd_upgrade(self):
         action = "upgrade"
         release = "my-release"
@@ -235,7 +134,7 @@ class TestHelmCli(unittest.TestCase):
 
         helm_cli.call_resource_action(
             kubeconfig=None, action=action, resource_type=resource_type,
-            obj=obj, parents=parents, extra_args=extra_args
+            resource_config={"name": "obj1"}, release_name="p1-test-res-obj1", extra_args=extra_args
         )
 
         mock_file.write.assert_called()
@@ -265,8 +164,8 @@ class TestHelmCli(unittest.TestCase):
             kubeconfig=None,
             action=action,
             resource_type=resource_type,
-            obj=["item1", "item2"],
-            parents=parents,
+            resource_config={'namespace': 'root', 'mylistres': ['item1', 'item2']}, 
+            release_name='root-my-list-res',
             extra_args=extra_args
         )
 
@@ -297,7 +196,7 @@ class TestHelmCli(unittest.TestCase):
         mock_process_type.assert_called()
         _, kwargs = mock_process_type.call_args
         self.assertEqual(kwargs["resource_type"], "user-cluster-workloads")
-        self.assertEqual(kwargs["parents"], [{'name': 'clstr-1'}])
+        self.assertEqual(kwargs["parents"], [{'name': 'clstr-1', 'namespace': 'clstr-1'}])
         
     @patch("helm_cli.process_type")
     def test_process_with_global_api(self, mock_process_type):
@@ -308,7 +207,7 @@ class TestHelmCli(unittest.TestCase):
         )
         mock_process_type.assert_called()
         _, kwargs = mock_process_type.call_args
-        self.assertEqual(kwargs["parents"], [{'name': 'global'}])
+        self.assertEqual(kwargs["parents"], [{'name': 'global', 'namespace': 'platform'}])
 
 
     def test_parse_args(self):
@@ -359,23 +258,24 @@ class TestHelmCli(unittest.TestCase):
         )
         helm_cli.call_resource_action(
             kubeconfig=None, action="upgrade", resource_type="test-res",
-            obj={"name": "obj1"}, parents=[{"name": "p1"}], extra_args=[]
+            resource_config={"name": "obj1"}, release_name="p1-test-res-obj1", extra_args=[]
         )
         mock_subprocess.side_effect = FileNotFoundError()
         helm_cli.call_resource_action(
             kubeconfig=None, action="upgrade", resource_type="test-res",
-            obj={"name": "obj1"}, parents=[{"name": "p1"}], extra_args=[]
+            resource_config={"name": "obj1"}, release_name="p1-test-res-obj1", extra_args=[]
         )
 
     @patch("helm_cli.call_resource_action")
     def test_process_type_iac(self, mock_call_resource_action):
         helm_cli.process_type(
-            "template", "root", "IAC", {}, {}, {"some": "iac"},
+            "template", "root", "IAC", {}, {"iac": {"some": "iac"}}, {"some": "iac"},
             None, False, [{"name": "root"}], []
         )
         mock_call_resource_action.assert_called_once_with(
             kubeconfig=None, action="template", resource_type="iac",
-            obj={"some": "iac"}, parents=[{"name": "root"}], extra_args=[]
+            resource_config={'namespace': 'root', 'iamrolebindings': {'some': 'iac'}}, 
+            release_name='root-iac', extra_args=[]
         )
 
     def test_process_type_not_in_config(self):
