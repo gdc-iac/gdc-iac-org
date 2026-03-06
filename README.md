@@ -32,180 +32,15 @@ Helm is using the default kubeconfig path. To use different one:
 ```
 export KUBECONFIG=<path_to_kubeconfig>
 ```
-# Bootstrap IaC
-0. Export environment variables (example):
-   ```
-   export ORG_NAME="org-15357"
-   export IAC_PROJECT="iac-root"
-   export IAC_USER="gdch-infra-operator-fop-iac001@opscenter.local"
-   export IAC_SA="iac001-sa"
-   export ZONE="lux-central1-b"
-   export ROOT_ZONE="lux.clr"
-   export GDCH_CONSOLE="console.${ORG_NAME}.${ZONE}.${ROOT_ZONE}"
-   export CA_CERT_PATH="/mnt/c/temp/DGA/cert/"
-   export CLUSTER_NAME="clstr-20260224"
-   export shared_infra_project_name=data-ets-shared-infra
-   ```
+# Run the connect.sh file and connect with an account with organization-iam-admin permissions
 
-   Login:
-   ```
-   # Configure gdcloud configuration
-   ## Variables for Org Admin Cluster
-   export ORG=org-15357
-   export DOMAIN=lux.clr
-   export ZONE=lux-central1-b
-   export CONFIG="${ORG}-${ZONE}"
+chmod +x connect.sh
+./connect.sh
 
+# Deploy all of the prerequisites to run the helm cli
 
-   echo "Config Name: ${CONFIG}"
-
-   if [[ "$ORG" == "root" ]]; then
-   export CONSOLE_URL="https://infra-console.${ZONE:?}.${DOMAIN:?}"
-   else
-   export CONSOLE_URL="https://console.${ORG}.${ZONE:?}.${DOMAIN:?}"
-   fi
-
-   echo "Console URL: ${CONSOLE_URL}"
-
-   export KUBECONFIG=/root/${CONFIG:?}.yaml
-   echo "Kubeconfig file: ${KUBECONFIG}"
-
-   ### Install GDC Organization Console Certificate
-   echo -n | openssl s_client -showcerts -connect ${CONSOLE_URL#https://}:443 2>/dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /usr/share/pki/ca-trust-source/anchors/${CONFIG:?}.crt
-   echo "Certificate is exported to: /usr/share/pki/ca-trust-source/anchors/${CONFIG:?}.crt"
-   update-ca-trust
-
-   ### Install gdcloud components
-   gdcloud components install gdcloud-k8s-auth-plugin
-
-   ### Set Configuration Parameters
-   gdcloud config configurations create ${CONFIG:?} 2>/dev/null
-   gdcloud config configurations activate ${CONFIG:?}
-   gdcloud config set core/organization_console_url ${CONSOLE_URL:?}
-   gdcloud config set core/zone ${ZONE}
-
-   ### Check existing configurations
-   gdcloud config configurations list
-
-   ### Login
-   gdcloud auth login
-   ```
-
-
-1. Grant IaC Bootstrap User required Org roles:
-   ```
-   for role in \
-   organization-iam-admin \
-   project-creator \
-   project-editor \
-   user-cluster-admin \
-   ; do \
-      gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-      --member="user:${IAC_USER:?}" \
-      --role="$role";\
-   done
-   ```
-2. Create a project to host IaC resources
-
-   ```
-   gdcloud auth login (as $IAC_USER)
-   gdcloud projects create $IAC_PROJECT
-   gdcloud projects create $shared_infra_project_name
-   ```
-
-3. Grant IaC Bootstrap User required `$IAC_PROJECT` roles:
-   ```
-   for role in \
-   secret-admin \
-   project-iam-admin \
-   ; do \
-   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-   --member=user:$IAC_USER \
-   --role=$role;\
-   done
-   ```
-
-4. Follow [documentation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#gdcloud) to create service account:
-   ```
-   gdcloud iam service-accounts create "$IAC_SA" --project "$IAC_PROJECT"
-   ```
-
-5. Assign the permissions required by the service account:
-- organization:
-   ```
-   for role in \
-   organization-iam-admin \
-   project-creator \
-   project-editor \
-   user-cluster-admin \
-   ; do \
-      gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-      --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
-      --role="$role";\
-   done
-   ```
-- project:
-   ```
-   for role in \
-   secret-admin \
-   standard-cluster-admin \
-   namespace-admin \
-   workload-viewer \
-   cluster-developer \
-   project-networkpolicy-admin \
-   project-bucket-admin \
-   project-bucket-object-admin \
-   ; do \
-   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-   --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
-   --role=$role;\
-   done
-
-   for role in \
-   project-bucket-admin \
-   project-iam-admin \
-   harbor-instance-admin \
-   ; do \
-   gdcloud projects add-iam-policy-binding $shared_infra_project_name \
-   --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
-   --role=$role;\
-   done
-   ```
-
-6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
-   ```
-   rm -rf "${CA_CERT_PATH}${IAC_SA:?}.json"
-   gdcloud iam service-accounts keys create "${CA_CERT_PATH}${IAC_SA:?}.json" \
-    --project="$IAC_PROJECT" \
-    --iam-account="$IAC_SA"
-   sed -i 's|https://service-accounts.org-15357.lux.clr/authenticate|https://service-accounts.org-15357.lux-central1-b.lux.clr/authenticate|' "${CA_CERT_PATH}${IAC_SA}.json"
-   ```
-
-7. [Generate kubeconfig](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig) file:
-   ```
-   gdcloud auth activate-service-account --key-file=${CA_CERT_PATH:?}${IAC_SA:?}.json
-   rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
-   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig
-   gdcloud config set core/zone ""
-   gdcloud clusters get-credentials global-api
-   IAC_TOKEN=$(gdcloud auth print-identity-token --audiences=https://global-api.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?})
-   kubectl config set-credentials "${IAC_SA}" --token="${IAC_TOKEN}"
-   kubectl config set-context --current --user="${IAC_SA}"
-   rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig
-   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig
-   gdcloud config set core/zone ${ZONE:?}
-   gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${ZONE:?}
-   IAC_TOKEN=$(gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?} --zone=${ZONE:?})
-   kubectl config set-credentials "${IAC_SA}" --token="${IAC_TOKEN}"
-   kubectl config set-context --current --user="${IAC_SA}"
-   rm -rf ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
-   export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
-   gdcloud config set core/zone ${ZONE:?}
-   gdcloud clusters get-credentials ${CLUSTER_NAME:?} --zone ${ZONE:?}
-   IAC_TOKEN=$(gdcloud auth print-identity-token --audiences=https://${CLUSTER_NAME:?}-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?} --zone=${ZONE:?})
-   kubectl config set-credentials "${IAC_SA}" --token="${IAC_TOKEN}"
-   kubectl config set-context --current --user="${IAC_SA}"
-   ```
+chmod +x configure_prerequisites.sh
+./configure_prerequisites.sh
 
 # Deploy Organization Resources using HELM CLI
 1. Configure HELM environment
@@ -213,14 +48,14 @@ export KUBECONFIG=<path_to_kubeconfig>
    export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
    export HELM_NAMESPACE=$IAC_PROJECT
    ````
-1. Configure HELM to use service account:
+2. Configure HELM to use service account:
    ```
    gdcloud auth activate-service-account --key-file=${CA_CERT_PATH}${IAC_SA}.json
    export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
    gdcloud clusters get-credentials global-api
    ```
 
-2. Validate configuration
+3. Validate configuration
 ```
 export config=dga
 for resource in \
@@ -235,7 +70,7 @@ for resource in \
 done
 ```
 
-3. Create global resources
+4. Create global resources
 ```
 export config=dga
 gdcloud config set core/zone ""
@@ -250,7 +85,7 @@ for resource in \
     helm install --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
 done
 ```
-4. Create zonal resources 
+5. Create zonal resources 
 
 Note: The singlezone bucket resources and clusters are created using the zonal management API endpoint.
 ```
