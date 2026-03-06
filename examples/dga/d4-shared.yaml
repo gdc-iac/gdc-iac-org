@@ -1,0 +1,127 @@
+iac:
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+global:
+  admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
+  tools_bucket_name: &tools_bucket_name "d4-ets-s3-tools"
+  tools_bucket_role: &tools_bucket_role "d4-ets-s3-tools"
+  ro_bucket_name: &ro_bucket_name "d4-ets-s3-ro1"
+  ro_bucket_role: &ro_bucket_role "d4-ets-s3-ro1"
+  rw_bucket_name: &rw_bucket_name "d4-ets-s3-rw1"
+  rw_bucket_name: &rw_bucket_role "d4-ets-s3-rw1"
+  shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
+  iam-roles:
+    - name: *tools_bucket_role
+      title: *tools_bucket_role
+      description: *tools_bucket_role
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - object.gdc.goog
+          resources:
+          - buckets
+          verbs:
+          - list
+          - read-object
+    - name: *ro_bucket_role
+      title: *ro_bucket_role
+      description: *ro_bucket_role
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - object.gdc.goog
+          resources:
+          - buckets
+          verbs:
+          - list
+          - read-object
+    - name: *rw_bucket_role
+      title: *rw_bucket_role
+      description: *rw_bucket_role
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - object.gdc.goog
+          resources:
+          - buckets
+          verbs:
+          - list
+          - read-object
+  projects:
+    - name: *shared_infra_project_name
+      harbor:
+      - name: "data-ets-shared-infra-mhs"
+        projects:
+        - name: "data-ets-001-001"
+      project-network-policies:
+      - subject:
+          subject_type: ManagedService
+          managed_services:
+            match_types:
+            - 'mhs'
+        ingress:
+        - from:
+          - project_selector:
+              projects:
+                match_names:
+                - "d4-ets-user-1"
+      iam-role-bindings: 
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-bucket-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-bucket-object-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "harbor-instance-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "harbor-project-creator"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+lux-central1-b:
+  projects:
+  - name: *shared_infra_project_name
+    buckets:
+    - name: *tools_bucket_name
+    - name: *ro_bucket_name
+    - name: *rw_bucket_name
+    harbors:
+    - name: "data-ets-mhs"
+      projects:
+      - name: "data-ets-mhs"
+  clusters:
+  - name: "clstr-20260224"
+    namespace: "platform"
+    clusterNetwork:
+      podCIDRSize: 18
+      serviceCIDRSize: 20
+    initialVersion:
+      kubernetesVersion: "1.29.12-gke.800"
+    loadBalancer:
+      ingressServiceIPSize: 20
+    nodePools:
+    - name: "pool-20260224"
+      machineTypeName: "n3-standard-16-gdc"
+      nodeCount: 5
+    releaseChannel: "UNSPECIFIED"
+    projectBindings:
+    - *shared_infra_project_name
