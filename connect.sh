@@ -18,7 +18,7 @@ fi
 
 echo "Console URL: ${CONSOLE_URL}"
 
-export KUBECONFIG=/root/${CONFIG:?}.yaml
+export KUBECONFIG=~/${CONFIG:?}.yaml
 echo "Kubeconfig file: ${KUBECONFIG}"
 
 ### Install GDC Organization Console Certificate
