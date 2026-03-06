@@ -1,15 +1,21 @@
 iac:
 - role: "project-iam-admin"
   subject_kind: "User"
-  subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
+  subject_name: &iac_subject_name "fop-iac001@example.com"
 - role: "project-bucket-admin"
   subject_kind: "User"
   subject_name: *iac_subject_name
 - role: "project-networkpolicy-admin"
   subject_kind: "User"
   subject_name: *iac_subject_name
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "harbor-project-creator"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
 global:
-  admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
+  admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"
   tools_bucket_name: &tools_bucket_name "d4-ets-s3-tools"
   tools_bucket_role: &tools_bucket_role "d4-ets-s3-tools"
   ro_bucket_name: &ro_bucket_name "d4-ets-s3-ro1"
@@ -97,7 +103,7 @@ global:
       - role: "harbor-project-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name
-lux-central1-b:
+us-east67-b:
   projects:
   - name: *shared_infra_project_name
     buckets:
@@ -109,19 +115,18 @@ lux-central1-b:
       projects:
       - name: "data-ets-mhs"
   clusters:
-  - name: "clstr-20260224"
-    namespace: "platform"
+  - name: "stress-test"
     clusterNetwork:
-      podCIDRSize: 18
-      serviceCIDRSize: 20
+      podCIDRSize: 21
+      serviceCIDRSize: 23
     initialVersion:
-      kubernetesVersion: "1.29.12-gke.800"
+      kubernetesVersion: "1.30.12-gke.300"
     loadBalancer:
       ingressServiceIPSize: 20
     nodePools:
-    - name: "pool-20260224"
-      machineTypeName: "n3-standard-16-gdc"
-      nodeCount: 5
+    - name: "pool-1"
+      machineTypeName: "n3-standard-4-gdc"
+      nodeCount: 3
     releaseChannel: "UNSPECIFIED"
     projectBindings:
     - *shared_infra_project_name

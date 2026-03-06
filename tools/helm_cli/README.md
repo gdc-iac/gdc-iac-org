@@ -61,6 +61,7 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
     ```bash
     gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${GDCH_ZONE:?}
     python3 helm_cli.py list \
+        --api=${GDCH_ZONE:?} \
         --namespace=${IAC_PROJECT:?}
     ```
 
