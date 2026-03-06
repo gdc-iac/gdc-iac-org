@@ -1,0 +1,48 @@
+{{- if .Values.projectnetworkpolicies }}
+{{- range $policy := .Values.projectnetworkpolicies }}
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  namespace: {{ required "A valid namespace is required" $.Values.namespace }}
+  {{- if $policy.name }}
+  name: {{ regexReplaceAll "\\W+" $policy.name "-" }}
+  {{- else if and $policy.ingress $policy.subject.managed_services }}
+  {{- $projectName := index (index (index $policy.ingress 0).from 0).project_selector.projects.match_names 0 }}
+  {{- $serviceName := index $policy.subject.managed_services.match_types 0 }}
+  name: allow-inbound-traffic-from-{{ regexReplaceAll "\\W+" $projectName "-" }}-to-{{ regexReplaceAll "\\W+" $serviceName "-" }}-service
+  {{- else }}
+  name: project-network-policy-{{ randAlphaNum 5 | lower }}
+  {{- end }}
+spec:
+  {{- with $policy.subject }}
+  subject:
+    {{- if .subject_type }}
+    subjectType: {{ .subject_type }}
+    {{- end }}
+    {{- with .managed_services }}
+    managedServices:
+      {{- if .match_types }}
+      matchTypes:
+        {{- toYaml .match_types | nindent 6 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with $policy.ingress }}
+  ingress:
+    {{- range . }}
+    - from:
+      {{- range .from }}
+      - projectSelector:
+          projects:
+            matchNames:
+              {{- toYaml .project_selector.projects.match_names | nindent 14 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with $policy.egress }}
+  egress:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

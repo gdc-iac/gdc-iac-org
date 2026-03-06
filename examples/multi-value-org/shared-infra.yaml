@@ -4,6 +4,7 @@ iac:
   subject_name: "fop-iac001@example.com"
 - role: "project-bucket-admin"
   subject_kind: "User"
+  subject_name: "fop-iac001@example.com"
 global:
   admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"
   tools_bucket_name: &tools_bucket_name "shared-s3-tools-1"
@@ -52,6 +53,18 @@ global:
           - read-object
   projects:
     - name: *shared_infra_project_name
+      project-network-policies:
+      - subject:
+          subject_type: ManagedService
+          managed_services:
+            match_types:
+            - 'mhs'
+        ingress:
+        - from:
+          - project_selector:
+              projects:
+                match_names:
+                - "d4-ets-user-1"
       iam-role-bindings: 
       - role: "project-grafana-viewer"
         subject_kind: "User"

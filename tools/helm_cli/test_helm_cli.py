@@ -63,6 +63,32 @@ class TestHelmCli(unittest.TestCase):
         result = helm_cli.resource_config(resource_type, obj, parents)
         self.assertEqual(result, expected)
 
+    def test_resource_config_iac(self):
+        resource_type = "iac"
+        obj = [{"role": "project-iam-admin", "subject_name": "user@example.com"}]
+        parents = [{"name": "my-project"}]
+
+        expected = {
+            "namespace": "my-project",
+            "iamrolebindings": obj
+        }
+
+        result = helm_cli.resource_config(resource_type, obj, parents)
+        self.assertEqual(result, expected)
+
+    def test_resource_config_project_network_policies(self):
+        resource_type = "project-network-policies"
+        obj = [{"name": "my-policy"}]
+        parents = [{"name": "my-project"}]
+
+        expected = {
+            "namespace": "my-project",
+            "projectnetworkpolicies": obj
+        }
+
+        result = helm_cli.resource_config(resource_type, obj, parents)
+        self.assertEqual(result, expected)
+
     def test_resource_config_generic(self):
         resource_type = "some-resource"
         obj = {"name": "res1", "prop": "val"}
