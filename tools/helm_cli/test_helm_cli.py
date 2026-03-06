@@ -287,6 +287,30 @@ class TestHelmCli(unittest.TestCase):
         self.assertEqual(kwargs["action"], action)
         self.assertEqual(kwargs["extra_args"], extra_args)
 
+    @patch("helm_cli.process_type")
+    def test_process_with_api_prefix(self, mock_process_type):
+        config = {"user:clstr-1": {"user-cluster-workloads": []}, "iac": {}}
+        action = "template"
+        helm_cli.process(
+            config, action, False, "user:clstr-1", None, []
+        )
+        mock_process_type.assert_called()
+        _, kwargs = mock_process_type.call_args
+        self.assertEqual(kwargs["resource_type"], "user-cluster-workloads")
+        self.assertEqual(kwargs["parents"], [{'name': 'clstr-1'}])
+        
+    @patch("helm_cli.process_type")
+    def test_process_with_global_api(self, mock_process_type):
+        config = {"global": {"iam-roles": []}, "iac": {}}
+        action = "template"
+        helm_cli.process(
+            config, action, False, "global", None, []
+        )
+        mock_process_type.assert_called()
+        _, kwargs = mock_process_type.call_args
+        self.assertEqual(kwargs["parents"], [{'name': 'global'}])
+
+
     def test_parse_args(self):
         sys_args = ["upgrade", "config.yaml", "--dry-run", "--set", "foo=bar"]
         args, extra = helm_cli.parse_args(sys_args)

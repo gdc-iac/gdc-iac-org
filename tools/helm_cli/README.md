@@ -100,7 +100,14 @@ global:
       - iam-roles # Mapped to: charts/gdc-iam-roles
       - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
       - project-network-policies # Mapped to: charts/gdc-project-network-policies
-<zone>:
+<zone1>:
+    clusters: # Mapped to: charts/gdc-clusters
+    projects: # Mapped to: charts/gdc-projects
+      - buckets # Mapped to: charts/gdc-buckets
+      - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
+      - project-network-policies # Mapped to: charts/gdc-project-network-policies
+      - notebooks # Mapped to: charts/gdc-notebooks
+<zone2>:
     clusters: # Mapped to: charts/gdc-clusters
     projects: # Mapped to: charts/gdc-projects
       - buckets # Mapped to: charts/gdc-buckets

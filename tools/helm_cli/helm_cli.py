@@ -33,26 +33,30 @@ from typing import List, Tuple, Union
 
 import yaml
 
-RESOURCE_TYPES = defaultdict(lambda: {
-    "clusters": str,
-    "projects": {
-        "TYPE_SCOPE": "global",
-        "buckets": str,
-        "notebooks": str
-    }
-},
-    {
-        "global": {
-            "iam-roles": str,
-            "projects": {
-                "TYPE_SCOPE": "global",
-                "IAC": list,
-                "iam-roles": str,
-                "iam-role-bindings": list,
-                "project-network-policies": list
-            }
+RESOURCE_TYPES = {
+    "zone": {
+        "clusters": str,
+        "projects": {
+            "TYPE_SCOPE": "global",
+            "buckets": str,
+            "notebooks": str
         }
-})
+    },
+    "user": {
+        "user-cluster-workloads": list
+    },
+    "global": {
+        "iam-roles": str,
+        "projects": {
+            "TYPE_SCOPE": "global",
+            "IAC": list,
+            "iam-roles": str,
+            "iam-role-bindings": list,
+            "project-network-policies": list
+        }
+    }
+}
+
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -391,12 +395,24 @@ def process(
             )
     for i, selected_api in enumerate(selected_apis):
         kubeconfig = api_kubeconfigs[i] if api_kubeconfig else None
-        for t, v in RESOURCE_TYPES[selected_api].items():
+        
+        if selected_api == "global":
+            api_type = "global"
+            actual_name = "global"
+        elif ":" in selected_api:
+            api_type, actual_name = selected_api.split(":", 1)
+        else:
+            api_type = "zone"
+            actual_name = selected_api
+            
+        api_schema = RESOURCE_TYPES.get(api_type, RESOURCE_TYPES["zone"])
+            
+        for t, v in api_schema.items():
             process_type(
                 action=action, type_path=selected_api, resource_type=t,
                 type_tree=v, config=config[selected_api],
                 iac_config=iac_config, kubeconfig=kubeconfig,
-                dry_run=dry_run, parents=[{'name': selected_api}],
+                dry_run=dry_run, parents=[{'name': actual_name}],
                 extra_args=extra_args
             )
     return True
