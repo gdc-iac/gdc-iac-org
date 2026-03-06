@@ -13,17 +13,27 @@ spec:
     description: {{ $role.description | quote }}
     stage: {{ $role.stage | quote }}
     scope: {{ default "organization" $role.scope | quote }}
+    {{- if $role.roleNamespaces }}
     roleNamespaces:
     {{- range $ns := $role.roleNamespaces }}
       - {{ $ns }}
-    {{- end }} 
+    {{- end }}
+    {{- end }}
   {{- if $role.globalRules }}
-  globalRules:  
-   {{ $role.globalRules | toYaml | replace "|" "" | indent 4 }}
-   {{- end }}
-   {{- if $role.zonalRules }}
+  globalRules:
+{{- if typeIs "string" $role.globalRules }}
+{{ $role.globalRules | indent 4 }}
+{{- else }}
+{{ $role.globalRules | toYaml | indent 4 }}
+{{- end }}
+  {{- end }}
+  {{- if $role.zonalRules }}
   zonalRules:
-   {{ $role.zonalRules | toYaml | replace "|" "" | indent 4 }}
-   {{- end }}
+{{- if typeIs "string" $role.zonalRules }}
+{{ $role.zonalRules | indent 4 }}
+{{- else }}
+{{ $role.zonalRules | toYaml | indent 4 }}
+{{- end }}
+  {{- end }}
 {{- end }}
 {{- end }}

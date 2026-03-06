@@ -293,7 +293,7 @@ def process_type(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
             )
             release_name = f"{parent_name}-{resource_type}-{obj_name}"
-            resource_config = {resource_type: [{
+            resource_config = {resource_type.replace("-", ""): [{
                 **obj,
                 'namespace': parent_namespace,
                 'location': obj.get('location', parents[0].get('name'))
@@ -321,7 +321,7 @@ def process_type(
         if resource_scope != parent.get("name", type_path):
             skip_helm = True
         release_name = f"{parent_name}-{resource_type}-{obj_name}"
-        resource_config = {resource_type: [{
+        resource_config = {resource_type.replace("-", ""): [{
             **obj,
             'namespace': parent_namespace
         }]}
