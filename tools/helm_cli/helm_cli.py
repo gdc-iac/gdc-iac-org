@@ -8,11 +8,19 @@ to dispatch contextual variables into local GDCH helm charts (such as 'gdc-iac',
 'gdc-iam-role-bindings', 'gdc-project-network-policies').
 
 Usage Examples:
-python3 helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d2-user.yaml --dry-run -v
-python3 helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --dry-run -v
 
-python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d2-user.yaml -a install -a upgrade -v
-python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml -a install -a upgrade -v
+D2 user
+
+python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py template /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+
+python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py upgrade /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+
+D4 shared
+
+python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py template /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+
+python3 /mnt/c/temp/DGA/Repo/tools/helm_cli/helm_cli.py upgrade /mnt/c/temp/DGA/Repo/examples/multi-value-org/d4-shared.yaml --api global,lux-central1-b --api-kubeconfig ${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-global-api.kubeconfig,${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}.kubeconfig -v
+
 """
 
 import argparse
