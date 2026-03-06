@@ -1,4 +1,9 @@
 iac:
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: "gdch-infra-operator-fop-iac001@opscenter.local"
+- role: "project-bucket-admin"
+  subject_kind: "User"
   subject_name: "gdch-infra-operator-fop-iac001@opscenter.local"
 global:
   admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"

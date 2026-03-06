@@ -87,7 +87,7 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 ## Configuration
 
 The tool expects a YAML configuration file that structures resources under specific API groups. The supported structure includes:
-```
+```yaml
 iac:
 - role: "project-iam-admin"
   subject_kind: "User"
@@ -97,10 +97,13 @@ global:
     - projects
         - iam-roles
         - iam-role-bindings
+        - project-network-policies
 <zone>:
     clusters:
     - projects:
         - buckets
+        - iam-role-bindings
+        - project-network-policies
 ```
 ## How it works
 
