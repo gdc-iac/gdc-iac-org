@@ -5,7 +5,7 @@ apiVersion: resourcemanager.gdc.goog/v1
 kind: ProjectBinding
 metadata:
   name: {{ $cluster.name }}-{{ $project }}
-  namespace: {{ required "A valid namespace is required" $cluster.namespace }}
+  namespace: platform
   labels:
     resourcemanager.gdc.goog/projectbinding-for-user-project: "true"
 spec:

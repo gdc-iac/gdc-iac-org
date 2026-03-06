@@ -33,13 +33,16 @@ from typing import List, Tuple, Union
 
 import yaml
 
-RESOURCE_TYPES = {
+RESOURCE_SCHEMA = {
+    # str: each resource instance is a separate release
+    # list: all resource instances are a single release
     "zone": {
         "clusters": str,
         "projects": {
-            "TYPE_SCOPE": "global",
+            "TYPE_SCOPE": "platform",
             "buckets": str,
-            "notebooks": str
+            "notebooks": str,
+            "harbors": str
         }
     },
     "user": {
@@ -48,7 +51,7 @@ RESOURCE_TYPES = {
     "global": {
         "iam-roles": str,
         "projects": {
-            "TYPE_SCOPE": "global",
+            "TYPE_SCOPE": "platform",
             "IAC": list,
             "iam-roles": str,
             "iam-role-bindings": list,
@@ -67,51 +70,6 @@ def setup_logging(verbose: bool = False) -> None:
         format="%(asctime)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-
-def resource_config(
-    resource_type: str, obj: dict, parents: List[dict]
-) -> dict:
-    """
-    Constructs the target values.yaml configuration dictionary corresponding 
-    to the specific GDCH Helm Chart requirements.
-
-    Args:
-        resource_type: The type of the resource (e.g., 'buckets', 'project-network-policies').
-        obj: The resource properties dictionary.
-        parents: A list of parent objects providing context (e.g. namespaces).
-
-    Returns:
-        A dictionary representing the transformed config for the resource.
-    """
-    parent = parents[-1]
-    if resource_type == "iac":
-        return {
-            'namespace': parent.get('name'),
-            'iamrolebindings': obj
-        }
-    if resource_type == "buckets":
-        return {"buckets": [{
-            **obj,
-            'namespace': parent.get('name'),
-            'location': obj.get('location', parents[0].get('name'))
-        }]}
-    if resource_type == "iam-role-bindings":
-        return {
-            'namespace': parent.get('name'),
-            'iamrolebindings': obj
-        }
-    if resource_type == "project-network-policies":
-        return {
-            'namespace': parent.get('name'),
-            'projectnetworkpolicies': obj
-        }
-    if resource_type == "notebooks":
-        return {"notebooks": [{
-            **obj,
-            'namespace': parent.get('name')
-        }]}
-    return {resource_type.replace("-", ""): [obj]}
 
 
 def release_name(
@@ -223,8 +181,10 @@ def call_global_action(
 
 def call_resource_action(
     kubeconfig: str,
-    action: str, resource_type: str, obj: Union[dict, list],
-    parents: List[dict], extra_args: List[str]
+    action: str, 
+    resource_config: dict,
+    release_name: str,
+    extra_args: List[str]
 ) -> None:
     """
     Executes a helm action for a specific resource.
@@ -240,16 +200,14 @@ def call_resource_action(
         parents: The parent context.
         extra_args: Extra arguments for the helm command.
     """
-    release = release_name(resource_type, obj, parents)
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-            values_yaml = yaml.safe_dump(
-                resource_config(resource_type, obj, parents))
+            values_yaml = yaml.safe_dump(resource_config)
             logging.debug(values_yaml)
             tmp.write(values_yaml)
             tmp.flush()
             cmd = action_cmd(
-                kubeconfig=kubeconfig, action=action, release_name=release,
+                kubeconfig=kubeconfig, action=action, release_name=release_name,
                 chart=f"../../charts/gdc-{resource_type}",
                 values_file=tmp.name, extra_args=extra_args
             )
@@ -294,14 +252,20 @@ def process_type(
     """
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
+    # IAC is a special case, it's not a resource type but a configuration fragment
     if resource_type == "IAC":
         logging.debug(
             f"{action} iac {parent.get('name', type_path)}/{resource_type}")
+        release = release_name(resource_type, iac_config, parents)
+        resource_config = {
+            'namespace': parent.get('name'),
+            'iamrolebindings': iac_config
+        }
         if not dry_run:
             call_resource_action(
                 kubeconfig=kubeconfig,
                 action=action, resource_type="iac",
-                obj=iac_config, parents=parents, extra_args=extra_args
+                obj=resource_config, parents=parents, extra_args=extra_args
             )
         return
     if resource_type not in config:
@@ -310,6 +274,11 @@ def process_type(
         logging.debug(
             f"{action} list {parent.get('name', type_path)}/{resource_type}")
         obj = config[resource_type]
+        release = release_name(resource_type, obj, parents)
+        resource_config = {
+            'namespace': parent.get('name'),
+            resource_type.replace("-", "") : obj
+        }
         if not dry_run:
             call_resource_action(
                 kubeconfig=kubeconfig,
@@ -324,6 +293,15 @@ def process_type(
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
             )
+            release = release_name(resource_type, obj, parents)
+            resource_config = {resource_type: [{
+                **obj,
+                'namespace': parent.get('name')
+            }]}
+            if resource_type == "buckets":
+                resource_config.update({
+                    'location': obj.get('location', parents[0].get('name'))
+            })
             if not dry_run:
                 call_resource_action(
                     kubeconfig=kubeconfig,
@@ -331,6 +309,7 @@ def process_type(
                     obj=obj, parents=parents, extra_args=extra_args
                 )
         return
+    # type_tree is a dict, generate one release per object if TYPE_SCOPE matches parent and recurse
     for i, obj in enumerate(config[resource_type]):
         parent_name = parent.get('name', type_path)
         obj_name = obj.get('name', obj)
@@ -342,6 +321,10 @@ def process_type(
         skip_helm = dry_run
         if resource_scope != parent.get("name", type_path):
             skip_helm = True
+        resource_config = {resource_type: [{
+            **obj,
+            'namespace': parent.get('name')
+        }]}
         if not skip_helm:
             call_resource_action(
                 kubeconfig=kubeconfig,
@@ -366,7 +349,7 @@ def process(
     """
     Entry point for traversing the extracted Python dictionary generated by PyYAML 
     loading the custom YAML config, iteratively generating targeted Helm executions 
-    against specific Kubernetes GDCH API scopes based on RESOURCE_TYPES definitions.
+    against specific Kubernetes GDCH API scopes based on RESOURCE_SCHEMA definitions.
 
     Args:
         config: The complete configuration dictionary loaded from YAML.
@@ -398,14 +381,14 @@ def process(
         
         if selected_api == "global":
             api_type = "global"
-            actual_name = "global"
+            actual_name = "platform"
         elif ":" in selected_api:
             api_type, actual_name = selected_api.split(":", 1)
         else:
             api_type = "zone"
             actual_name = selected_api
             
-        api_schema = RESOURCE_TYPES.get(api_type, RESOURCE_TYPES["zone"])
+        api_schema = RESOURCE_SCHEMA.get(api_type, RESOURCE_SCHEMA["zone"])
             
         for t, v in api_schema.items():
             process_type(

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gdc-harbors
+description: A Helm chart for creating GDCH Harbor Instances
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

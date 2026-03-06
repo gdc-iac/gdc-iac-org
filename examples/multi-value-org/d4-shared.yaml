@@ -101,6 +101,10 @@ lux-central1-b:
     - name: *tools_bucket_name
     - name: *ro_bucket_name
     - name: *rw_bucket_name
+    harbors:
+    - name: "data-ets-mhs"
+      projects:
+      - name: "data-ets-mhs"
   clusters:
   - name: "clstr-20260224"
     namespace: "platform"

@@ -3,7 +3,7 @@ apiVersion: cluster.gdc.goog/v1
 kind: Cluster
 metadata:
   name: {{ required "A valid cluster name is required" $cluster.name }}
-  namespace: {{ required "A valid namespace is required" $cluster.namespace }}
+  namespace: platform
   {{- with $cluster.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
