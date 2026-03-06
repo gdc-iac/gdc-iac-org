@@ -1,0 +1,17 @@
+{{- range $harbor := .Values.harbors }}
+{{- if $harbor.projects }}
+{{- range $project := $harbor.projects }}
+---
+apiVersion: artifactregistry.gdc.goog/v1
+kind: HarborInstanceProject
+metadata:
+  name: {{ printf "%s-%s" $harbor.name $project.name }}
+  namespace: {{ $harbor.namespace }}
+spec:
+  autoScan: true
+  harborInstanceRef:
+    name: {{ $harbor.name }}
+  projectName: {{ $project.name }}
+{{- end }}
+{{- end }}
+{{- end }}

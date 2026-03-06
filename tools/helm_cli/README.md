@@ -108,7 +108,8 @@ global:
       - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
       - project-network-policies # Mapped to: charts/gdc-project-network-policies
       - notebooks # Mapped to: charts/gdc-notebooks
-      - harbors # Mapped to: charts/gdc-harbors
+      - harbors: # Mapped to: charts/gdc-harbors
+        - projects: # Nested array of harbor projects
 <zone2>:
     clusters: # Mapped to: charts/gdc-clusters
     projects: # Mapped to: charts/gdc-projects
@@ -116,7 +117,8 @@ global:
       - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
       - project-network-policies # Mapped to: charts/gdc-project-network-policies
       - notebooks # Mapped to: charts/gdc-notebooks
-      - harbors # Mapped to: charts/gdc-harbors
+      - harbors: # Mapped to: charts/gdc-harbors
+        - projects: # Nested array of harbor projects
 ```
 ## How it works
 

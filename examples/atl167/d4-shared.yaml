@@ -113,7 +113,7 @@ us-east67-b:
     harbors:
     - name: "data-ets-mhs"
       projects:
-      - name: "data-ets-mhs"
+      - name: "data-ets-1"
   clusters:
   - name: "stress-test"
     clusterNetwork:
