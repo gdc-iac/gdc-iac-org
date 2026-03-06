@@ -95,18 +95,18 @@ iac: # Mapped to: charts/gdc-iac
   subject_kind: "User"
   subject_name: "fop-iac001@example.com"
 global:
-    - iam-roles # Mapped to: charts/gdc-iam-roles
-    - projects: # Mapped to: charts/gdc-projects
-        - iam-roles # Mapped to: charts/gdc-iam-roles
-        - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
-        - project-network-policies # Mapped to: charts/gdc-project-network-policies
+    iam-roles # Mapped to: charts/gdc-iam-roles
+    projects: # Mapped to: charts/gdc-projects
+      - iam-roles # Mapped to: charts/gdc-iam-roles
+      - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
+      - project-network-policies # Mapped to: charts/gdc-project-network-policies
 <zone>:
     clusters: # Mapped to: charts/gdc-clusters
-    - projects: # Mapped to: charts/gdc-projects
-        - buckets # Mapped to: charts/gdc-buckets
-        - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
-        - project-network-policies # Mapped to: charts/gdc-project-network-policies
-        - notebooks # Mapped to: charts/gdc-notebooks
+    projects: # Mapped to: charts/gdc-projects
+      - buckets # Mapped to: charts/gdc-buckets
+      - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
+      - project-network-policies # Mapped to: charts/gdc-project-network-policies
+      - notebooks # Mapped to: charts/gdc-notebooks
 ```
 ## How it works
 
