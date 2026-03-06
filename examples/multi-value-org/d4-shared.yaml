@@ -57,6 +57,18 @@ global:
       - name: "data-ets-mhs"
         projects:
         - name: "data-ets-mhs"
+      project-network-policies:
+      - subject:
+          subject_type: ManagedService
+          managed_services:
+            match_types:
+            - 'mhs'
+        ingress:
+        - from:
+          - project_selector:
+              projects:
+                match_names:
+                - "d4-ets-user-1"
       iam-role-bindings: 
       - role: "project-grafana-viewer"
         subject_kind: "User"
