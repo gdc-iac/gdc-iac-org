@@ -103,7 +103,16 @@ lux-central1-b:
     harbors:
     - name: "data-ets-mhs"
       projects:
+      # --- First Project ---
       - name: "data-ets-mhs"
+        autoscan: false
+        creatorkind: "User"
+        creatorname: "gdch-infra-operator-sdobrica-sa@opscenter.local"
+      # --- Second Project ---
+      - name: "prj-20260224"
+        autoscan: false
+        creatorkind: "User"
+        creatorname: "gdch-infra-operator-sdobrica-sa@opscenter.local"
   clusters:
   - name: "clstr-20260224"
     namespace: "platform"

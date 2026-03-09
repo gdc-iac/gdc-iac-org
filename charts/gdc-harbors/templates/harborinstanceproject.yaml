@@ -8,7 +8,10 @@ metadata:
   name: {{ printf "%s-%s" $harbor.name $project.name }}
   namespace: {{ $harbor.namespace }}
 spec:
-  autoScan: true
+  autoScan: {{ $project.autoscan }}
+  creatorSubject:
+    kind: {{ $project.creatorkind }}
+    name: {{ $project.creatorname }}
   harborInstanceRef:
     name: {{ $harbor.name }}
   projectName: {{ $project.name }}
