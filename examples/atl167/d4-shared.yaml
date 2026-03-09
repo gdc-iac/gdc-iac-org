@@ -4,7 +4,7 @@ iac:
   # If invoked by service account, subject_kind is ServiceAccount
 - role: "project-iam-admin"
   subject_kind: "User"
-  subject_name: &iac_subject_name "fop-iac001@example.com"
+  subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
 - role: "project-bucket-admin"
   subject_kind: "User"
   subject_name: *iac_subject_name
@@ -47,7 +47,7 @@ iac:
   subject_kind: "ServiceAccount"
   subject_name: *iac_sa
 global:
-  admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"
+  admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
   tools_bucket_name: &tools_bucket_name "d4-ets-s3-tools"
   tools_bucket_role: &tools_bucket_role "d4-ets-s3-tools"
   ro_bucket_name: &ro_bucket_name "d4-ets-s3-ro1"
@@ -94,10 +94,6 @@ global:
           - read-object
   projects:
     - name: *shared_infra_project_name
-      harbor:
-      - name: "data-ets-shared-infra-mhs"
-        projects:
-        - name: "data-ets-001-001"
       project-network-policies:
       - subject:
           subject_type: ManagedService
@@ -135,7 +131,7 @@ global:
       - role: "harbor-project-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name
-us-east67-b:
+lux-central1-b:
   projects:
   - name: *shared_infra_project_name
     buckets:
@@ -145,20 +141,30 @@ us-east67-b:
     harbors:
     - name: "data-ets-mhs"
       projects:
-      - name: "data-ets-1"
+      # --- First Project ---
+      - name: "data-ets-mhs"
+        autoscan: false
+        creatorkind: "User"
+        creatorname: "gdch-infra-operator-sdobrica-sa@opscenter.local"
+      # --- Second Project ---
+      - name: "prj-20260224"
+        autoscan: false
+        creatorkind: "User"
+        creatorname: "gdch-infra-operator-sdobrica-sa@opscenter.local"
   clusters:
-  - name: "stress-test"
+  - name: "clstr-20260224"
+    namespace: "platform"
     clusterNetwork:
-      podCIDRSize: 21
-      serviceCIDRSize: 23
+      podCIDRSize: 18
+      serviceCIDRSize: 20
     initialVersion:
-      kubernetesVersion: "1.30.12-gke.300"
+      kubernetesVersion: "1.29.12-gke.800"
     loadBalancer:
       ingressServiceIPSize: 20
     nodePools:
-    - name: "pool-1"
-      machineTypeName: "n3-standard-4-gdc"
-      nodeCount: 3
+    - name: "pool-20260224"
+      machineTypeName: "n3-standard-16-gdc"
+      nodeCount: 5
     releaseChannel: "UNSPECIFIED"
     projectBindings:
     - *shared_infra_project_name
