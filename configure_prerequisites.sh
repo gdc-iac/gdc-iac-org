@@ -126,3 +126,5 @@ gdcloud clusters get-credentials ${CLUSTER_NAME:?} --zone ${ZONE:?}
 IAC_TOKEN=$(gdcloud auth print-identity-token --audiences=https://${CLUSTER_NAME:?}-kube.apiserver.${ORG_NAME:?}.${ZONE:?}.${ROOT_ZONE:?} --zone=${ZONE:?})
 kubectl config set-credentials "${IAC_SA}" --token="${IAC_TOKEN}"
 kubectl config set-context --current --user="${IAC_SA}"
+
+export HELM_NAMESPACE=$IAC_PROJECT
