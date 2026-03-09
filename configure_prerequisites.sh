@@ -4,6 +4,7 @@
 
 export ORG_NAME="org-15357"
 export IAC_PROJECT="iac-root"
+export user_project_name="d2-ets-user-1"
 export IAC_USER="gdch-infra-operator-fop-iac001@opscenter.local"
 export IAC_SA="iac001-sa"
 export ZONE="lux-central1-b"
@@ -86,6 +87,16 @@ harbor-instance-admin \
 project-networkpolicy-admin \
 ; do \
 gdcloud projects add-iam-policy-binding $shared_infra_project_name \
+--member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
+--role=$role;\
+done
+
+for role in \
+project-bucket-admin \
+project-iam-admin \
+workbench-notebooks-admin \
+; do \
+gdcloud projects add-iam-policy-binding $user_project_name \
 --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
 --role=$role;\
 done
