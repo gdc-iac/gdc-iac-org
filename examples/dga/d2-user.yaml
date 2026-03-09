@@ -16,7 +16,7 @@ global:
   rw_bucket_name: &rw_bucket_role "d2-ets-s3-rw1"
   shared_infra_project_name: &shared_infra_project_name "d2-ets-shared-infra"
   user_project_name: &user_project_name "d2-ets-user-1"
-  service_account_name: &service_account_name "serviceAccount:iac-root:iac001-sa"
+  service_account_name: &service_account_name "serviceaccount:iac-root:iac001-sa"
   iam-role-bindings: 
   - role: *tools_bucket_role
     subject_kind: "User"
@@ -57,6 +57,9 @@ global:
       - role: "workbench-notebooks-admin"
         subject_kind: "User"
         subject_name: *iac_subject_name
+      - role: "workbench-notebooks-admin"
+        subject_kind: "ServiceAccount"
+        subject_name: *service_account_name
 lux-central1-b:
   projects:
   - name: *user_project_name
