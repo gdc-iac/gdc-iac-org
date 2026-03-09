@@ -56,10 +56,6 @@ global:
           - read-object
   projects:
     - name: *shared_infra_project_name
-      harbor:
-      - name: "data-ets-shared-infra-mhs"
-        projects:
-        - name: "data-ets-001-001"
       project-network-policies:
       - subject:
           subject_type: ManagedService
