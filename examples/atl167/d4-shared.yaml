@@ -30,7 +30,7 @@ iac:
 <<<<<<< HEAD
   subject_name: &iac_sa "system:serviceaccount:iac-root:iac001-sa"
 =======
-  subject_name: &iac_sa "serviceaccount:iac-root:iac001-sa"
+  subject_name: &iac_sa "system:serviceaccount:iac-root:iac001-sa"
 >>>>>>> fe1ddc8 (Service account name)
 - role: "project-bucket-admin"
   subject_kind: "ServiceAccount"
