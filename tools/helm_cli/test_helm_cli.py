@@ -295,10 +295,19 @@ class TestHelmCli(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch("helm_cli.call_resource_action")
-    def test_process_type_str(self, mock_call_resource_action):
+    def test_process_type_str_list(self, mock_call_resource_action):
         helm_cli.process_type(
             "template", "root", "my-str-res", str,
             {"my-str-res": [{"name": "o1"}]}, None, None, False,
+            [{"name": "root"}], []
+        )
+        mock_call_resource_action.assert_called_once()
+
+    @patch("helm_cli.call_resource_action")
+    def test_process_type_str_dict(self, mock_call_resource_action):
+        helm_cli.process_type(
+            "template", "root", "billing", str,
+            {"billing": {"accounts": {"name": "acc", "id": "123"}, "account_ref": "acc"}}, None, None, False,
             [{"name": "root"}], []
         )
         mock_call_resource_action.assert_called_once()

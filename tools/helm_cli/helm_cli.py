@@ -62,12 +62,14 @@ RESOURCE_SCHEMA = {
     },
     "global": {
         "iam-roles": str,
+        "billing": str,
         "projects": {
             "TYPE_SCOPE": "global",
             "IAC": list,
             "iam-roles": str,
             "iam-role-bindings": list,
-            "project-network-policies": list
+            "project-network-policies": list,
+            "billing": str
         }
     }
 }
@@ -287,7 +289,30 @@ def process_type(
             )
         return
     if type_tree is str:  # generate one release per object
-        for i, obj in enumerate(config[resource_type]):
+        items = config[resource_type]
+        if isinstance(items, dict):
+            obj_name = items.get('name', '')
+            release_name = f"{parent_name}-{resource_type}-{obj_name}" if obj_name else f"{parent_name}-{resource_type}"
+            logging.debug(
+                f"{action} object {parent_name}/{resource_type}/{obj_name}"
+            )
+            resource_config = {resource_type.replace("-", ""): {
+                **items,
+                'namespace': parent_namespace,
+                'location': items.get('location', parents[0].get('name'))
+            }}
+            if not dry_run:
+                call_resource_action(
+                    kubeconfig=kubeconfig,
+                    action=action,
+                    resource_type=resource_type,
+                    resource_config=resource_config,
+                    release_name=release_name,
+                    extra_args=extra_args
+                )
+            return
+
+        for i, obj in enumerate(items):
             obj_name = obj.get('name', obj)
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"

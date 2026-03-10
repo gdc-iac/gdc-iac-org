@@ -1,0 +1,14 @@
+{{- if .Values.billing.accounts }}
+{{- $acc := .Values.billing.accounts }}
+---
+apiVersion: billing.global.gdc.goog/v1
+kind: BillingAccount
+metadata:
+  name: {{ $acc.name | required "name is required" }}
+  namespace: platform
+spec:
+  displayName: {{ $acc.display_name | required "display_name is required" }}
+  paymentSystemConfig:
+    cloudBillingConfig:
+      accountID: {{ $acc.cloud_billing_config_account_id | required "cloud_billing_config_account_id is required" }}
+{{- end }}
