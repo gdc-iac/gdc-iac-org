@@ -69,7 +69,7 @@ lux-central1-b:
       user_cluster_name: "clstr-20260224"
       sidecars:
       - name: "s3-proxy"
-        image: "us-east67-b-docker.pkg.dev/d2-ets-user-1/repo/s3-proxy:latest"
+        image: "data-ets-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-mhs/s3-proxy:2.0"
         volumeMounts:
         - mountPath: /proxy/conf
           name: s3-proxy-config
