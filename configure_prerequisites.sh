@@ -57,6 +57,9 @@ organization-iam-admin \
 project-creator \
 project-editor \
 user-cluster-admin \
+organization-billing-account-admin \
+organization-billing-account-user \
+organization-billing-manager \
 ; do \
     gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
     --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
