@@ -319,6 +319,8 @@ gdcloud projects create $IAC_PROJECT
 ### Grant IAC_USER required Org roles:
 for role in \
   organization-iam-admin \
+  organization-billing-account-admin \
+  organization-billing-manager \
   project-creator \
   project-editor \
   user-cluster-admin \
