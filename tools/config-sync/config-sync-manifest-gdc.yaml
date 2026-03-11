@@ -12,29 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    configmanagement.gke.io/system: "true"
-  name: config-management-monitoring
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    configmanagement.gke.io/system: "true"
-  name: config-management-system
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    configmanagement.gke.io/arch: csmr
-    configmanagement.gke.io/system: "true"
-    control-plane: controller-manager
-  name: resource-group-system
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -5334,7 +5311,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: reconciler-manager
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -5343,7 +5320,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-sa
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -5352,7 +5329,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-leader-election-role
-  namespace: resource-group-system
+  namespace: iac-root
 rules:
 - apiGroups:
   - ""
@@ -5546,7 +5523,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-leader-election-rolebinding
-  namespace: resource-group-system
+  namespace: iac-root
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -5554,7 +5531,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: resource-group-sa
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -5570,7 +5547,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: reconciler-manager
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -5586,7 +5563,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: resource-group-sa
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5620,7 +5597,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-collector
-  namespace: config-management-monitoring
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5658,7 +5635,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-agent
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5716,7 +5693,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-agent-reconciler
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -5725,7 +5702,7 @@ data:
     kind: Deployment
     metadata:
       name: # this field will be assigned dynamically by the reconciler-manager
-      namespace: config-management-system
+      namespace: iac-root
       labels:
         app: reconciler
         configmanagement.gke.io/system: "true"
@@ -5754,7 +5731,7 @@ data:
           serviceAccountName: # this field will be assigned dynamically by the reconciler-manager
           containers:
           - name: hydration-controller
-            image: gcr.io/config-management-release/hydration-controller:v1.22.2
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/hydration-controller:v1.22.2
             command:
             - /hydration-controller
             args:
@@ -5782,7 +5759,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: reconciler
-            image: gcr.io/config-management-release/reconciler:v1.22.2
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/
             command:
             - /reconciler
             args:
@@ -5822,7 +5799,7 @@ data:
                 - ALL
             imagePullPolicy: IfNotPresent
           - name: git-sync
-            image: gcr.io/config-management-release/git-sync:v4.4.2-gke.3__linux_amd64
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/
             args: ["--root=/repo/source", "--link=rev", "--max-failures=30", "--error-file=error.json"]
             volumeMounts:
             - name: repo
@@ -5839,7 +5816,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: gcenode-askpass-sidecar
-            image: gcr.io/config-management-release/gcenode-askpass-sidecar:v1.22.2
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/gcenode-askpass-sidecar:v1.22.2
             args: ["--port=9102", "--logtostderr"]
             imagePullPolicy: IfNotPresent
             terminationMessagePolicy: File
@@ -5851,7 +5828,7 @@ data:
                 drop:
                 - ALL
           - name: oci-sync
-            image: gcr.io/config-management-release/oci-sync:v1.22.2
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/oci-sync:v1.22.2
             args: ["--root=/repo/source", "--dest=rev", "--max-sync-failures=30", "--error-file=error.json"]
             volumeMounts:
             - name: repo
@@ -5865,7 +5842,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: helm-sync
-            image: gcr.io/config-management-release/helm-sync:v1.22.2
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/helm-sync:v1.22.2
             args: ["--root=/repo/source", "--dest=rev", "--max-sync-failures=30", "--error-file=error.json"]
             volumeMounts:
             - name: repo
@@ -5882,7 +5859,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: otel-agent
-            image: gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2
+            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
             command:
             - /otelcontribcol
             args:
@@ -6020,7 +5997,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: reconciler-manager-cm
-  namespace: config-management-system
+  namespace: iac-root
 ---
 apiVersion: v1
 data:
@@ -6057,7 +6034,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: resource-group-otel-agent
-  namespace: resource-group-system
+  namespace: iac-root
 ---
 apiVersion: v1
 kind: Service
@@ -6067,7 +6044,7 @@ metadata:
     configmanagement.gke.io/system: "true"
     monitored: "true"
   name: otel-collector
-  namespace: config-management-monitoring
+  namespace: iac-root
 spec:
   ports:
   - name: opencensus
@@ -6090,7 +6067,7 @@ metadata:
   labels:
     configmanagement.gke.io/system: "true"
   name: container-limits
-  namespace: config-management-system
+  namespace: iac-root
 spec:
   limits:
   - defaultRequest:
@@ -6107,7 +6084,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: otel-collector
-  namespace: config-management-monitoring
+  namespace: iac-root
 spec:
   minReadySeconds: 5
   progressDeadlineSeconds: 120
@@ -6128,7 +6105,7 @@ spec:
         - --feature-gates=-pkg.translator.prometheus.NormalizeName
         command:
         - /otelcontribcol
-        image: gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2
+        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
         name: otel-collector
         ports:
         - containerPort: 55678
@@ -6183,7 +6160,7 @@ metadata:
     configmanagement.gke.io/arch: csmr
     configmanagement.gke.io/system: "true"
   name: reconciler-manager
-  namespace: config-management-system
+  namespace: iac-root
 spec:
   minReadySeconds: 10
   replicas: 1
@@ -6208,7 +6185,7 @@ spec:
         - configMapRef:
             name: reconciler-manager
             optional: true
-        image: gcr.io/config-management-release/reconciler-manager:v1.22.2
+        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/reconciler-manager:v1.22.2
         name: reconciler-manager
         resources:
           requests:
@@ -6262,7 +6239,7 @@ spec:
               fieldPath: metadata.labels['configsync.gke.io/deployment-name']
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: k8s.pod.name=$(KUBE_POD_NAME),k8s.pod.namespace=$(KUBE_POD_NAMESPACE),k8s.pod.uid=$(KUBE_POD_UID),k8s.pod.ip=$(KUBE_POD_IP),k8s.node.name=$(KUBE_NODE_NAME),k8s.deployment.name=$(KUBE_DEPLOYMENT_NAME)
-        image: gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2
+        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
         name: otel-agent
         ports:
         - containerPort: 55678
@@ -6312,7 +6289,7 @@ metadata:
     configmanagement.gke.io/system: "true"
     control-plane: controller-manager
   name: resource-group-controller-manager
-  namespace: resource-group-system
+  namespace: iac-root
 spec:
   replicas: 1
   selector:
@@ -6336,7 +6313,7 @@ spec:
         env:
         - name: OC_RESOURCE_LABELS
           value: k8s.container.name="manager"
-        image: gcr.io/config-management-release/resource-group-controller:v1.22.2
+        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/resource-group-controller:v1.22.2
         name: manager
         resources:
           requests:
@@ -6386,7 +6363,7 @@ spec:
               fieldPath: metadata.labels['configsync.gke.io/deployment-name']
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: k8s.pod.name=$(KUBE_POD_NAME),k8s.pod.namespace=$(KUBE_POD_NAMESPACE),k8s.pod.uid=$(KUBE_POD_UID),k8s.pod.ip=$(KUBE_POD_IP),k8s.node.name=$(KUBE_NODE_NAME),k8s.deployment.name=$(KUBE_DEPLOYMENT_NAME)
-        image: gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2
+        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
         name: otel-agent
         ports:
         - containerPort: 55678

@@ -1,0 +1,79 @@
+iac:
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+global:
+  user_subject_name: &user_subject_name "gdch-infra-operator-fop-etsuser@opscenter.local"
+  admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
+  tools_bucket_role: &tools_bucket_role "d2-ets-s3-tools"
+  ro_bucket_role: &ro_bucket_role "d2-ets-s3-ro1"
+  rw_bucket_name: &rw_bucket_role "d2-ets-s3-rw1"
+  shared_infra_project_name: &shared_infra_project_name "d2-ets-shared-infra"
+  user_project_name: &user_project_name "d2-ets-user-1"
+  service_account_name: &service_account_name "serviceaccount:iac-root:iac001-sa"
+  iam-role-bindings: 
+  - role: *tools_bucket_role
+    subject_kind: "User"
+    subject_name: *user_subject_name
+    namespace: *shared_infra_project_name
+  - role: *rw_bucket_role
+    subject_kind: "User"
+    subject_name: *user_subject_name
+    namespace: *shared_infra_project_name
+  - role: *ro_bucket_role
+    subject_kind: "User"
+    subject_name: *user_subject_name
+    namespace: *shared_infra_project_name
+  projects:
+    - name: *user_project_name
+      iam-role-bindings: 
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workbench-notebooks-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "secret-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "namespace-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workbench-notebooks-admin"
+        subject_kind: "User"
+        subject_name: *iac_subject_name
+      - role: "workbench-notebooks-admin"
+        subject_kind: "ServiceAccount"
+        subject_name: *service_account_name
+lux-central1-b:
+  projects:
+  - name: *user_project_name
+    notebooks:
+    - name: "d2-ets-user-1-nb-01"
+      nb_jupyter_image: "gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/tf2-gpu:m125"
+      user_cluster_name: "clstr-20260224"
+      sidecars:
+      - name: "s3-proxy"
+        image: "us-east67-b-docker.pkg.dev/d2-ets-user-1/repo/s3-proxy:latest"
+        volumeMounts:
+        - mountPath: /proxy/conf
+          name: s3-proxy-config
+        volumes:
+        - name: s3-proxy-config
+          persistentVolumeClaim:
+            claimName: "d2-ets-user-1-nb-01-s3-proxy-config"

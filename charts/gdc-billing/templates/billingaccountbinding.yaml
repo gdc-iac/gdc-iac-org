@@ -1,0 +1,12 @@
+{{- if .Values.billing.account_ref }}
+---
+apiVersion: billing.global.gdc.goog/v1
+kind: BillingAccountBinding
+metadata:
+  name: {{ regexReplaceAll "\\W+" (required "A valid namespace is required" .Values.billing.namespace) "-" }}--{{ regexReplaceAll "\\W+" (required "A valid account_ref is required" .Values.billing.account_ref) "-" }}
+  namespace: {{ .Values.billing.namespace }}
+spec:
+  billingAccountRef:
+    name: {{ .Values.billing.account_ref }}
+    namespace: platform
+{{- end }}

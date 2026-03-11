@@ -1,11 +1,23 @@
 # yaml-language-server: $schema=values.schema.json
 
-# GDC Projects Configuration
-# Represents a namespace that spans across multiple user clusters in an organization. Define projects to be created
-projects: {}
-  # Example project configuration:
-  # project1:
-  #   # Required: Name of the GDC project
-  #   name: "project-x"
-  #   # Required: Namespace of the project (options: "platform" or "gpc-system")
-  #   namespace: "platform"
+# GDC Clusters Configuration
+clusters:
+  # Example cluster configuration based on cluster.gdc.goog/v1
+  #
+  # - name: "user-vm-3"                         # Required: Name of the cluster
+  #   namespace: "platform"                     # Required: Namespace in the admin cluster
+  #   clusterNetwork:                           # Optional: Networking sizes
+  #     podCIDRSize: 21
+  #     serviceCIDRSize: 23
+  #   initialVersion:
+  #     kubernetesVersion: "1.30.12-gke.300"    # Version of GDCH Kubernetes
+  #   loadBalancer:
+  #     ingressServiceIPSize: 21
+  #   nodePools:                                # Optional: Defines node pools to deploy
+  #     - name: "worker-node-pool"
+  #       machineTypeName: "n3-standard-16-gdc"
+  #       nodeCount: 3
+  #   releaseChannel: "UNSPECIFIED"
+  #   projectBindings:                          # Optional: Binds GDCH projects to this cluster
+  #     - "agtest-project"
+  #     - "other-project"

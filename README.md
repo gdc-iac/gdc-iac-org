@@ -1,5 +1,14 @@
 # Introduction
 
+This repository provides a flexible toolkit for managing infrastructure as code (IaC) using predefined YAML configuration files and Helm charts. 
+
+The toolkit allows you to use different tools to template and synchronize configurations based on your operational needs:
+
+- **`helm_cli`**: A custom wrapper script for local or CI/CD usage to process configurations, template charts, and natively deploy to the cluster.
+- **Helmfile**: A declarative tool for managing multiple Helm releases and enforcing deployment order.
+- **Config Sync**: A GitOps operator (optional) for continuously synchronizing cluster state from this repository.
+- **Charts**: A collection of local Helm charts (`charts/` directory) acting as templates for Custom Resources.
+- **YAML Configs**: Unified data files (like `org.yaml` or `tenants.yaml`) used to declare the desired state of resources.
 This framework is using [Helm](https://helm.sh/) as the resource config generator and can use either Helm or [Config-Sync](https://github.com/GoogleContainerTools/config-sync) as the resource state synchronization agent.
 
 Helm creates resources in a predefined way as described in [issue/1228](https://github.com/helm/helm/issues/1228). GDCag is heavily relying on custom resources, and these are created in alphabetical order. This means that for example IAMRole resource comes before Project resource. This blocks possibility of creating single Helm Chart to manage all the resources.
@@ -20,95 +29,18 @@ Due to above, this framework is using layered approach, where single `org.yaml` 
 # Setup
 
 Helm is using the default kubeconfig path. To use different one:
-export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubeconfig
+```
+export KUBECONFIG=<path_to_kubeconfig>
+```
+# Run the connect.sh file and connect with an account with organization-iam-admin permissions
 
-# Bootstrap IaC
-0. Export environment variables (example):
-   ```
-   export ORG_NAME="org-1"
-   export IAC_PROJECT="iac-root"
-   export IAC_USER="fop-iac001@example.com"
-   export IAC_SA="iac001-sa"
-   export GDCH_CONSOLE="console.org-1.zone1.google.gdch.test"
-   ```
-1. Grant IaC Bootstrap User required Org roles:
-   ```
-   for role in \
-   organization-iam-admin \
-   project-creator \
-   project-editor \
-   user-cluster-admin \
-   ; do \
-      gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-      --member="user:$IAC_USER" \
-      --role="$role";\
-   done
-   ```
-2. Create a project to host IaC resources
+chmod +x connect.sh
+./connect.sh
 
-   ```
-   gdcloud auth login (as $IAC_USER)
-   gdcloud projects create $IAC_PROJECT
-   ```
+# Deploy all of the prerequisites to run the helm cli
 
-3. Grant IaC Bootstrap User required `$IAC_PROJECT` roles:
-   ```
-   for role in \
-   secret-admin \
-   project-iam-admin \
-   ; do \
-   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-   --member=user:$IAC_USER \
-   --role=$role;\
-   done
-   ```
-
-4. Follow [documentation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#gdcloud) to create service account:
-   ```
-   gdcloud iam service-accounts create $IAC_SA --project $IAC_PROJECT
-   ```
-
-5. Assign the permissions required by the service account:
-- organization:
-   ```
-   for role in \
-   organization-iam-admin \
-   project-creator \
-   project-editor \
-   user-cluster-admin \
-   ; do \
-      gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-      --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
-      --role="$role";\
-   done
-   ```
-- project:
-   ```
-   for role in \
-   secret-admin \
-   ; do \
-   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-   --member="serviceAccount:$IAC_PROJECT:$IAC_SA" \
-   --role=$role;\
-   done
-   ```
-6. Obtain the Service Account [credentials](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#create-and-add-key-pairs):
-   ```
-   gdcloud iam service-accounts keys create ${IAC_PROJECT}_${IAC_SA}.json \
-      --project=${IAC_PROJECT} \
-      --iam-account=$IAC_SA
-   ```
-
-7. [Generate kubeconfig](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig) file:
-   ```
-   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
-   gdcloud auth print-identity-token --audiences=https://global-api.org-1.zone1.google.gdch.test
-   gdcloud auth print-identity-token --audiences=https://management-kube.apiserver.org-1.zone1.google.gdch.test --zone=zone1
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
-   gdcloud clusters get-credentials global-api
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-zone1.kubeconfig
-   gdcloud clusters get-credentials org-1-admin --zone zone1
-   ```
+chmod +x configure_prerequisites.sh
+./configure_prerequisites.sh
 
 # Deploy Organization Resources using HELM CLI
 1. Configure HELM environment
@@ -116,14 +48,14 @@ export KUBECONFIG=~/workspaces/amg1/adhoc-tools/kubeconfigs/global-api-iac-kubec
    export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
    export HELM_NAMESPACE=$IAC_PROJECT
    ````
-1. Configure HELM to use service account:
+2. Configure HELM to use service account:
    ```
-   gdcloud auth activate-service-account --key-file=${IAC_PROJECT}_${IAC_SA}.json
+   gdcloud auth activate-service-account --key-file=${CA_CERT_PATH}${IAC_SA}.json
    export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
    gdcloud clusters get-credentials global-api
    ```
 
-2. Validate configuration
+3. Validate configuration
 ```
 export config=dga
 for resource in \
@@ -138,9 +70,10 @@ for resource in \
 done
 ```
 
-3. Create global resources
+4. Create global resources
 ```
 export config=dga
+gdcloud config set core/zone ""
 gdcloud clusters get-credentials global-api
 
 for resource in \
@@ -152,7 +85,7 @@ for resource in \
     helm install --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
 done
 ```
-4. Create zonal resources 
+5. Create zonal resources 
 
 Note: The singlezone bucket resources and clusters are created using the zonal management API endpoint.
 ```
@@ -448,3 +381,66 @@ When provisioning GDCH standard clusters, it is highly recommended to separate t
 - **Infrastructure Provisioning (`gdc-standard-clusters`)**: Dedicated only to creating standard clusters. Cluster creation has a separate lifecycle and requires higher privileges.
 - **Access Management (`gdc-standard-clusters-rbac`)**: Dedicated to managing Kubernetes RBAC (`RoleBindings`, `ClusterRoleBindings`) inside the provisioned clusters. This allows developers and groups to be onboarded or offboarded without modifying or putting the core cluster infrastructure at risk.
 
+
+# Billing Account/s configuration
+
+## Create a new billing account
+
+A billing account is uniquely identified by its name and namespace. To create a billing account, use a custom resource to establish the name and namespace:
+
+Create a YAML file, and add the BillingAccount custom resource and the following contents:
+
+apiVersion: billing.global.gdc.goog/v1
+kind: BillingAccount
+metadata:
+  namespace: platform
+  name: data-ets-shared-infra
+spec:
+  displayName: data-ets-shared-infra
+  paymentSystemConfig:
+    cloudBillingConfig:
+      accountID: "Organization Billing Account"
+
+Save the YAML file. Run the kubectl CLI to apply the resource in the Global API server:
+
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+
+kubectl apply -f billingaccount.yaml
+
+## Link an organization or project to a billing account
+
+To link a project to a BillingAccount, do the following:
+
+Add the following contents to the file: billingaccountbinding.yaml:
+
+In the billingAccountRef section, populate the name field with the content from the name field in the BillingAccount you want to link.
+In the metadata section, populate the namespace field with the content from the identical field in the BillingAccount resource.
+
+apiVersion: billing.global.gdc.goog/v1
+kind: BillingAccountBinding
+metadata:
+  name: billing
+  namespace: data-ets-shared-infra
+spec:
+  billingAccountRef:
+    name: data-ets-shared-infra
+    namespace: platform
+
+Run the following kubectl command to apply the billingaccountbinding.yaml file:
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+kubectl apply -f billingaccountbinding.yaml
+
+Check the status of the BillingAccountBinding and verify that there are no errors:
+
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+kubectl describe billingaccountbinding billing -n data-ets-shared-infra
+
+## List billing account bindings
+gdcloud config set core/zone ""
+gdcloud clusters get-credentials global-api
+kubectl get billingaccountbinding -A -o 'custom-columns=NAME:metadata.name,NAMESPACE:metadata.namespace,BillingAccountName:spec.billingAccountRef.name,STATUS:status.conditions[0].status'

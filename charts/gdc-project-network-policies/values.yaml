@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=values.schema.json
+
+# GDC Projects Configuration
+projects:
+  # Example project configuration with Network Policies:
+  # - name: "data-ets-shared-infra"
+  #   projectNetworkPolicies:
+  #     - name: "allow-inbound-traffic-to-mhs-service"
+  #       subject:
+  #         subjectType: ManagedService
+  #         managedServices:
+  #           matchTypes:
+  #           - 'mhs'
+  #       ingress:
+  #         - from:
+  #           - projectSelector:
+  #               projects:
+  #                 matchNames:
+  #                 - "d2-ets-user-1"
