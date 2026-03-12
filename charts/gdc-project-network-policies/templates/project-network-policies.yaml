@@ -32,6 +32,13 @@ spec:
         {{- toYaml .match_types | nindent 8 }}
       {{- end }}
     {{- end }}
+    {{- if .match_labels }}
+    userWorkloadSelector:
+      labelSelector:
+        workloads:
+          matchLabels:
+            {{- toYaml .match_labels | nindent 12 }}
+    {{- end }}
   {{- end }}
   {{- with $policy.ingress }}
   ingress:
@@ -41,9 +48,18 @@ spec:
       {{- range .from }}
       {{- if .project_selector }}
       - projectSelector:
+          {{- if .project_selector.projects }}
           projects:
             matchNames:
               {{- toYaml .project_selector.projects.match_names | nindent 14 }}
+          {{- end }}
+          {{- if .project_selector.match_labels }}
+          workloadSelector:
+            labelSelector:
+              workloads:
+                matchLabels:
+                  {{- toYaml .project_selector.match_labels | nindent 18 }}
+          {{- end }}
       {{- else if .ip_block }}
       - ipBlock:
           cidr: {{ .ip_block.cidr }}
@@ -52,11 +68,51 @@ spec:
     {{- else }}
     - {}
     {{- end }}
+    {{- if .ports }}
+      ports:
+        {{- range .ports }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+    {{- end }}
     {{- end }}
   {{- end }}
   {{- with $policy.egress }}
   egress:
-    {{- toYaml . | nindent 4 }}
+    {{- range . }}
+    {{- if .to }}
+    - to:
+      {{- range .to }}
+      {{- if .project_selector }}
+      - projectSelector:
+          {{- if .project_selector.projects }}
+          projects:
+            matchNames:
+              {{- toYaml .project_selector.projects.match_names | nindent 14 }}
+          {{- end }}
+          {{- if .project_selector.match_labels }}
+          workloadSelector:
+            labelSelector:
+              workloads:
+                matchLabels:
+                  {{- toYaml .project_selector.match_labels | nindent 18 }}
+          {{- end }}
+      {{- else if .ip_block }}
+      - ipBlock:
+          cidr: {{ .ip_block.cidr }}
+      {{- end }}
+      {{- end }}
+    {{- else }}
+    - {}
+    {{- end }}
+    {{- if .ports }}
+      ports:
+        {{- range .ports }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
   {{- end }}
 {{- end }}
 {{- end }}
