@@ -1,0 +1,20 @@
+{{- if .Values.loadBalancer.egress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lb-egress-traffic
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{ .Values.loadBalancer.subjectLabelKey }}: {{ .Values.loadBalancer.subjectLabelValue }}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: {{ .Values.loadBalancer.egress.toCidr }}
+    ports:
+    - protocol: TCP
+      port: {{ .Values.loadBalancer.egress.port }}
+{{- end }}

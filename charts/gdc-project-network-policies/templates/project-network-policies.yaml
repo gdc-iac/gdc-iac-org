@@ -7,10 +7,15 @@ metadata:
   namespace: {{ required "A valid namespace is required" $.Values.namespace }}
   {{- if $policy.name }}
   name: {{ regexReplaceAll "\\W+" $policy.name "-" }}
-  {{- else if and $policy.ingress $policy.subject.managed_services }}
-  {{- $projectName := index (index (index $policy.ingress 0).from 0).project_selector.projects.match_names 0 }}
+  {{- else if and $policy.ingress (and $policy.subject $policy.subject.managed_services) }}
+  {{- $firstIngress := index $policy.ingress 0 }}
   {{- $serviceName := index $policy.subject.managed_services.match_types 0 }}
+  {{- if and $firstIngress $firstIngress.from (index $firstIngress.from 0).project_selector }}
+  {{- $projectName := index (index $firstIngress.from 0).project_selector.projects.match_names 0 }}
   name: allow-inbound-traffic-from-{{ regexReplaceAll "\\W+" $projectName "-" }}-to-{{ regexReplaceAll "\\W+" $serviceName "-" }}-service
+  {{- else }}
+  name: allow-inbound-traffic-to-{{ regexReplaceAll "\\W+" $serviceName "-" }}-service
+  {{- end }}
   {{- else }}
   name: project-network-policy-{{ randAlphaNum 5 | lower }}
   {{- end }}
@@ -24,20 +29,29 @@ spec:
     managedServices:
       {{- if .match_types }}
       matchTypes:
-        {{- toYaml .match_types | nindent 6 }}
+        {{- toYaml .match_types | nindent 8 }}
       {{- end }}
     {{- end }}
   {{- end }}
   {{- with $policy.ingress }}
   ingress:
     {{- range . }}
+    {{- if .from }}
     - from:
       {{- range .from }}
+      {{- if .project_selector }}
       - projectSelector:
           projects:
             matchNames:
               {{- toYaml .project_selector.projects.match_names | nindent 14 }}
+      {{- else if .ip_block }}
+      - ipBlock:
+          cidr: {{ .ip_block.cidr }}
       {{- end }}
+      {{- end }}
+    {{- else }}
+    - {}
+    {{- end }}
     {{- end }}
   {{- end }}
   {{- with $policy.egress }}
