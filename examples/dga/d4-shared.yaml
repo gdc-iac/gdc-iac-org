@@ -177,18 +177,12 @@ lux-central1-b:
       - name: "data-ets-mhs"
         autoscan: false
         creatorkind: "User"
-        creatorname: *sdobrica_subject_name
+        creatorname: *iac_subject_name
       # --- Second Project ---
       - name: "prj-20260224"
         autoscan: false
         creatorkind: "User"
-        creatorname: *sdobrica_subject_name
-  # - name: &dashboards_project_name "platform"
-  #   dashboards:
-  #   - name: "shared-infra-dashboard"
-  #     foldername: "Monitoring"
-  #     json_model: |
-  #       { "title": "Shared Infra Dashboard" }
+        creatorname: *iac_subject_name
   clusters:
   - name: "clstr-20260224"
     namespace: "platform"
