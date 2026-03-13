@@ -37,3 +37,23 @@ projectnetworkpolicies:
     ingress:
       - {} # Empty object creates an allow-all rule
 ```
+
+## Testing
+
+This chart includes unit tests verifying the Go templating logic using the [helm-unittest](https://github.com/helm-unittest/helm-unittest) plugin. 
+
+Testing the chart does not require a live Kubernetes cluster.
+
+### Prerequisites for Testing
+Ensure you have installed the `helm-unittest` plugin:
+```bash
+helm plugin install https://github.com/helm-unittest/helm-unittest.git
+```
+*(Note for air-gapped environments: You will need to download the release binary from GitHub and install it manually or ensure it is baked into your CI runner image).*
+
+### Running Tests
+To run the automated test suite locally:
+
+```bash
+helm unittest charts/gdc-project-network-policies
+```
