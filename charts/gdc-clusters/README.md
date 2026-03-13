@@ -2,14 +2,18 @@
 
 A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) User Clusters via the `baremetal.cluster.gke.io/v1` or `cluster.gdc.goog/v1` API.
 
-## Requirements
+## Prerequisites
 
 - Helm 3.0+
 - Access to the Global API Cluster where GDCH clusters are provisioned.
 
-## Usage
+## Usage / Installation
 
-This chart expects a top-level `clusters` list in the `values.yaml` representing the individual GDCH user clusters to create.
+Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
+
+```bash
+helm install my-clusters ./gdc-clusters -f my-values.yaml
+```
 
 It supports configuring the control plane nodes, initial kubernetes versions, VIPs for load balancing, and network CIDRs matching the `cluster.gdc.goog/v1` specs.
 
@@ -33,10 +37,6 @@ The following table lists the configurable parameters of the chart and their def
 | `clusters[].releaseChannel` | Release channel | `"UNSPECIFIED"` | No |
 | `clusters[].projectBindings[]` | List of target project names (e.g. `agtest-project`) | `[]` | No |
 
-## Applying the Chart
+## Example Configuration (Optional)
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
-```bash
-helm install my-clusters ./charts/gdc-clusters -f my-values.yaml
-```
+This chart expects a top-level `clusters` list in the `values.yaml` representing the individual GDCH user clusters to create.

@@ -12,7 +12,7 @@ This Helm chart deploys and manages Google Distributed Cloud (GDC) virtual machi
 - Helm v3.0+
 - Access to a GDC environment (version 1.11.x or greater)
 
-## Installing the Chart
+## Usage / Installation
 
 To install the chart with the release name `my-release`:
 
@@ -41,7 +41,7 @@ helm uninstall my-release
 
 This command removes all the Kubernetes components associated with the chart and deletes the release.
 
-## Configuration
+## Configuration Parameters
 
 Refer to the `values.yaml` file for detailed configuration options. Key configurable parameters include:
 

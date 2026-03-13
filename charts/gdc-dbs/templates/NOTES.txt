@@ -3,6 +3,7 @@ AlloyDBOmni DBCluster "{{ .Values.alloydbomni.clusterName }}" is being deployed.
 
 To check status:
 kubectl get dbcluster.alloydbomni.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.alloydbomni.clusterName }} -w
+{{- end }}
 
 {{- if .Values.oracle.enabled }}
 Oracle DBCluster "{{ .Values.oracle.clusterName }}" is being deployed.

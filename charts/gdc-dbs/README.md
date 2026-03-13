@@ -12,7 +12,30 @@ This Helm chart deploys and manages Database Services within a Google Distribute
 3.  **Permissions:** You need sufficient permissions in the target project namespace to create Secrets and `DBCluster` resources (e.g., `project-db-admin` role or equivalent).
 4.  **Project Namespace:** A project namespace must exist in your GDCH organization where the database will be deployed.
 
-## Chart Configuration
+## Usage / Installation
+
+1. Navigate to the chart directory:
+
+```bash
+cd gdc-dbs
+```
+
+2. Generate Base64 Password:
+
+```bash
+export B64_PASSWORD=$(echo -n 'YourSecureP@ssw0rd' | base64)
+```
+
+3. Install PostgreSQL Example:
+
+```bash
+helm install my-pg-release . \
+  --namespace my-db-project \
+  --set base64EncodedPassword=$B64_PASSWORD \
+  --set postgresql.enabled=true
+```
+
+## Configuration Parameters
 
 The chart is configured through the `values.yaml` file or by using `--set` flags during `helm install` or `helm upgrade`.
 
@@ -55,32 +78,18 @@ To generate a base64 encoded password:
 ```bash
 echo -n 'YourSecureP@ssw0rd' | base64
 
-## Installation
+## Example Configuration (Optional)
 
-1. Navigate to the chart directory:
+To customize further (PostgreSQL):
 
-cd gdch-dbs
-
-2. Generate Base64 Password:
-
-export B64_PASSWORD=$(echo -n 'YourSecureP@ssw0rd' | base64)
-
-## Verify the password
-
-echo $B64_PASSWORD
-```
-
-3. Install PostgreSQL Example:
-
-```
+```bash
 helm install my-pg-release . \
   --namespace my-db-project \
   --set base64EncodedPassword=$B64_PASSWORD \
-  --set postgresql.enabled=true
-
-```
-To customize further:
-
+  --set postgresql.enabled=true \
+  --set postgresql.clusterName=prod-pg \
+  --set postgresql.memory=8Gi \
+  --set postgresql.dataDiskSize=100Gi
 ```
 helm install my-pg-release . \
   --namespace my-db-project \

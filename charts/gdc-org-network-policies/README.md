@@ -13,9 +13,23 @@ For comprehensive details on official usage and schemas, refer to the [official 
 - Helm 3+
 - GDC admin cluster with the `networking.gdc.goog/v1` API group (Management API Server)
 
-## Values Configuration
+## Usage / Installation
+
+```bash
+helm install my-org-netpols ./gdc-org-network-policies -f values.yaml
+```
+
+## Configuration Parameters
 
 The core configuration property is `orgnetworkpolicies` within `values.yaml`. This acts as an array of network policy definitions.
+
+| Parameter | Description | Default | Required |
+| --- | --- | --- | --- |
+| `orgnetworkpolicies` | A list of organization network policies to create. | `[]` | **Yes** |
+| `orgnetworkpolicies[].name` | Name of the OrganizationNetworkPolicy resource. | `""` | **Yes** |
+| `orgnetworkpolicies[].subject` | Target workloads subject block. | `{}` | No |
+| `orgnetworkpolicies[].ingress` | Ingress filtering rules. | `[]` | No |
+| `orgnetworkpolicies[].egress` | Egress filtering rules. | `[]` | No |
 
 ### Example Usage
 
