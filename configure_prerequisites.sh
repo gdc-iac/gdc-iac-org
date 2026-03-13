@@ -110,7 +110,7 @@ rm -rf "${CA_CERT_PATH}${IAC_SA:?}.json"
 gdcloud iam service-accounts keys create "${CA_CERT_PATH}${IAC_SA:?}.json" \
 --project="$IAC_PROJECT" \
 --iam-account="$IAC_SA"
-sed -i 's|https://service-accounts.org-15357.lux.clr/authenticate|https://service-accounts.org-15357.lux-central1-b.lux.clr/authenticate|' "${CA_CERT_PATH}${IAC_SA}.json"
+sed -i 's|https://service-accounts.${ORG_NAME:?}.lux.clr/authenticate|https://service-accounts.${ORG_NAME:?}.${ZONE:?}.lux.clr/authenticate|' "${CA_CERT_PATH}${IAC_SA}.json"
 
 # 7. Generate kubeconfig files (https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/iam/service-identities#generate-kubeconfig):
 
