@@ -72,6 +72,7 @@ global:
   rw_bucket_name: &rw_bucket_name "d4-ets-s3-rw1"
   rw_bucket_role: &rw_bucket_role "d4-ets-s3-rw1"
   shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
+  user_project_name: &user_project_name "d2-ets-user-1"
   billing:
     accounts:
       name: *shared_infra_project_name
