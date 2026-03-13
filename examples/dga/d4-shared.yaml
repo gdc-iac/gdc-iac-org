@@ -59,6 +59,7 @@ global:
           verbs:
           - list
           - read-object
+          - write-object
   projects:
     - name: *shared_infra_project_name
       project-network-policies:
