@@ -11,6 +11,15 @@ iac:
 - role: "project-networkpolicy-admin"
   subject_kind: "User"
   subject_name: *iac_subject_name
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "dashboard-editor"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "dashboard-viewer"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
 global:
   admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
   tools_bucket_name: &tools_bucket_name "d4-ets-s3-tools"
@@ -109,6 +118,40 @@ global:
       - role: "harbor-project-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name
+      # Service account permissions:
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: &service_account_name "system:serviceaccount:iac-root:iac001-sa"
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "project-bucket-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "project-bucket-object-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "harbor-instance-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "harbor-project-creator"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "dashboard-editor"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "dashboard-viewer"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "secret-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
       billing:
         account_ref: *shared_infra_project_name
 lux-central1-b:
