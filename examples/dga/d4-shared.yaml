@@ -128,6 +128,11 @@ lux-central1-b:
         autoscan: false
         creatorkind: "User"
         creatorname: *iac_subject_name
+    dashboards:
+    - name: "shared-infra-dashboard"
+      foldername: "Monitoring"
+      json_model: |
+        { "title": "Shared Infra Dashboard" }
   clusters:
   - name: "clstr-20260224"
     namespace: "platform"
