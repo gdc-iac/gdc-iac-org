@@ -57,7 +57,8 @@ RESOURCE_SCHEMA = {
             "notebooks": str,
             "harbors": str,
             "backup-repositories": str,
-            "backup-plans": str
+            "backup-plans": str,
+            "dashboards": list
         }
     },
     "user": {
