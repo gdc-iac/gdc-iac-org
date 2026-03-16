@@ -1,6 +1,9 @@
 iac:
 - role: "project-iam-admin"
   subject_kind: "User"
+  subject_name: &admin_subject_name "gdch-infra-operator-sdobrica-sa@opscenter.local"
+- role: "project-iam-admin"
+  subject_kind: "User"
   subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
 - role: "project-bucket-admin"
   subject_kind: "User"
@@ -122,12 +125,12 @@ lux-central1-b:
       - name: "data-ets-mhs"
         autoscan: false
         creatorkind: "User"
-        creatorname: *iac_subject_name
+        creatorname: *admin_subject_name
       # --- Second Project ---
       - name: "prj-20260224"
         autoscan: false
         creatorkind: "User"
-        creatorname: *iac_subject_name
+        creatorname: *admin_subject_name
     dashboards:
     - name: "shared-infra-dashboard"
       foldername: "Monitoring"
