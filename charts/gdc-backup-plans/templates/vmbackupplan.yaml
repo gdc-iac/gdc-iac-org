@@ -1,0 +1,29 @@
+{{- range $i, $plan := .Values.vm }}
+---
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineBackupPlanTemplate
+metadata:
+  name: {{ printf "%s-template" $plan.name | quote }}
+  namespace: {{ required "A valid namespace is required" $plan.namespace }}
+spec:
+  backupRepository: {{ required "backupRepository is required" $plan.backupRepository | quote }}
+---
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineBackupPlan
+metadata:
+  name: {{ required "A valid backup plan name is required" $plan.name }}
+  namespace: {{ $plan.namespace }}
+spec:
+  virtualMachineBackupPlanTemplate: {{ printf "%s-template" $plan.name | quote }}
+  backupConfig:
+    backupScope:
+      {{- if $plan.backupScope }}
+      {{- toYaml $plan.backupScope | nindent 6 }}
+      {{- else }}
+      {}
+      {{- end }}
+    volumeStrategy: {{ required "volumeStrategy is required (ProvisionerSpecific or LocalSnapshotOnly)" $plan.volumeStrategy }}
+  backupSchedule:
+    cronSchedule: {{ required "cronSchedule is required" $plan.cronSchedule | quote }}
+    paused: {{ $plan.paused | default false }}
+{{- end }}

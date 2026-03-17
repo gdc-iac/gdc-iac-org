@@ -1,0 +1,21 @@
+{{- range $i, $repo := .Values.cluster }}
+---
+apiVersion: backup.gdc.goog/v1
+kind: ClusterBackupRepository
+metadata:
+  name: {{ required "A valid repository name is required" $repo.name }}
+  namespace: {{ required "A valid repository namespace is required" $repo.namespace }}
+spec:
+  secretReference:
+    namespace: {{ $repo.secretReference.namespace | default $repo.namespace }}
+    name: {{ required "A valid secret name is required under secretReference.name" $repo.secretReference.name }}
+  endpoint: {{ required "A valid endpoint is required" $repo.endpoint }}
+  type: {{ $repo.type | default "S3" | quote }}
+  {{- if eq ($repo.type | default "S3") "S3" }}
+  s3Options:
+    bucket: {{ required "A valid bucket FQDN is required under s3Options.bucket" $repo.s3Options.bucket }}
+    region: {{ required "A valid region is required under s3Options.region" $repo.s3Options.region }}
+    forcePathStyle: {{ $repo.s3Options.forcePathStyle | default false }}
+  {{- end }}
+  importPolicy: {{ $repo.importPolicy | default "ReadWrite" }}
+{{- end }}
