@@ -1,0 +1,18 @@
+{{- range $i, $repo := .Values.harbor }}
+---
+apiVersion: artifactregistry.gdc.goog/v1
+kind: HarborInstanceBackupRepository
+metadata:
+  name: {{ required "A valid repository name is required" $repo.name }}
+  namespace: {{ required "A valid repository namespace is required" $repo.namespace }}
+spec:
+  secretReference:
+    namespace: {{ $repo.secretReference.namespace | default $repo.namespace }}
+    name: {{ required "A valid secret name is required under secretReference.name" $repo.secretReference.name }}
+  endpoint: {{ required "A valid endpoint is required" $repo.endpoint }}
+  region: {{ required "A valid region is required" $repo.region }}
+  bucket: {{ required "A valid bucket FQDN is required" $repo.bucket }}
+  {{- if $repo.description }}
+  description: {{ $repo.description }}
+  {{- end }}
+{{- end }}

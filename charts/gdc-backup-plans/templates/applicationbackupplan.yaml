@@ -1,0 +1,38 @@
+{{- range $i, $plan := .Values.application }}
+---
+apiVersion: backup.gdc.goog/v1
+kind: BackupPlan
+metadata:
+  name: {{ required "A valid BackupPlan name is required" $plan.name }}
+  namespace: {{ required "A valid BackupPlan namespace is required" $plan.namespace }}
+  labels:
+    backup.gdc.goog/backup-plan-name: {{ $plan.name }}
+spec:
+  clusterName: {{ required "A valid target clusterName is required" $plan.clusterName }}
+  backupConfig:
+    backupRepository: {{ required "A valid backupRepository is required" $plan.backupRepository }}
+    backupScope:
+      {{- if $plan.backupScope }}
+      {{- toYaml $plan.backupScope | nindent 6 }}
+      {{- else }}
+      allNamespaces: true
+      {{- end }}
+    includeSecrets: {{ $plan.includeSecrets | default false }}
+    includeVolumeData: {{ $plan.includeVolumeData | default false }}
+  backupSchedule:
+    cronSchedule: {{ required "A valid cronSchedule is required" $plan.cronSchedule | quote }}
+    paused: {{ $plan.paused | default false }}
+  deactivated: {{ $plan.deactivated | default false }}
+  retentionPolicy:
+    {{- if $plan.retentionPolicy }}
+    backupDeleteLockDays: {{ if hasKey $plan.retentionPolicy "backupDeleteLockDays" }}{{ $plan.retentionPolicy.backupDeleteLockDays }}{{ else }}0{{ end }}
+    backupRetainDays: {{ if hasKey $plan.retentionPolicy "backupRetainDays" }}{{ $plan.retentionPolicy.backupRetainDays }}{{ else }}0{{ end }}
+    locked: {{ if hasKey $plan.retentionPolicy "locked" }}{{ $plan.retentionPolicy.locked }}{{ else }}false{{ end }}
+    numBackupsToRetain: {{ if hasKey $plan.retentionPolicy "numBackupsToRetain" }}{{ $plan.retentionPolicy.numBackupsToRetain }}{{ else }}0{{ end }}
+    {{- else }}
+    backupDeleteLockDays: 0
+    backupRetainDays: 0
+    locked: false
+    numBackupsToRetain: 0
+    {{- end }}
+{{- end }}

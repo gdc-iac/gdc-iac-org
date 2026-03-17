@@ -1,0 +1,23 @@
+{{- range $i, $plan := .Values.harbor }}
+---
+apiVersion: artifactregistry.gdc.goog/v1
+kind: HarborInstanceBackupPlan
+metadata:
+  name: {{ required "A valid backup plan name is required" $plan.name }}
+  namespace: {{ required "A valid namespace is required" $plan.namespace }}
+spec:
+  backupSchedule:
+    cronSchedule: {{ required "cronSchedule is required" $plan.cronSchedule | quote }}
+    paused: {{ $plan.paused | default false }}
+  backupConfig:
+    backupRepository: {{ required "backupRepository is required" $plan.backupRepository }}
+    backupScope:
+      harborInstance: {{ required "harborInstance is required" $plan.harborInstance }}
+  {{- if $plan.retentionPolicy }}
+  retentionPolicy:
+    backupRetainDays: {{ if hasKey $plan.retentionPolicy "backupRetainDays" }}{{ $plan.retentionPolicy.backupRetainDays }}{{ else }}10{{ end }}
+  {{- end }}
+  {{- if $plan.description }}
+  description: {{ $plan.description | quote }}
+  {{- end }}
+{{- end }}
