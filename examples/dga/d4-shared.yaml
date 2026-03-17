@@ -131,6 +131,9 @@ global:
       - role: "project-bucket-object-admin"
         subject_kind: "User"
         subject_name: *service_account_name
+      - role: "standard-cluster-admin"
+        subject_kind: "ServiceAccount"
+        subject_name: *service_account_name
       - role: "workload-viewer"
         subject_kind: "User"
         subject_name: *service_account_name
