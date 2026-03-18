@@ -324,6 +324,11 @@ for role in \
   project-creator \
   project-editor \
   user-cluster-admin \
+  dr-backup-admin \
+  organization-backup-admin \
+  organization-cluster-backup-admin \
+  system-cluster-backup-repository-admin \
+  user-cluster-backup-admin \
 ; do \
    gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
    --member="user:$IAC_USER" \
@@ -333,6 +338,7 @@ done
 ### Grant IAC_USER required IAM permissions on `IAC_PROJECT` :
 for role in \
   secret-admin \
+  backup-creator \
 ; do \
   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
   --member=user:$IAC_USER \
@@ -373,6 +379,15 @@ Note: `helmfile sync` does not try to read the state first. It will simply execu
 ```bash
 helmfile apply
 ```
+
+---
+
+## Separating Infrastructure Provisioning from Access Management
+
+When provisioning GDCH standard clusters, it is highly recommended to separate the cluster provisioning (infrastructure) from the access management (RBAC):
+
+- **Infrastructure Provisioning (`gdc-standard-clusters`)**: Dedicated only to creating standard clusters. Cluster creation has a separate lifecycle and requires higher privileges.
+- **Access Management (`gdc-standard-clusters-rbac`)**: Dedicated to managing Kubernetes RBAC (`RoleBindings`, `ClusterRoleBindings`) inside the provisioned clusters. This allows developers and groups to be onboarded or offboarded without modifying or putting the core cluster infrastructure at risk.
 
 
 # Billing Account/s configuration

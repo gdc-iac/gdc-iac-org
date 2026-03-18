@@ -1,0 +1,87 @@
+{{- range $policy := .Values.intraProjectPolicies }}
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: {{ $policy.name }}
+  namespace: {{ required "A valid .Values.project is required" $.Values.project }}
+spec:
+  policyType: {{ required "A valid .policyType is required" $policy.policyType }}
+  {{- if $policy.subject }}
+  subject:
+    subjectType: {{ $policy.subject.subjectType | default "UserWorkload" }}
+    {{- if $policy.subject.matchLabels }}
+    userWorkloadSelector:
+      labelSelector:
+        workloads:
+          matchLabels:
+            {{- range $key, $value := $policy.subject.matchLabels }}
+            {{ $key }}: {{ $value | quote }}
+            {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if eq $policy.policyType "Ingress" }}
+  ingress:
+    {{- range $ingress := $policy.ingress }}
+    - from:
+        {{- range $from := $ingress.from }}
+        - projectSelector:
+            {{- if $from.projectSelector.projects }}
+            projects:
+              matchNames:
+                {{- range $projectName := $from.projectSelector.projects.matchNames }}
+                - {{ $projectName | quote }}
+                {{- end }}
+            {{- end }}
+            {{- if $from.projectSelector.matchLabels }}
+            workloadSelector:
+              labelSelector:
+                workloads:
+                  matchLabels:
+                    {{- range $key, $value := $from.projectSelector.matchLabels }}
+                    {{ $key }}: {{ $value | quote }}
+                    {{- end }}
+            {{- end }}
+        {{- end }}
+      {{- if $ingress.ports }}
+      ports:
+        {{- range $port := $ingress.ports }}
+        - port: {{ $port.port }}
+          protocol: {{ $port.protocol | default "TCP" }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if eq $policy.policyType "Egress" }}
+  egress:
+    {{- range $egress := $policy.egress }}
+    - to:
+        {{- range $to := $egress.to }}
+        - projectSelector:
+            {{- if $to.projectSelector.projects }}
+            projects:
+              matchNames:
+                {{- range $projectName := $to.projectSelector.projects.matchNames }}
+                - {{ $projectName | quote }}
+                {{- end }}
+            {{- end }}
+            {{- if $to.projectSelector.matchLabels }}
+            workloadSelector:
+              labelSelector:
+                workloads:
+                  matchLabels:
+                    {{- range $key, $value := $to.projectSelector.matchLabels }}
+                    {{ $key }}: {{ $value | quote }}
+                    {{- end }}
+            {{- end }}
+        {{- end }}
+      {{- if $egress.ports }}
+      ports:
+        {{- range $port := $egress.ports }}
+        - port: {{ $port.port }}
+          protocol: {{ $port.protocol | default "TCP" }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

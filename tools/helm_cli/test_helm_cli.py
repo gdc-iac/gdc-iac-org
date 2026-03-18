@@ -37,6 +37,23 @@ class TestHelmCli(unittest.TestCase):
         )
         self.assertEqual(result, expected)
 
+    def test_action_cmd_template(self):
+        self.assertEqual(
+            helm_cli.action_cmd("template", release_name="r", chart="c", values_file="v", extra_args=[]),
+            ["helm", "template", "r", "c", "-f", "v"]
+        )
+
+    @patch("helm_cli.logging.getLogger")
+    def test_action_cmd_debug_logging(self, mock_get_logger):
+        mock_logger = MagicMock()
+        mock_logger.isEnabledFor.return_value = True
+        mock_get_logger.return_value = mock_logger
+        
+        self.assertEqual(
+            helm_cli.action_cmd("list", extra_args=[]),
+            ["helm", "--debug", "list"]
+        )
+
     def test_action_cmd_list(self):
         action = "list"
         extra = ["-A"]
@@ -215,6 +232,11 @@ class TestHelmCli(unittest.TestCase):
         self.assertEqual(kwargs["parents"], [
                          {'name': 'global', 'namespace': 'platform'}])
 
+    def test_process_with_api_kubeconfig_length_mismatch(self):
+        config = {"api1": {}, "api2": {}, "iac": {}}
+        with self.assertRaises(ValueError):
+            helm_cli.process(config, "template", False, "api1,api2", "kube1", [])
+
     def test_parse_args(self):
         sys_args = ["upgrade", "config.yaml", "--dry-run", "--set", "foo=bar"]
         args, extra = helm_cli.parse_args(sys_args)
@@ -323,6 +345,16 @@ class TestHelmCli(unittest.TestCase):
             None, False, [{"name": "root"}], []
         )
         self.assertEqual(mock_call_resource_action.call_count, 2)
+
+    @patch("helm_cli.call_resource_action")
+    def test_process_type_dict_skip_helm(self, mock_call_resource_action):
+        type_tree = {"TYPE_SCOPE": "global"}
+        config = {"my-dict-res": [{"name": "o1"}]}
+        helm_cli.process_type(
+            "template", "local-zone", "my-dict-res", type_tree, config, None,
+            None, False, [{"name": "local-zone"}], []
+        )
+        mock_call_resource_action.assert_not_called()
 
     @patch("helm_cli.call_global_action")
     @patch("helm_cli.parse_args")

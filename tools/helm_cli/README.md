@@ -98,28 +98,26 @@ iac: # Mapped to: charts/gdc-iac
 global:
     iam-roles # Mapped to: charts/gdc-iam-roles
     projects: # Mapped to: charts/gdc-projects
+      - IAC # Mapped to: charts/gdc-iac
       - iam-roles # Mapped to: charts/gdc-iam-roles
+      - project-service-accounts # Mapped to: charts/gdc-project-service-accounts
       - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
       - project-network-policies # Mapped to: charts/gdc-project-network-policies
       - billing # Mapped to: charts/gdc-billing
 <zone1>:
     clusters: # Mapped to: charts/gdc-clusters
     projects: # Mapped to: charts/gdc-projects
+      - rbac-role-bindings # Mapped to: charts/gdc-rbac-role-bindings
       - buckets # Mapped to: charts/gdc-buckets
-      - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
-      - project-network-policies # Mapped to: charts/gdc-project-network-policies
       - notebooks # Mapped to: charts/gdc-notebooks
-      - harbors: # Mapped to: charts/gdc-harbors
-        - projects: # Nested array of harbor projects
-<zone2>:
-    clusters: # Mapped to: charts/gdc-clusters
+      - harbors # Mapped to: charts/gdc-harbors
+      - backup-repositories # Mapped to: charts/gdc-backup-repositories
+      - backup-plans # Mapped to: charts/gdc-backup-plans
+user:<cluster-name>:
+    user-cluster-workloads: # Mapped to: charts/gdc-user-cluster-workloads
     projects: # Mapped to: charts/gdc-projects
-      - buckets # Mapped to: charts/gdc-buckets
-      - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
-      - project-network-policies # Mapped to: charts/gdc-project-network-policies
-      - notebooks # Mapped to: charts/gdc-notebooks
-      - harbors: # Mapped to: charts/gdc-harbors
-        - projects: # Nested array of harbor projects
+      - project-iam-roles # Mapped to: charts/gdc-project-iam-roles
+      - project-iam-role-bindings # Mapped to: charts/gdc-project-iam-role-bindings
 ```
 ## How it works
 

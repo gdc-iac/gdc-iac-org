@@ -1,0 +1,32 @@
+{{- if .Values.roleBindings }}
+{{- range $binding := .Values.roleBindings }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ required "A binding name is required" $binding.name | quote }}
+  namespace: {{ required "A namespace is required for RoleBinding" $binding.namespace | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: {{ default "Role" $binding.roleKind | quote }}
+  name: {{ required "A roleName is required" $binding.roleName | quote }}
+subjects:
+{{ toYaml $binding.subjects | indent 2 }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.clusterRoleBindings }}
+{{- range $binding := .Values.clusterRoleBindings }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ required "A binding name is required" $binding.name | quote }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ required "A roleName is required" $binding.roleName | quote }}
+subjects:
+{{ toYaml $binding.subjects | indent 2 }}
+{{- end }}
+{{- end }}
