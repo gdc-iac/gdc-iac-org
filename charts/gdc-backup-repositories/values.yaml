@@ -2,40 +2,9 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-cluster: []
-#  - name: my-cluster-repo
-#    namespace: my-namespace
-#    secretReference:
-#      name: my-s3-secret
-#      # namespace: defaults to repository namespace if not specified
-#    endpoint: "https://objectstorage.google.gdch.test"
-#    type: "S3"
-#    s3Options:
-#      bucket: "my-bucket.fqdn"
-#      region: "us-east1"
-#      forcePathStyle: true
-#    importPolicy: "ReadWrite" # or ReadOnly
-
-vm: []
-#  - name: my-vm-repo
-#    namespace: my-namespace
-#    secretReference:
-#      name: my-s3-secret
-#    endpoint: "https://objectstorage.google.gdch.test"
-#    type: "S3"
-#    s3Options:
-#      bucket: "my-bucket.fqdn"
-#      region: "us-east1"
-#      forcePathStyle: true
-#    importPolicy: "ReadWrite"
-
-harbor: []
-#  - name: my-harbor-repo
-#    namespace: my-harbor-namespace
-#    secretReference:
-#      name: bucket-secret
-#      # namespace: defaults to repository namespace if not specified
-#    endpoint: "https://storagegrid.zone.DOMAIN.SUFFIX:PORT"
-#    region: "us-east1"
-#    bucket: "my-bucket"
-#    description: "Harbor backup repo"
+namespace: my-namespace
+location: zone1
+backuprepositories:
+  cluster: []
+  vm: []
+  harbor: []

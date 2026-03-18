@@ -52,6 +52,7 @@ RESOURCE_SCHEMA = {
         "clusters": str,
         "projects": {
             "TYPE_SCOPE": "global",
+            "rbac-role-bindings": list,
             "buckets": str,
             "notebooks": str,
             "harbors": str,

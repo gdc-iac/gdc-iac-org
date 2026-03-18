@@ -324,6 +324,11 @@ for role in \
   project-creator \
   project-editor \
   user-cluster-admin \
+  dr-backup-admin \
+  organization-backup-admin \
+  organization-cluster-backup-admin \
+  system-cluster-backup-repository-admin \
+  user-cluster-backup-admin \
 ; do \
    gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
    --member="user:$IAC_USER" \
@@ -333,6 +338,7 @@ done
 ### Grant IAC_USER required IAM permissions on `IAC_PROJECT` :
 for role in \
   secret-admin \
+  backup-creator \
 ; do \
   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
   --member=user:$IAC_USER \
