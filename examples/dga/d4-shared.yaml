@@ -183,11 +183,12 @@ lux-central1-b:
         autoscan: false
         creatorkind: "User"
         creatorname: *sdobrica_subject_name
-    # dashboards:
-    # - name: "shared-infra-dashboard"
-    #   foldername: "Monitoring"
-    #   json_model: |
-    #     { "title": "Shared Infra Dashboard" }
+  # - name: &dashboards_project_name "platform"
+  #   dashboards:
+  #   - name: "shared-infra-dashboard"
+  #     foldername: "Monitoring"
+  #     json_model: |
+  #       { "title": "Shared Infra Dashboard" }
   clusters:
   - name: "clstr-20260224"
     namespace: "platform"
