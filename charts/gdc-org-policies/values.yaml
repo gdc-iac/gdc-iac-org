@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=values.schema.json
+
+# GDC Organization Policies Configuration
+# Represents Gatekeeper constraints (GDCHRestrictedService) that restrict API operations on managed services.
+
+# orgpolicies is a list of organization policies to create.
+# See README.md for examples on how to restrict Vertex AI Notebooks, Database Backups, or Marketplaces.
+orgpolicies: []

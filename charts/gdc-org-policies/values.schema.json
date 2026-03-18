@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Values schema for gdc-org-policies",
+  "type": "object",
+  "properties": {
+    "orgpolicies": {}
+  }
+}
