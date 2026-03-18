@@ -36,6 +36,23 @@ global:
       display_name: "Shared Billing Account"
       cloud_billing_config_account_id: "Organization Billing Account"
   iam-roles:
+    - name: "custom-configmap-admin"
+      title: "ConfigMap Admin"
+      description: "Grants ConfigMap access for IaC to deploy dashboards"
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          verbs:
+          - create
+          - get
+          - list
+          - watch
+          - update
+          - patch
+          - delete
     - name: *tools_bucket_role
       title: *tools_bucket_role
       description: *tools_bucket_role
@@ -159,6 +176,9 @@ global:
         subject_kind: "User"
         subject_name: *service_account_name
       - role: "namespace-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "custom-configmap-admin"
         subject_kind: "User"
         subject_name: *service_account_name
       billing:
