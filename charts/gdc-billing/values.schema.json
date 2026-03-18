@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Values schema for gdc-vm",
+  "title": "Values schema for gdc-billing",
   "type": "object",
   "properties": {
-    "virtualMachines": {}
+    "billing": {}
   }
 }

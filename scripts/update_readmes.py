@@ -1,43 +1,7 @@
-# gdc-buckets
+import os
+import re
 
-A Helm chart for managing storage buckets in Google Distributed Cloud Hosted environments.
-
-## Prerequisites
-
-- Helm 3.0+
-- Access to the GDCH API cluster.
-
-## Usage / Installation
-
-```bash
-helm install my-buckets ./gdc-buckets -f values.yaml
-```
-
-## Configuration Parameters
-
-| Parameter | Description | Default | Required |
-| --- | --- | --- | --- |
-| `location` | The location/zone for the buckets. | `"zone1"` | No |
-| `buckets` | A list of bucket configurations. | `[]` | No |
-| `buckets[].name` | Name of the bucket. | `""` | **Yes** if buckets provided |
-| `buckets[].namespace` | Namespace of the bucket. | `""` | **Yes** if buckets provided |
-| `buckets[].description` | Description of the bucket. | `""` | No |
-| `buckets[].storageClass` | Storage class for the bucket. | `"Standard"` | No |
-| `buckets[].enableCorsPolicy` | Whether to enable CORS policy. | `"false"` | No |
-
-## Example Configuration (Optional)
-
-```yaml
-location: "lux-central1-b"
-buckets:
-  - name: "lotus-bucket-1"
-    namespace: "lotus-prj"
-    description: "Primary storage for lotus app"
-    storageClass: "Standard"
-    enableCorsPolicy: "true"
-```
-
-## CI/CD Pre-Deployment Testing
+TESTING_BLOCK = """## CI/CD Pre-Deployment Testing
 
 This repository enforces a strict, 4-step offline testing pipeline for all Helm charts to ensure GitOps best practices for our enterprise GDC landing zone. Tests are executed via the global `gdc-iac-org/scripts/test-charts.sh` script.
 
@@ -65,3 +29,24 @@ To run the entire validation suite across all charts, execute the global test sc
 ```bash
 ./scripts/test-charts.sh
 ```
+"""
+
+charts_dir = "charts"
+for chart_name in os.listdir(charts_dir):
+    chart_path = os.path.join(charts_dir, chart_name)
+    readme_file = os.path.join(chart_path, "README.md")
+    
+    if os.path.isdir(chart_path) and os.path.isfile(readme_file):
+        with open(readme_file, "r") as f:
+            content = f.read()
+            
+        # Remove old testing blocks if they exist
+        content = re.sub(r'## Testing\n.*', '', content, flags=re.DOTALL)
+        content = re.sub(r'## CI/CD Pre-Deployment Testing\n.*', '', content, flags=re.DOTALL)
+        
+        # Append the new standardized block
+        content = content.strip() + "\n\n" + TESTING_BLOCK
+        
+        with open(readme_file, "w") as f:
+            f.write(content)
+        print(f"Updated README for {chart_name}")

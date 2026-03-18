@@ -1,5 +1,8 @@
 # yaml-language-server: $schema=values.schema.json
 
+# The target namespace for these network policies
+namespace: ""
+
 # GDC Project Network Policies Configuration
 projectnetworkpolicies: []
 #  - name: "allow-all-ingress-example"
