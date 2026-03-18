@@ -26,7 +26,7 @@ For official documentation on creating and managing dashboards, please see the [
 
 To manually import one of these JSON dashboards:
 
-1. Access the web interface of your GDC Hosted organization or project Observability service.
+1. Access the web interface of your GDC Hosted organization or project Observability service. For example: https://console.${ORG}.${ZONE:?}.${DOMAIN:?}/platform-obs/grafana
 2. In the Grafana left-hand sidebar, hover over the **+** (Create) icon and select **Import**.
 3. Either click **Upload JSON file** and select the `.json` file from this directory, or copy the content of the JSON file and paste it into the **Import via panel json** text box.
 4. Click **Load**.
