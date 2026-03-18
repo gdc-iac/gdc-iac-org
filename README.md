@@ -1,446 +1,164 @@
-# Introduction
+# Google Distributed Cloud Infrastructure Automation
 
-This repository provides a flexible toolkit for managing infrastructure as code (IaC) using predefined YAML configuration files and Helm charts. 
+This repository provides a flexible toolkit for managing infrastructure as code (IaC) using predefined YAML configuration files and Helm charts for **Google Distributed Cloud air-gapped (GDCag)**.
 
-The toolkit allows you to use different tools to template and synchronize configurations based on your operational needs:
+## Terminology
+- **GDCag**: Google Distributed Cloud air-gapped (formerly known as **GDCH**)
 
-- **`helm_cli`**: A custom wrapper script for local or CI/CD usage to process configurations, template charts, and natively deploy to the cluster.
-- **Helmfile**: A declarative tool for managing multiple Helm releases and enforcing deployment order.
-- **Config Sync**: A GitOps operator (optional) for continuously synchronizing cluster state from this repository.
-- **Charts**: A collection of local Helm charts (`charts/` directory) acting as templates for Custom Resources.
-- **YAML Configs**: Unified data files (like `org.yaml` or `tenants.yaml`) used to declare the desired state of resources.
-This framework is using [Helm](https://helm.sh/) as the resource config generator and can use either Helm or [Config-Sync](https://github.com/GoogleContainerTools/config-sync) as the resource state synchronization agent.
+## Repository Structure
 
-Helm creates resources in a predefined way as described in [issue/1228](https://github.com/helm/helm/issues/1228). GDCag is heavily relying on custom resources, and these are created in alphabetical order. This means that for example IAMRole resource comes before Project resource. This blocks possibility of creating single Helm Chart to manage all the resources.
-
-Using sub-charts does not change the order as all resources are first merged into a single manifest, sorted and only uploaded afterwards. 
-
-Using hooks solves resource creation order, however hook resources' life cycle is not managed with the release. 
-
-Due to above, this framework is using layered approach, where single `org.yaml` configuration file is shared across multiple charts, a chart per layer. The layers are installed and updated in predefined order:
-- Organization wide roles
-- User Clusters [scope: zone]
-- Projects
-- Buckets [scope: zone]
-- Project roles
-- Project Service Accounts
-- Role Bindings
-
-# Setup
-
-Helm is using the default kubeconfig path. To use different one:
-```
-export KUBECONFIG=<path_to_kubeconfig>
-```
-# Run the connect.sh file and connect with an account with organization-iam-admin permissions
-
-chmod +x connect.sh
-./connect.sh
-
-# Deploy all of the prerequisites to run the helm cli
-
-chmod +x configure_prerequisites.sh
-./configure_prerequisites.sh
-
-# Deploy Organization Resources using HELM CLI
-1. Configure HELM environment
-   ```
-   export HELM_BURST_LIMIT=1 #required in adhoc env but not for real GDCag
-   export HELM_NAMESPACE=$IAC_PROJECT
-   ````
-2. Configure HELM to use service account:
-   ```
-   gdcloud auth activate-service-account --key-file=${CA_CERT_PATH}${IAC_SA}.json
-   export KUBECONFIG=${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig
-   gdcloud clusters get-credentials global-api
-   ```
-
-3. Validate configuration
-```
-export config=dga
-for resource in \
- projects\
- iac-role-bindings\
- clusters\
- buckets\
- iam-roles\
- iam-role-bindings\
- ; do \
-    helm template --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
-done
-```
-
-4. Create global resources
-```
-export config=dga
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
-
-for resource in \
- projects\
- iac-role-bindings\
- iam-roles\
- iam-role-bindings\
- ; do \
-    helm install --debug ${config}-$resource ./gdc-$resource -f ${config}.yaml;\
-done
-```
-5. Create zonal resources 
-
-Note: The singlezone bucket resources and clusters are created using the zonal management API endpoint.
-```
-export config=dga
-export zone=zone1
-gdcloud clusters get-credentials ${ORG_NAME}-admin --zone ${zone}
-
-for resource in \
- clusters\
- buckets\
- ; do \
-    helm install --debug ${config}-$resource ./gdc-$resource --set zone=${zone} -f ${config}.yaml;\
-done
-
-```
-
-# Mutate Organization
-Mutating organization includes operations like:
-- adding projects
-- removing (actually tombstoning) projects
-- adding and removing users and accounts
-- adding and removing roles
-- adding and removing role bindings
-- creating and deleting clusters
-- etc
-
-1. Configure HELM to impersonate configured user:
-```
-gdcloud auth login (as $IAC_USER)
-gdcloud clusters get-credentials global-api
-export HELM_NAMESPACE=$IAC_PROJECT
-```
-2. Check if authentication works:
-```
-helm list
-```
-
-3. Validate configuration
-```
-for resource in \
- projects\
- clusters\
- organization-roles\
- organization-role-bindings\
- organization-network-policies\
- project-service-accounts\
- iam-role-bindings\
- ; do \
-    helm template --debug org-$resource ./gdc-$resource -f org.yaml;\
-done
-```
-4. Update configuration
-```
-for resource in \
- projects\
- projectserviceaccounts\
- iamrolebindings\
- ; do \
-    helm upgrade --debug org-$resource ./gdc-$resource -f org.yaml;\
-done
-```
-
-# Notes
-- https://github.com/helm/helm/issues/1228
-
-# GDCag Resource Creation
-## Zonal resource creation sequence
-- clusters.cluster.gdc.goog: [only zonal mgmt]
-- OrganizationNetworkPolicy: [only zonal mgmt]
-## Global Resource creation sequence:
-- projects namespace: platform
-- customroles.iam.global.gdc.goog namespace: platform
-- projectserviceaccounts.resourcemanager.global.gdc.goog namespace: project
-- iamrolebindings.iam.global.gdc.goog namespace: platform/project-name (both regular and custom)
-- projectnetworkpolicies.networking.global.gdc.goog namespace: project
-
-# Global resources
-- backendservicepolicies.networking.global.gdc.goog                                  
-- backendservices.networking.global.gdc.goog                                         
-- billingaccountbindings.billing.global.gdc.goog                                     
-- billingaccounts.billing.global.gdc.goog                                            
-- blockinvalidgdchrestrictedservice.constraints.global.gatekeeper.sh                 
-- bucketinfos.object.global.private.gdc.goog                                         
-- bucketlocationconfigs.object.global.gdc.goog                                       
-- bucketlocations.object.global.gdc.goog                                             
-- buckets.object.global.gdc.goog                                                     
-- clustermeshes.network.global.private.gdc.goog                                      
-- customroles.iam.global.gdc.goog                                                    
-- datasources.monitoring.global.private.gdc.goog                                     
-- dnsregistrations.network.global.private.gdc.goog                                   
-- dnszones.network.global.private.gdc.goog                                           
-- etcdcarotations.etcd.mz.global.private.gdc.goog                                    
-- etcdclusterconfigoverrides.etcd.mz.global.private.gdc.goog                         
-- etcdclusters.etcd.mz.global.private.gdc.goog                                       
-- etcdzones.etcd.mz.global.private.gdc.goog                                          
-- forwardingruleexternals.networking.global.gdc.goog                                 
-- forwardingruleinternals.networking.global.gdc.goog                                 
-- gdchallowedchars.constraints.global.gatekeeper.sh                                  
-- gdchallowedlength.constraints.global.gatekeeper.sh                                 
-- gdchallowednamespaces.constraints.global.gatekeeper.sh                             
-- gdchreadonly.constraints.global.gatekeeper.sh                                      
-- gdchreservednames.constraints.global.gatekeeper.sh                                 
-- gdchreservedprefix.constraints.global.gatekeeper.sh                                
-- gdchreservedsuffix.constraints.global.gatekeeper.sh                                
-- gdchrestrictattribute.constraints.global.gatekeeper.sh                             
-- gdchrestrictattributerange.constraints.global.gatekeeper.sh                        
-- gdchrestrictbyattributes.constraints.global.gatekeeper.sh                          
-- gdchrestrictedservice.constraints.global.gatekeeper.sh                             
-- gdchrestrictfinalizerremoval.constraints.global.gatekeeper.sh                      
-- gdchrestrictobjectstorageattributevalue.constraints.global.gatekeeper.sh           
-- gdchrestrictresource.constraints.global.gatekeeper.sh                              
-- gdchsuffixednamespace.constraints.global.gatekeeper.sh                             
-- gdchsystemclusterresource.constraints.global.gatekeeper.sh                         
-- globaladdresspoolclaims.ipam.global.private.gdc.goog                               
-- globaladdresspools.ipam.global.private.gdc.goog                                    
-- globalapizones.location.mz.global.private.gdc.goog                                 
-- globalresourceregistrations.apiregistry.global.private.gdc.goog                    
-- globalrootkeys.kms.global.private.gdc.goog                                         
-- globalsecrets.core.global.private.gdc.goog                                         
-- healthchecks.networking.global.gdc.goog                                            
-- iamrolebindings.iam.global.gdc.goog                                                
-- iamroles.iam.global.gdc.goog                                                       
-- identityproviderconfigs.iam.global.gdc.goog                                        
-- ioauthmethods.iam.global.private.gdc.goog                                          
-- kubeapiservers.lcm.global.private.gdc.goog                                         
-- manageddnszones.networking.global.gdc.goog                                         
-- mzaeadkeys.kms.global.gdc.goog                                                     
-- orgbootstraps.bootstrap.mz.global.private.gdc.goog                                 
-- orgzones.bootstrap.mz.global.private.gdc.goog                                      
-- projectnetworkpolicies.networking.global.gdc.goog                                  
-- projects.resourcemanager.global.gdc.goog                                           
-- projectserviceaccounts.resourcemanager.global.gdc.goog                             
-- releases.release.mz.global.private.gdc.goog                                        
-- resourcerecordsets.network.global.private.gdc.goog                                 
-- resourcerecordsets.networking.global.gdc.goog                                      
-- subnets.ipam.global.gdc.goog                                                       
-- tokenrequests.bootstrap.mz.global.private.gdc.goog                                 
-- virtualmachineimages.virtualmachine.global.gdc.goog                                
-- volumereplicationrelationships.storage.global.gdc.goog                             
-- zonalrolebindings.iam.global.gdc.goog                                              
-- zonednsservers.network.global.private.gdc.goog                                     
-- zoneexclusions.location.mz.global.private.gdc.goog                                 
-- zones.location.mz.global.private.gdc.goog                                          
-- zoneselectionresults.location.mz.global.private.gdc.goog                           
-- zoneselections.location.mz.global.private.gdc.goog                                 
-# GDCH Infrastructure Automation (Helmfile)
-
-This repository manages the deployment of **Google Distributed Cloud Hosted (GDCH)** resources using [Helmfile](https://github.com/helmfile/helmfile). 
-
-It utilizes a **data-driven approach**:
-1.  **`tenants.yaml`**: Defines the desired state (Tenants, Projects, IAM, VMs, Buckets, Databases).
-2.  **`helmfile.yaml`**: The logic engine that dynamically generates Helm releases based on the data.
-3.  **`charts/`**: Local Helm charts that template the GDCH Custom Resources.
+- `charts/`: The raw Helm charts that template the GDCag Custom Resources (e.g., Projects, VM, DB Clusters).
+- `tools/`: Tooling and configuration files for deploying resources:
+  - `helmfile/`: Declarative, data-driven orchestration using `helmfile`.
+  - `helm_cli/`: Custom python wrapper script for processing configurations and deploying.
+  - `config-sync/`: Examples for operators using GitOps.
+- `examples/`: Sample configuration files (e.g., `tenants.yaml` or `org.yaml`) representing a desired state.
+- `scripts/`: Helper utilities for testing charts and updating documentation.
+- `policy/`: OPA/Rego policies for security and configuration validation.
 
 ---
 
-## 🏗 Architecture
+## Architecture & Resource Orchestration
 
-This setup orchestrates resources across two distinct Kubernetes contexts required by GDCH:
+GDCag heavily relies on custom resources, which are typically created in alphabetical order by Helm (as described in [issue/1228](https://github.com/helm/helm/issues/1228)). For example, an `IAMRole` resource must be created before a `Project` resource. 
 
-| Kubernetes Context | Resources Managed |
-| :--- | :--- |
-| **Global API Cluster** | `Project`, `IAMRoleBinding`, `ProjectServiceAccount` |
-| **Org Admin Cluster** | `VirtualMachine`, `Bucket`, `DBCluster` (Postgres/Oracle/AlloyDB) |
+To overcome this constraint, this framework uses a **layered approach**, where configurations (like `org.yaml` or `tenants.yaml`) are shared across multiple, highly specialized charts. These charts are then deployed in a strict, predefined order:
 
-![GDCH Helmfile Architecture Diagram](arch.png)
+1. Organization roles
+2. User Clusters [scope: zone]
+3. Projects
+4. Buckets [scope: zone]
+5. Project roles
+6. Project Service Accounts
+7. Role Bindings
+8. Workloads (VMs, DBs, Harbors, Notebooks, Network Policies)
 
-### State Management Strategy
-* **Helm State (Secrets):** All Helm release secrets are stored in a centralized namespace called **`iac-root`**.
-* **Resource Destination:** The actual resources are deployed into their respective Project Namespaces (e.g., `lotus-prj`, `snowflake-prj`).
+### Separating Infrastructure Provisioning from Access Management
 
-### Dependency Chain
-Helmfile enforces the following strict execution order to satisfy GDCH API requirements:
-1.  **Project** (Creates the Namespace)
-2.  **IAM Role Bindings** (Grants permissions to the IaC user & Tenant users)
-3.  **Service Accounts** (Requires IAM permissions to be visible)
-4.  **Workloads** (VMs, Buckets, DBs - deployed in parallel after the Project environment is ready)
-
----
-
-## ✅ Prerequisites
-
-### 0. Required Tools
-* [Helm](https://helm.sh/docs/intro/install/) (v3.17.1+)
-* [Helm diff](https://github.com/databus23/helm-diff) (v3.12.5+)
-* [Helmfile](https://github.com/helmfile/helmfile) (v1.2.1+)
-* `kubectl`
-
-```bash
-# install helm-diff
-helm plugin install https://github.com/databus23/helm-diff --version v3.12.5
-
-helm plugin list
-
-# install helmfile
-wget https://github.com/helmfile/helmfile/releases/download/v1.2.1/helmfile_1.2.1_linux_amd64.tar.gz
-tar -zxvf helmfile_1.2.1_linux_amd64.tar.gz
-mv helmfile /usr/local/bin/
-
-echo 'source <(helmfile completion bash)' >> ~/.bashrc
-source ~/.bashrc
-
-helmfile version
-```
-
-### 2. Kubeconfig Contexts
-The `helmfile.yaml.gotmpl` expects these specific context names:
-* `global-api-gdch_console-org-1-zone1-google-gdch-test_global-api` - use for global resources deployment like projects, projectserviceaccounts.
-* `org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin` - use for project specific or zonal resource deployment like VMs, buckets and DBs.
-
-> **Tip:** To see your available cluster contexts:  `kubectl config get-contexts`
-
-### 3. RBAC Bootstrapping (First Run Only)
-The user running Helmfile (e.g., `fop-iac`) requires **Secret-Admin** and **Project-IAM-Admin** privileges on **iac-root** project to manage Helm state file.
-
-Run these commands once to bootstrap permissions:
-
-Firstly, make sure `fop-platform-admin@example.com` user has the roles `IAM Org Admin`, `Organization Grafana Viewer`, `Project Creatori` assigned.
-
-```bash
-# Export environment variables 
-export ORG_NAME="org-1"
-export IAC_PROJECT="iac-root"
-export IAC_USER="fop-iac@example.com"
-
-
-### Create a project to host IaC resources
-gdcloud auth login (as platform-admin)
-gdcloud projects create $IAC_PROJECT
-
-### Grant IAC_USER required Org roles:
-for role in \
-  organization-iam-admin \
-  project-creator \
-  project-editor \
-  user-cluster-admin \
-; do \
-   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-   --member="user:$IAC_USER" \
-   --role="$role";\
-done
-
-### Grant IAC_USER required IAM permissions on `IAC_PROJECT` :
-for role in \
-  secret-admin \
-; do \
-  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-  --member=user:$IAC_USER \
-  --role=$role;\
-done
-```
-
-### 4. Deploying GDCH Resources `VirtualMachine`, `Bucket`, `DBCluster`
-
-0. gdcloud auth login (as fop-iac@example.com)
-
-`gdcloud auth login --login-config-cert=/tmp/org-1-web-tls-ca.cert`
-
-1. Prechecks Helm Chart
-```bash
-cd helm-iac
-helmfile lint
-helmfile list
-helmfile show-dag
-```
-
-
-2. Helmfile diff to show resources to deploy
-
-```bash
-helmfile diff
-```
-
-Note: this is like to fail because of a "Chicken and Egg" problem.  `helmfile diff` or even `helmfile apply` attempts to calculate diffs for all groups before it applies anything.
-However, this is a fresh install and  the namespaces (e.g lotus-prj, snowflake-prj) does not exist yet.
-
-2. Use `helmfile sync` for ``first run``.
-
-Note: `helmfile sync` does not try to read the state first. It will simply execute the DAG in order ensuring the resources are deployed base on the order and dependency defined using the `needs` keyword.
-
-4. Use `helmfile apply` for subsequent resources deployment once project and rolebindings exists.
-
-```bash
-helmfile apply
-```
-
----
-
-## Separating Infrastructure Provisioning from Access Management
-
-When provisioning GDCH standard clusters, it is highly recommended to separate the cluster provisioning (infrastructure) from the access management (RBAC):
-
+When provisioning GDCag standard clusters, it is highly recommended to logically separate cluster provisioning from access management:
 - **Infrastructure Provisioning (`gdc-standard-clusters`)**: Dedicated only to creating standard clusters. Cluster creation has a separate lifecycle and requires higher privileges.
-- **Access Management (`gdc-standard-clusters-rbac`)**: Dedicated to managing Kubernetes RBAC (`RoleBindings`, `ClusterRoleBindings`) inside the provisioned clusters. This allows developers and groups to be onboarded or offboarded without modifying or putting the core cluster infrastructure at risk.
+- **Access Management (`gdc-standard-clusters-rbac`)**: Dedicated to managing Kubernetes RBAC (`RoleBindings`, `ClusterRoleBindings`) inside the provisioned clusters. This allows developers to be onboarded or offboarded securely without modifying the core cluster infrastructure.
 
+---
 
-# Billing Account/s configuration
+## Deployment Strategies
 
-## Create a new billing account
+The toolkit allows you to use different tools to template and synchronize these configurations based on your operational needs. The detailed setup workflows and prerequisites for each method are documented in their respective tool directories:
 
-A billing account is uniquely identified by its name and namespace. To create a billing account, use a custom resource to establish the name and namespace:
+### Method 1: Infrastructure Automation via Helmfile (Recommended)
+This method utilizes a **data-driven approach** linking `tenants.yaml` inputs through a logic engine (`helmfile.yaml`) to dynamically generate and sequence Helm releases based on the required dependency chain.
 
-Create a YAML file, and add the BillingAccount custom resource and the following contents:
+👉 **[View Helmfile Documentation & Setup Guide](tools/helmfile/README.md)**
 
-apiVersion: billing.global.gdc.goog/v1
-kind: BillingAccount
-metadata:
-  namespace: platform
-  name: data-ets-shared-infra
-spec:
-  displayName: data-ets-shared-infra
-  paymentSystemConfig:
-    cloudBillingConfig:
-      accountID: "Organization Billing Account"
+### Method 2: Deployment via Custom Helm CLI wrapper
+A custom Python wrapper script (`helm_cli.py`) designed for local or CI/CD usage. It streamlines the parsing of YAML configurations and loops through the charts imperatively, substituting the correct contexts and environments automatically.
 
-Save the YAML file. Run the kubectl CLI to apply the resource in the Global API server:
+👉 **[View Helm CLI Documentation & Setup Guide](tools/helm_cli/README.md)**
 
+### Method 3: Config Sync (GitOps)
+Continuous state synchronization using the Config Sync operator. It acts as an in-cluster reconciliation agent, applying changes made directly to this repository.
 
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
+👉 **[View Config Sync Documentation & Setup Guide](tools/config-sync/README.md)**
 
-kubectl apply -f billingaccount.yaml
+---
 
-## Link an organization or project to a billing account
+## Code Validation & Testing
 
-To link a project to a BillingAccount, do the following:
+All charts and configurations submitted to this repository should be validated against the included policies and test scripts to ensure compliance.
 
-Add the following contents to the file: billingaccountbinding.yaml:
+- **Chart Testing**: Scripts to template and validate charts are located in `scripts/test-charts.sh`.
+- **Security Policies**: OPA/Gatekeeper validations (like `policy/security.rego`) exist to ensure that deployments adhere to the organization's security defaults.
 
-In the billingAccountRef section, populate the name field with the content from the name field in the BillingAccount you want to link.
-In the metadata section, populate the namespace field with the content from the identical field in the BillingAccount resource.
+---
 
-apiVersion: billing.global.gdc.goog/v1
-kind: BillingAccountBinding
-metadata:
-  name: billing
-  namespace: data-ets-shared-infra
-spec:
-  billingAccountRef:
-    name: data-ets-shared-infra
-    namespace: platform
+## Reference
 
-Run the following kubectl command to apply the billingaccountbinding.yaml file:
+<details>
+<summary><b>GDCag Resource Creation Sequences</b></summary>
+<br>
 
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
-kubectl apply -f billingaccountbinding.yaml
+**Zonal resource creation sequence:**
+- `clusters.cluster.gdc.goog`: [only zonal mgmt]
+- `OrganizationNetworkPolicy`: [only zonal mgmt]
 
-Check the status of the BillingAccountBinding and verify that there are no errors:
+**Global Resource creation sequence:**
+- `projects` namespace: platform
+- `customroles.iam.global.gdc.goog` namespace: platform
+- `projectserviceaccounts.resourcemanager.global.gdc.goog` namespace: project
+- `iamrolebindings.iam.global.gdc.goog` namespace: platform/project-name (both regular and custom)
+- `projectnetworkpolicies.networking.global.gdc.goog` namespace: project
+</details>
 
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
-kubectl describe billingaccountbinding billing -n data-ets-shared-infra
+<details>
+<summary><b>Global Resources API Endpoints</b></summary>
+<br>
 
-## List billing account bindings
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
-kubectl get billingaccountbinding -A -o 'custom-columns=NAME:metadata.name,NAMESPACE:metadata.namespace,BillingAccountName:spec.billingAccountRef.name,STATUS:status.conditions[0].status'
+- `backendservicepolicies.networking.global.gdc.goog`
+- `backendservices.networking.global.gdc.goog`
+- `billingaccountbindings.billing.global.gdc.goog`
+- `billingaccounts.billing.global.gdc.goog`
+- `blockinvalidgdchrestrictedservice.constraints.global.gatekeeper.sh`
+- `bucketinfos.object.global.private.gdc.goog`
+- `bucketlocationconfigs.object.global.gdc.goog`
+- `bucketlocations.object.global.gdc.goog`
+- `buckets.object.global.gdc.goog`
+- `clustermeshes.network.global.private.gdc.goog`
+- `customroles.iam.global.gdc.goog`
+- `datasources.monitoring.global.private.gdc.goog`
+- `dnsregistrations.network.global.private.gdc.goog`
+- `dnszones.network.global.private.gdc.goog`
+- `etcdcarotations.etcd.mz.global.private.gdc.goog`
+- `etcdclusterconfigoverrides.etcd.mz.global.private.gdc.goog`
+- `etcdclusters.etcd.mz.global.private.gdc.goog`
+- `etcdzones.etcd.mz.global.private.gdc.goog`
+- `forwardingruleexternals.networking.global.gdc.goog`
+- `forwardingruleinternals.networking.global.gdc.goog`
+- `gdchallowedchars.constraints.global.gatekeeper.sh`
+- `gdchallowedlength.constraints.global.gatekeeper.sh`
+- `gdchallowednamespaces.constraints.global.gatekeeper.sh`
+- `gdchreadonly.constraints.global.gatekeeper.sh`
+- `gdchreservednames.constraints.global.gatekeeper.sh`
+- `gdchreservedprefix.constraints.global.gatekeeper.sh`
+- `gdchreservedsuffix.constraints.global.gatekeeper.sh`
+- `gdchrestrictattribute.constraints.global.gatekeeper.sh`
+- `gdchrestrictattributerange.constraints.global.gatekeeper.sh`
+- `gdchrestrictbyattributes.constraints.global.gatekeeper.sh`
+- `gdchrestrictedservice.constraints.global.gatekeeper.sh`
+- `gdchrestrictfinalizerremoval.constraints.global.gatekeeper.sh`
+- `gdchrestrictobjectstorageattributevalue.constraints.global.gatekeeper.sh`
+- `gdchrestrictresource.constraints.global.gatekeeper.sh`
+- `gdchsuffixednamespace.constraints.global.gatekeeper.sh`
+- `gdchsystemclusterresource.constraints.global.gatekeeper.sh`
+- `globaladdresspoolclaims.ipam.global.private.gdc.goog`
+- `globaladdresspools.ipam.global.private.gdc.goog`
+- `globalapizones.location.mz.global.private.gdc.goog`
+- `globalresourceregistrations.apiregistry.global.private.gdc.goog`
+- `globalrootkeys.kms.global.private.gdc.goog`
+- `globalsecrets.core.global.private.gdc.goog`
+- `healthchecks.networking.global.gdc.goog`
+- `iamrolebindings.iam.global.gdc.goog`
+- `iamroles.iam.global.gdc.goog`
+- `identityproviderconfigs.iam.global.gdc.goog`
+- `ioauthmethods.iam.global.private.gdc.goog`
+- `kubeapiservers.lcm.global.private.gdc.goog`
+- `manageddnszones.networking.global.gdc.goog`
+- `mzaeadkeys.kms.global.gdc.goog`
+- `orgbootstraps.bootstrap.mz.global.private.gdc.goog`
+- `orgzones.bootstrap.mz.global.private.gdc.goog`
+- `projectnetworkpolicies.networking.global.gdc.goog`
+- `projects.resourcemanager.global.gdc.goog`
+- `projectserviceaccounts.resourcemanager.global.gdc.goog`
+- `releases.release.mz.global.private.gdc.goog`
+- `resourcerecordsets.network.global.private.gdc.goog`
+- `resourcerecordsets.networking.global.gdc.goog`
+- `subnets.ipam.global.gdc.goog`
+- `tokenrequests.bootstrap.mz.global.private.gdc.goog`
+- `virtualmachineimages.virtualmachine.global.gdc.goog`
+- `volumereplicationrelationships.storage.global.gdc.goog`
+- `zonalrolebindings.iam.global.gdc.goog`
+- `zonednsservers.network.global.private.gdc.goog`
+- `zoneexclusions.location.mz.global.private.gdc.goog`
+- `zones.location.mz.global.private.gdc.goog`
+- `zoneselectionresults.location.mz.global.private.gdc.goog`
+- `zoneselections.location.mz.global.private.gdc.goog`
+</details>
