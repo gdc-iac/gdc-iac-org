@@ -59,7 +59,8 @@ RESOURCE_SCHEMA = {
             "backup-repositories": str,
             "backup-plans": str,
             "dashboards": list,
-            "backup-repositories": str
+            "backup-repositories": str,
+            "backup-plans": str
         }
     },
     "user": {
