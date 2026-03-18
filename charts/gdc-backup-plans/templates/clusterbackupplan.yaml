@@ -1,10 +1,11 @@
-{{- range $i, $plan := .Values.cluster }}
+{{- $plans := ($.Values.backupplans | default dict).cluster | default dict }}
+{{- range $i, $plan := $plans }}
 ---
 apiVersion: backup.gdc.goog/v1
 kind: ClusterBackupPlan
 metadata:
   name: {{ required "A valid backup plan name is required" $plan.name }}
-  namespace: {{ required "A valid namespace is required" $plan.namespace }}
+  namespace: {{ $plan.namespace | default ($.Values.backupplans | default dict).namespace | required "A valid namespace is required" }}
 spec:
   targetCluster:
     targetClusterType: {{ required "targetClusterType is required" $plan.targetCluster.targetClusterType }}

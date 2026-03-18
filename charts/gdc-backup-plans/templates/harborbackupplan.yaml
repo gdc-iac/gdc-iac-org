@@ -1,10 +1,11 @@
-{{- range $i, $plan := .Values.harbor }}
+{{- $plans := ($.Values.backupplans | default dict).harbor | default dict }}
+{{- range $i, $plan := $plans }}
 ---
 apiVersion: artifactregistry.gdc.goog/v1
 kind: HarborInstanceBackupPlan
 metadata:
   name: {{ required "A valid backup plan name is required" $plan.name }}
-  namespace: {{ required "A valid namespace is required" $plan.namespace }}
+  namespace: {{ $plan.namespace | default ($.Values.backupplans | default dict).namespace | required "A valid namespace is required" }}
 spec:
   backupSchedule:
     cronSchedule: {{ required "cronSchedule is required" $plan.cronSchedule | quote }}
