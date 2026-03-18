@@ -54,7 +54,8 @@ RESOURCE_SCHEMA = {
             "TYPE_SCOPE": "global",
             "buckets": str,
             "notebooks": str,
-            "harbors": str
+            "harbors": str,
+            "backup-repositories": str
         }
     },
     "user": {
@@ -67,9 +68,10 @@ RESOURCE_SCHEMA = {
             "TYPE_SCOPE": "global",
             "IAC": list,
             "iam-roles": str,
+            "project-service-accounts": str,
             "iam-role-bindings": list,
             "project-network-policies": list,
-            "billing": str
+            "billing": str,
         }
     }
 }
