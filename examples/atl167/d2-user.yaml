@@ -53,7 +53,7 @@ global:
       - role: "namespace-admin"
         subject_kind: "User"
         subject_name: *admin_subject_name
-lux-central1-b:
+us-east67-b:
   projects:
   - name: *user_project_name
     notebooks:

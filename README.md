@@ -59,6 +59,69 @@ A custom Python wrapper script (`helm_cli.py`) designed for local or CI/CD usage
 Continuous state synchronization using the Config Sync operator. It acts as an in-cluster reconciliation agent, applying changes made directly to this repository.
 
 👉 **[View Config Sync Documentation & Setup Guide](tools/config-sync/README.md)**
+### Grant IAC_USER required Org roles:
+for role in \
+  organization-iam-admin \
+  organization-billing-account-admin \
+  organization-billing-manager \
+  project-creator \
+  project-editor \
+  user-cluster-admin \
+  dr-backup-admin \
+  organization-backup-admin \
+  organization-cluster-backup-admin \
+  system-cluster-backup-repository-admin \
+  user-cluster-backup-admin \
+; do \
+   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+   --member="user:$IAC_USER" \
+   --role="$role";\
+done
+
+### Grant IAC_USER required IAM permissions on `IAC_PROJECT` :
+for role in \
+  secret-admin \
+  backup-creator \
+; do \
+  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+  --member=user:$IAC_USER \
+  --role=$role;\
+done
+```
+
+### 4. Deploying GDCH Resources `VirtualMachine`, `Bucket`, `DBCluster`
+
+0. gdcloud auth login (as fop-iac@example.com)
+
+`gdcloud auth login --login-config-cert=/tmp/org-1-web-tls-ca.cert`
+
+1. Prechecks Helm Chart
+```bash
+cd helm-iac
+helmfile lint
+helmfile list
+helmfile show-dag
+```
+
+
+2. Helmfile diff to show resources to deploy
+
+```bash
+helmfile diff
+```
+
+Note: this is like to fail because of a "Chicken and Egg" problem.  `helmfile diff` or even `helmfile apply` attempts to calculate diffs for all groups before it applies anything.
+However, this is a fresh install and  the namespaces (e.g lotus-prj, snowflake-prj) does not exist yet.
+
+2. Use `helmfile sync` for ``first run``.
+
+Note: `helmfile sync` does not try to read the state first. It will simply execute the DAG in order ensuring the resources are deployed base on the order and dependency defined using the `needs` keyword.
+
+4. Use `helmfile apply` for subsequent resources deployment once project and rolebindings exists.
+
+```bash
+helmfile apply
+```
 
 ---
 

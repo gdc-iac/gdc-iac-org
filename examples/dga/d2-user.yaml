@@ -16,7 +16,7 @@ global:
   rw_bucket_name: &rw_bucket_role "d2-ets-s3-rw1"
   shared_infra_project_name: &shared_infra_project_name "d2-ets-shared-infra"
   user_project_name: &user_project_name "d2-ets-user-1"
-  service_account_name: &service_account_name "serviceaccount:iac-root:iac001-sa"
+  service_account_name: &service_account_name "system:system:serviceaccount:iac-root:iac001-sa"
   iam-role-bindings: 
   - role: *tools_bucket_role
     subject_kind: "User"
@@ -57,8 +57,30 @@ global:
       - role: "workbench-notebooks-admin"
         subject_kind: "User"
         subject_name: *iac_subject_name
+      # Service account permissions:
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *service_account_name
       - role: "workbench-notebooks-admin"
-        subject_kind: "ServiceAccount"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "secret-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "namespace-admin"
+        subject_kind: "User"
+        subject_name: *service_account_name
+      - role: "workbench-notebooks-admin"
+        subject_kind: "User"
         subject_name: *service_account_name
 lux-central1-b:
   projects:
@@ -69,7 +91,7 @@ lux-central1-b:
       user_cluster_name: "clstr-20260224"
       sidecars:
       - name: "s3-proxy"
-        image: "us-east67-b-docker.pkg.dev/d2-ets-user-1/repo/s3-proxy:latest"
+        image: "data-ets-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-mhs/s3-proxy:2.0"
         volumeMounts:
         - mountPath: /proxy/conf
           name: s3-proxy-config

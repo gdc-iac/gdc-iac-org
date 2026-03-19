@@ -1,0 +1,30 @@
+{{- $plans := ($.Values.backupplans | default dict).vm | default dict }}
+{{- range $i, $plan := $plans }}
+---
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineBackupPlanTemplate
+metadata:
+  name: {{ printf "%s-template" $plan.name | quote }}
+  namespace: {{ $plan.namespace | default ($.Values.backupplans | default dict).namespace | required "A valid namespace is required" }}
+spec:
+  backupRepository: {{ required "backupRepository is required" $plan.backupRepository | quote }}
+---
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineBackupPlan
+metadata:
+  name: {{ required "A valid backup plan name is required" $plan.name }}
+  namespace: {{ $plan.namespace | default ($.Values.backupplans | default dict).namespace | required "A valid namespace is required" }}
+spec:
+  virtualMachineBackupPlanTemplate: {{ printf "%s-template" $plan.name | quote }}
+  backupConfig:
+    backupScope:
+      {{- if $plan.backupScope }}
+      {{- toYaml $plan.backupScope | nindent 6 }}
+      {{- else }}
+      {}
+      {{- end }}
+    volumeStrategy: {{ required "volumeStrategy is required (ProvisionerSpecific or LocalSnapshotOnly)" $plan.volumeStrategy }}
+  backupSchedule:
+    cronSchedule: {{ required "cronSchedule is required" $plan.cronSchedule | quote }}
+    paused: {{ $plan.paused | default false }}
+{{- end }}

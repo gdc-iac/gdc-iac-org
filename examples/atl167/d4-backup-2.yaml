@@ -1,0 +1,105 @@
+iac:
+  # IaC can be invoked by user or service account
+  # If invoked by user, subject_kind is User
+  # If invoked by service account, subject_kind is ServiceAccount
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: &iac_subject_name "fop-iac001@example.com"
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "harbor-project-creator"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "standard-cluster-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "workbench-notebooks-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+  # IaC can be invoked by user or service account
+  # If invoked by service account, subject_kind is ServiceAccount
+- role: "project-iam-admin"
+  subject_kind: "ServiceAccount"
+  subject_name: &iac_sa "system:serviceaccount:iac-root:iac001-sa"
+- role: "project-bucket-admin"
+  subject_kind: "ServiceAccount"
+  subject_name: *iac_sa
+- role: "project-networkpolicy-admin"
+  subject_kind: "ServiceAccount"
+  subject_name: *iac_sa
+- role: "harbor-instance-admin"
+  subject_kind: "ServiceAccount"
+  subject_name: *iac_sa
+- role: "harbor-project-creator"
+  subject_kind: "ServiceAccount"
+  subject_name: *iac_sa
+- role: "standard-cluster-admin"
+  subject_kind: "ServiceAccount"
+  subject_name: *iac_sa
+- role: "workbench-notebooks-admin"
+  subject_kind: "ServiceAccount"
+  subject_name: *iac_sa
+global:
+  # FQN can be obtained from the bucket object metadata after creation
+  # this is a rationale for splitting the deployment into two steps
+  # to obtain FQDNs use:
+  # kubectl get buckets -n data-ets-backup
+  cluster_backup_bucket_fqdn: &cluster_backup_bucket_fqdn "zsrcm9i-cluster-backup"
+  vm_backup_bucket_fqdn: &vm_backup_bucket_fqdn "zsrcm9i-vm-backup"
+  harbor_backup_bucket_fqdn: &harbor_backup_bucket_fqdn "zsrcm9i-harbor-backup"
+  backup_bucket_endpoint: &backup_bucket_endpoint "https://objectstorage.gdchservices.us-east67-b.google.gdch.test"
+  backup_project_name: &backup_project_name "data-ets-backup"
+  # follow https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/platform/pa-user/grant-obtain-storage-access#obtain_service_account_access
+  # to obtain the secret name:
+  # kubectl get secrets --namespace $PROJECT_NAME -o json | jq -r --arg USER_NAME "${SA_NAME:?}" '.items[] | select( (.metadata.annotations."object.gdc.goog/subject"==$USER_NAME)) | .metadata.name'
+  backup_secret_name: &backup_secret_name "object-storage-key-std-sa-lkran5zltd6on5dhi7v7qooxtwg2rogat2r7f75udowweuduolbq"
+  backup_location: &backup_location "us-east67-b"
+  cluster_backup_repo_name: &cluster_backup_repo_name "d4-ets-cluster-backup"
+  vm_backup_repo_name: &vm_backup_repo_name "d4-ets-vm-backup"
+  harbor_backup_repo_name: &harbor_backup_repo_name "d4-ets-harbor-backup"
+  projects:
+    - name: *backup_project_name
+us-east67-b:
+  projects:
+  - name: *backup_project_name
+    # Note: backup repositories require pre-existing bucket and secret,
+    # this means that the deployment of backup repositories must be done after
+    # the deployment of the bucket and the secret. First run of this bundle
+    # may fail on backup repositories creation.
+    backup-repositories:
+      cluster:
+      - name: *cluster_backup_repo_name
+        secretReference:
+          name: *backup_secret_name
+        endpoint: *backup_bucket_endpoint
+        type: "S3"
+        s3Options:
+          bucket: *cluster_backup_bucket_fqdn
+          region: *backup_location
+          forcePathStyle: true
+        importPolicy: "ReadWrite"
+      vm:
+      - name: *vm_backup_repo_name
+        secretReference:
+          name: *backup_secret_name
+        endpoint: *backup_bucket_endpoint
+        type: "S3"
+        s3Options:
+          bucket: *vm_backup_bucket_fqdn
+          region: *backup_location
+          forcePathStyle: true
+      harbor:
+      - name: *harbor_backup_repo_name
+        secretReference:
+          name: *backup_secret_name
+        endpoint: *backup_bucket_endpoint
+        region: *backup_location
+        bucket: *harbor_backup_bucket_fqdn
+        description: "Daily harbor backup repository"

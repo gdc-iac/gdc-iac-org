@@ -33,6 +33,8 @@ spec:
 {{ $role.zonalRules | indent 4 }}
 {{- else }}
 {{ $role.zonalRules | toYaml | indent 4 }}
+      resourceNames:
+      - {{ $role.bucket_name | indent 4 }}
 {{- end }}
   {{- end }}
 {{- end }}

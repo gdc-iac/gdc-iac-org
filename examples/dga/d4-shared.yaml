@@ -1,6 +1,9 @@
 iac:
 - role: "project-iam-admin"
   subject_kind: "User"
+  subject_name: &sdobrica_subject_name "gdch-infra-operator-sdobrica-sa@opscenter.local"
+- role: "project-iam-admin"
+  subject_kind: "User"
   subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
 - role: "project-bucket-admin"
   subject_kind: "User"
@@ -8,6 +11,58 @@ iac:
 - role: "project-networkpolicy-admin"
   subject_kind: "User"
   subject_name: *iac_subject_name
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "dashboard-editor"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "dashboard-viewer"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+# Service account permissions:
+- role: "project-grafana-viewer"
+  subject_kind: "User"
+  subject_name: &service_account_name "system:serviceaccount:iac-root:iac001-sa"
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "project-bucket-object-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "standard-cluster-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "workload-viewer"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "backup-creator"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "harbor-project-creator"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "dashboard-editor"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "dashboard-viewer"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "secret-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
+- role: "namespace-admin"
+  subject_kind: "User"
+  subject_name: *service_account_name
 global:
   admin_subject_name: &admin_subject_name "gdch-infra-operator-fop-etsadmin@opscenter.local"
   tools_bucket_name: &tools_bucket_name "d4-ets-s3-tools"
@@ -15,8 +70,14 @@ global:
   ro_bucket_name: &ro_bucket_name "d4-ets-s3-ro1"
   ro_bucket_role: &ro_bucket_role "d4-ets-s3-ro1"
   rw_bucket_name: &rw_bucket_name "d4-ets-s3-rw1"
-  rw_bucket_name: &rw_bucket_role "d4-ets-s3-rw1"
+  rw_bucket_role: &rw_bucket_role "d4-ets-s3-rw1"
   shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
+  user_project_name: &user_project_name "d2-ets-user-1"
+  billing:
+    accounts:
+      name: *shared_infra_project_name
+      display_name: "Shared Billing Account"
+      cloud_billing_config_account_id: "Organization Billing Account"
   iam-roles:
     - name: *tools_bucket_role
       title: *tools_bucket_role
@@ -27,6 +88,8 @@ global:
           - object.gdc.goog
           resources:
           - buckets
+          resourceNames:
+          - "d4-ets-s3-tools"
           verbs:
           - list
           - read-object
@@ -39,6 +102,8 @@ global:
           - object.gdc.goog
           resources:
           - buckets
+          resourceNames:
+          - "d4-ets-s3-ro1"
           verbs:
           - list
           - read-object
@@ -51,9 +116,12 @@ global:
           - object.gdc.goog
           resources:
           - buckets
+          resourceNames:
+          - "d4-ets-s3-rw1"
           verbs:
           - list
           - read-object
+          - write-object
   projects:
     - name: *shared_infra_project_name
       project-network-policies:
@@ -67,7 +135,7 @@ global:
           - project_selector:
               projects:
                 match_names:
-                - "d4-ets-user-1"
+                - *user_project_name
       iam-role-bindings: 
       - role: "project-grafana-viewer"
         subject_kind: "User"
@@ -93,6 +161,8 @@ global:
       - role: "harbor-project-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name
+      billing:
+        account_ref: *shared_infra_project_name
 lux-central1-b:
   projects:
   - name: *shared_infra_project_name
@@ -107,12 +177,12 @@ lux-central1-b:
       - name: "data-ets-mhs"
         autoscan: false
         creatorkind: "User"
-        creatorname: "gdch-infra-operator-sdobrica-sa@opscenter.local"
+        creatorname: *iac_subject_name
       # --- Second Project ---
       - name: "prj-20260224"
         autoscan: false
         creatorkind: "User"
-        creatorname: "gdch-infra-operator-sdobrica-sa@opscenter.local"
+        creatorname: *iac_subject_name
   clusters:
   - name: "clstr-20260224"
     namespace: "platform"

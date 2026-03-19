@@ -27,7 +27,7 @@ iac:
   # If invoked by service account, subject_kind is ServiceAccount
 - role: "project-iam-admin"
   subject_kind: "ServiceAccount"
-  subject_name: &iac_sa "iac001-sa"
+  subject_name: &iac_sa "system:serviceaccount:iac-root:iac001-sa"
 - role: "project-bucket-admin"
   subject_kind: "ServiceAccount"
   subject_name: *iac_sa
@@ -70,6 +70,8 @@ global:
           - object.gdc.goog
           resources:
           - buckets
+          resourceNames:
+          - "d4-ets-s3-tools"
           verbs:
           - list
           - read-object
@@ -82,6 +84,8 @@ global:
           - object.gdc.goog
           resources:
           - buckets
+          resourceNames:
+          - "d4-ets-s3-ro1"
           verbs:
           - list
           - read-object
@@ -94,9 +98,12 @@ global:
           - object.gdc.goog
           resources:
           - buckets
+          resourceNames:
+          - "d4-ets-s3-rw1"
           verbs:
           - list
           - read-object
+          - write-object
   projects:
     - name: *shared_infra_project_name
       harbor:
