@@ -12,7 +12,30 @@ This Helm chart deploys and manages Database Services within a Google Distribute
 3.  **Permissions:** You need sufficient permissions in the target project namespace to create Secrets and `DBCluster` resources (e.g., `project-db-admin` role or equivalent).
 4.  **Project Namespace:** A project namespace must exist in your GDCH organization where the database will be deployed.
 
-## Chart Configuration
+## Usage / Installation
+
+1. Navigate to the chart directory:
+
+```bash
+cd gdc-dbs
+```
+
+2. Generate Base64 Password:
+
+```bash
+export B64_PASSWORD=$(echo -n 'YourSecureP@ssw0rd' | base64)
+```
+
+3. Install PostgreSQL Example:
+
+```bash
+helm install my-pg-release . \
+  --namespace my-db-project \
+  --set base64EncodedPassword=$B64_PASSWORD \
+  --set postgresql.enabled=true
+```
+
+## Configuration Parameters
 
 The chart is configured through the `values.yaml` file or by using `--set` flags during `helm install` or `helm upgrade`.
 
@@ -55,32 +78,18 @@ To generate a base64 encoded password:
 ```bash
 echo -n 'YourSecureP@ssw0rd' | base64
 
-## Installation
+## Example Configuration (Optional)
 
-1. Navigate to the chart directory:
+To customize further (PostgreSQL):
 
-cd gdch-dbs
-
-2. Generate Base64 Password:
-
-export B64_PASSWORD=$(echo -n 'YourSecureP@ssw0rd' | base64)
-
-## Verify the password
-
-echo $B64_PASSWORD
-```
-
-3. Install PostgreSQL Example:
-
-```
+```bash
 helm install my-pg-release . \
   --namespace my-db-project \
   --set base64EncodedPassword=$B64_PASSWORD \
-  --set postgresql.enabled=true
-
-```
-To customize further:
-
+  --set postgresql.enabled=true \
+  --set postgresql.clusterName=prod-pg \
+  --set postgresql.memory=8Gi \
+  --set postgresql.dataDiskSize=100Gi
 ```
 helm install my-pg-release . \
   --namespace my-db-project \
@@ -150,3 +159,32 @@ This will remove the `DBCluster` and associated `Secret` created by the chart.
 
 ## Accessing the Database
 Refer to the GDCH Database Services documentation for details on how to connect to your provisioned database instance. The service endpoints and connection details can typically be found in the status of the `DBCluster` resource.
+
+## CI/CD Pre-Deployment Testing
+
+This repository enforces a strict, 4-step offline testing pipeline for all Helm charts to ensure GitOps best practices for our enterprise GDC landing zone. Tests are executed via the global `gdc-iac-org/scripts/test-charts.sh` script.
+
+### The 4 Validation Layers
+
+1.  **Input/Schema Validation:** Verifies that required values (like `namespace`) are provided and strongly typed using the native `values.schema.json`.
+2.  **Logic Validation (`helm-unittest`):** Asserts that the Go templating logic correctly generates the intended YAML without needing a live cluster.
+3.  **Structural Validation (`kubeconform`):** Verifies the rendered YAML conforms strictly to Kubernetes OpenAPI specifications. 
+    > [!IMPORTANT]
+    > `kubeconform` currently skips validation of the `ProjectNetworkPolicy` Custom Resource Definition. To achieve maximum offline safety, administrators should export the GDC CRD schemas and supply them to the test pipeline.
+4.  **Security Policy Validation (`conftest` / OPA):** Asserts that the generated manifests comply with enterprise security mandates (e.g., denying `0.0.0.0/0` ingress rules), defined via Rego policies in the `policy/` directory.
+
+### Prerequisites for Local Testing
+
+If you are developing locally in an air-gapped environment, ensure the following binaries are downloaded and available in your `$PATH` (or injected into your CI runner image):
+
+- `helm` (with the `helm-unittest` plugin installed)
+- `kubeconform`
+- `conftest`
+
+### Running the Tests
+
+To run the entire validation suite across all charts, execute the global test script from the repository root:
+
+```bash
+./scripts/test-charts.sh
+```

@@ -1,41 +1,37 @@
-# gdc-project-network-policies
+# gdc-standard-clusters-rbac
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
+A Helm chart for managing RBAC (RoleBindings and ClusterRoleBindings) in standard clusters.
 
 ## Prerequisites
 
 - Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
+- Access to the GDCH API cluster.
 
 ## Usage / Installation
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
 ```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
+helm install my-rbac ./gdc-standard-clusters-rbac -f values.yaml
 ```
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the chart and their default values.
-
 | Parameter | Description | Default | Required |
 | --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
+| `roleBindings` | List of RoleBinding resources to apply to specific namespaces. | `[]` | No |
+| `clusterRoleBindings` | List of ClusterRoleBinding resources to apply globally within the cluster. | `[]` | No |
 
 ## Example Configuration (Optional)
 
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
 ```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
+roleBindings:
+  - name: developer-binding
+    namespace: app-namespace
+    roleName: developer-role
+    roleKind: Role
+    subjects:
+      - kind: User
+        name: fop-alice@example.com
+        apiGroup: rbac.authorization.k8s.io
 ```
 
 ## CI/CD Pre-Deployment Testing

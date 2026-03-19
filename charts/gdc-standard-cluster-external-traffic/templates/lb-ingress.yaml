@@ -1,0 +1,20 @@
+{{- if .Values.loadBalancer.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lb-ingress-traffic
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{ .Values.loadBalancer.subjectLabelKey }}: {{ .Values.loadBalancer.subjectLabelValue }}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: {{ .Values.loadBalancer.ingress.fromCidr }}
+    ports:
+    - protocol: TCP
+      port: {{ .Values.loadBalancer.ingress.port }}
+{{- end }}

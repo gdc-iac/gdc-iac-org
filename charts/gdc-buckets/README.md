@@ -1,41 +1,40 @@
-# gdc-project-network-policies
+# gdc-buckets
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
+A Helm chart for managing storage buckets in Google Distributed Cloud Hosted environments.
 
 ## Prerequisites
 
 - Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
+- Access to the GDCH API cluster.
 
 ## Usage / Installation
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
 ```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
+helm install my-buckets ./gdc-buckets -f values.yaml
 ```
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the chart and their default values.
-
 | Parameter | Description | Default | Required |
 | --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
+| `location` | The location/zone for the buckets. | `"zone1"` | No |
+| `buckets` | A list of bucket configurations. | `[]` | No |
+| `buckets[].name` | Name of the bucket. | `""` | **Yes** if buckets provided |
+| `buckets[].namespace` | Namespace of the bucket. | `""` | **Yes** if buckets provided |
+| `buckets[].description` | Description of the bucket. | `""` | No |
+| `buckets[].storageClass` | Storage class for the bucket. | `"Standard"` | No |
+| `buckets[].enableCorsPolicy` | Whether to enable CORS policy. | `"false"` | No |
 
 ## Example Configuration (Optional)
 
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
 ```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
+location: "lux-central1-b"
+buckets:
+  - name: "lotus-bucket-1"
+    namespace: "lotus-prj"
+    description: "Primary storage for lotus app"
+    storageClass: "Standard"
+    enableCorsPolicy: "true"
 ```
 
 ## CI/CD Pre-Deployment Testing

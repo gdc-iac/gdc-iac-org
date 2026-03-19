@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=values.schema.json
+
+# GDC Organization Network Policies Configuration
+# Represents network policies defining access to managed services across the organization.
+
+# orgnetworkpolicies is a list of organization network policies to create.
+orgnetworkpolicies: []
+
+# Example config showing how to allow traffic from a specific IP block to the 'ui-console' service:
+# orgnetworkpolicies:
+#   - name: "allow-ui-access"
+#     subject:
+#       services:
+#         match_types:
+#         - "ui-console"
+#     ingress:
+#       - from:
+#         - ip_block:
+#             cidr: "10.251.0.0/24"

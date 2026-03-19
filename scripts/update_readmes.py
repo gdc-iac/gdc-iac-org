@@ -1,44 +1,7 @@
-# gdc-project-network-policies
+import os
+import re
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
-
-## Prerequisites
-
-- Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
-
-## Usage / Installation
-
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
-```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
-```
-
-## Configuration Parameters
-
-The following table lists the configurable parameters of the chart and their default values.
-
-| Parameter | Description | Default | Required |
-| --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
-
-## Example Configuration (Optional)
-
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
-```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
-```
-
-## CI/CD Pre-Deployment Testing
+TESTING_BLOCK = """## CI/CD Pre-Deployment Testing
 
 This repository enforces a strict, 4-step offline testing pipeline for all Helm charts to ensure GitOps best practices for our enterprise GDC landing zone. Tests are executed via the global `gdc-iac-org/scripts/test-charts.sh` script.
 
@@ -66,3 +29,24 @@ To run the entire validation suite across all charts, execute the global test sc
 ```bash
 ./scripts/test-charts.sh
 ```
+"""
+
+charts_dir = "charts"
+for chart_name in os.listdir(charts_dir):
+    chart_path = os.path.join(charts_dir, chart_name)
+    readme_file = os.path.join(chart_path, "README.md")
+    
+    if os.path.isdir(chart_path) and os.path.isfile(readme_file):
+        with open(readme_file, "r") as f:
+            content = f.read()
+            
+        # Remove old testing blocks if they exist
+        content = re.sub(r'## Testing\n.*', '', content, flags=re.DOTALL)
+        content = re.sub(r'## CI/CD Pre-Deployment Testing\n.*', '', content, flags=re.DOTALL)
+        
+        # Append the new standardized block
+        content = content.strip() + "\n\n" + TESTING_BLOCK
+        
+        with open(readme_file, "w") as f:
+            f.write(content)
+        print(f"Updated README for {chart_name}")

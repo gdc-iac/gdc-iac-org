@@ -1,6 +1,0 @@
-apiVersion: v2
-name: gdc-cross-project-network-policies
-description: A Helm chart for Google Distributed Cloud Cross-Project Network Policies
-type: application
-version: 0.1.0
-appVersion: "1.0.0"

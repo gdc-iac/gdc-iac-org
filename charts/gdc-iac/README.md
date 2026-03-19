@@ -1,41 +1,38 @@
-# gdc-project-network-policies
+# gdc-iac
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
+A Helm chart for managing Infrastructure as Code (IaC) RoleBindings in Google Distributed Cloud Hosted environments.
 
 ## Prerequisites
 
 - Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
+- Access to the GDCH API cluster.
 
 ## Usage / Installation
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
 ```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
+helm install my-iac ./gdc-iac -f values.yaml
 ```
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the chart and their default values.
-
 | Parameter | Description | Default | Required |
 | --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
+| `global.projects` | A list of projects to set namespaces for. | `[]` | No |
+| `global.projects[].name` | Name of the project. | `""` | **Yes** if projects provided |
+| `iac` | Configuration for the IaC RoleBinding. | `{}` | No |
+| `iac.subject_name` | The name of the subject (e.g., user email). | `""` | **Yes** if iac configured |
+| `iac.subject_kind` | The kind of the subject. | `"User"` | No |
 
 ## Example Configuration (Optional)
 
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
 ```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
+global:
+  projects:
+    - name: "lotus-prj"
+    - name: "snowflake-prj"
+iac:
+  subject_name: "fop-iac@example.com"
+  subject_kind: "User"
 ```
 
 ## CI/CD Pre-Deployment Testing

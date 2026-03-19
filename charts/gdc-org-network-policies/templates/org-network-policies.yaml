@@ -1,0 +1,41 @@
+{{- if .Values.orgnetworkpolicies }}
+{{- range $policy := .Values.orgnetworkpolicies }}
+---
+apiVersion: networking.gdc.goog/v1
+kind: OrganizationNetworkPolicy
+metadata:
+  {{- if $policy.name }}
+  name: {{ regexReplaceAll "\\W+" $policy.name "-" }}
+  {{- else }}
+  name: org-network-policy-{{ randAlphaNum 5 | lower }}
+  {{- end }}
+  namespace: platform
+spec:
+  {{- with $policy.subject }}
+  subject:
+    {{- with .services }}
+    services:
+      {{- if .match_types }}
+      matchTypes:
+        {{- toYaml .match_types | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with $policy.ingress }}
+  ingress:
+    {{- range . }}
+    {{- if .from }}
+    - from:
+      {{- range .from }}
+      {{- if .ip_block }}
+      - ipBlock:
+          cidr: {{ .ip_block.cidr }}
+      {{- end }}
+      {{- end }}
+    {{- else }}
+    - {}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

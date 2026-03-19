@@ -1,0 +1,17 @@
+{{- range .Values.orgpolicies }}
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: GDCHRestrictedService
+metadata:
+  name: {{ .name }}
+spec:
+  match:
+    kinds:
+      - apiGroups:
+          - "{{ .apiGroup }}"
+        kinds:
+          - "{{ .kind }}"
+  parameters:
+    disabledOperations:
+{{ toYaml .disabledOperations | indent 6 }}
+{{- end }}
