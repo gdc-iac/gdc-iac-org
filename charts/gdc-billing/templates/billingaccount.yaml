@@ -1,5 +1,5 @@
 {{- if .Values.billing.accounts }}
-{{- $acc := .Values.billing.accounts }}
+{{- range $_, $acc := .Values.billing.accounts }}
 ---
 apiVersion: billing.global.gdc.goog/v1
 kind: BillingAccount
@@ -11,4 +11,5 @@ spec:
   paymentSystemConfig:
     cloudBillingConfig:
       accountID: {{ $acc.cloud_billing_config_account_id | required "cloud_billing_config_account_id is required" }}
+{{- end }}
 {{- end }}
