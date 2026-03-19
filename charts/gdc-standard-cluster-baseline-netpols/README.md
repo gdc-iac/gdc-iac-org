@@ -1,41 +1,37 @@
-# gdc-project-network-policies
+# gdc-standard-cluster-baseline-netpols
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
+A Helm chart for applying baseline network policies to standard clusters in GDC.
 
 ## Prerequisites
 
 - Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
+- Access to the GDCH API cluster.
 
 ## Usage / Installation
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
 ```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
+helm install my-baseline-netpols ./gdc-standard-cluster-baseline-netpols -f values.yaml
 ```
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the chart and their default values.
-
 | Parameter | Description | Default | Required |
 | --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
+| `namespace` | The namespace where these baseline policies will be applied. | `"default"` | No |
+| `defaultDeny.enabled` | Enable the default deny-all policy for the namespace. | `true` | No |
+| `allowDns.enabled` | Enable explicit egress to kube-dns. | `true` | No |
+| `allowAll.enabled` | Enable an overriding policy that allows all traffic. | `false` | No |
 
 ## Example Configuration (Optional)
 
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
 ```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
+namespace: default
+defaultDeny:
+  enabled: true
+allowDns:
+  enabled: true
+allowAll:
+  enabled: false
 ```
 
 ## CI/CD Pre-Deployment Testing

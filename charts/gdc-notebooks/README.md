@@ -1,41 +1,38 @@
-# gdc-project-network-policies
+# gdc-notebooks
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
+A Helm chart for deploying and managing Notebooks in Google Distributed Cloud Hosted environments.
 
 ## Prerequisites
 
 - Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
+- Access to the GDCH API cluster.
 
 ## Usage / Installation
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
 ```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
+helm install my-notebooks ./gdc-notebooks -f values.yaml
 ```
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the chart and their default values.
-
 | Parameter | Description | Default | Required |
 | --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
+| `namespace` | Default namespace for notebooks. | `""` | No |
+| `notebooks` | List of notebook configurations. | `[]` | No |
+| `notebooks[].name` | Name of the notebook. | `""` | **Yes** if notebook provided |
+| `notebooks[].nb_project` | Project name for the notebook. | `""` | No |
+| `notebooks[].nb_jupyter_image` | Jupyter image to use. | `""` | No |
+| `notebooks[].user_cluster_name` | Name of the user cluster. | `""` | No |
+| `notebooks[].sidecars` | List of sidecar containers. | `[]` | No |
 
 ## Example Configuration (Optional)
 
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
 ```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
+notebooks:
+  - name: my-notebook
+    nb_project: project-name
+    nb_jupyter_image: jupyter-image:1.0
+    user_cluster_name: my-user-cluster
 ```
 
 ## CI/CD Pre-Deployment Testing

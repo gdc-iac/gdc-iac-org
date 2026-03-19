@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gdc-org-policies
+description: A Helm chart for creating Organization Policies (GDCHRestrictedService) in Google Distributed Cloud (GDC) air-gapped environments.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

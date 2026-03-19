@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Values schema for gdc-project-network-policies",
+  "type": "object",
+  "properties": {
+    "namespace": {},
+    "projectnetworkpolicies": {}
+  }
+}

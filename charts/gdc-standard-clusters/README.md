@@ -1,41 +1,44 @@
-# gdc-project-network-policies
+# gdc-standard-clusters
 
-A Helm chart for managing Google Distributed Cloud Hosted (air-gapped) Project-level Network Policies. It templates Custom Resources like `ProjectNetworkPolicy` from the `networking.global.gdc.goog/v1` API group.
+A Helm chart for deploying standard clusters in Google Distributed Cloud Hosted environments.
 
 ## Prerequisites
 
 - Helm 3.0+
-- Access to the Global API Cluster where GDCH policies are provisioned.
+- Access to the GDCH API cluster.
 
 ## Usage / Installation
 
-Once `values.yaml` is configured or integrated into your multi-value YAML configs, run:
-
 ```bash
-helm install my-policies ./gdc-project-network-policies -f my-values.yaml
+helm install my-standard-clusters ./gdc-standard-clusters -f values.yaml
 ```
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the chart and their default values.
-
 | Parameter | Description | Default | Required |
 | --- | --- | --- | --- |
-| `projects[].name` | Name of the project/namespace the policy belongs to | `""` | **Yes** |
-| `projects[].project-network-policies[].name` | Name of the ProjectNetworkPolicy resource | `""` | **Yes** if policies exist |
-| `projects[].project-network-policies[].subject` | Target workloads subject block. | `{}` | No |
-| `projects[].project-network-policies[].ingress` | Ingress filtering rules. | `[]` | No |
-| `projects[].project-network-policies[].egress` | Egress filtering rules. | `[]` | No |
+| `standardClusters` | List or map of standard clusters to create. | `{}` | No |
+| `standardClusters.<name>.name` | Name of the standard cluster. | `""` | **Yes** if cluster provided |
+| `standardClusters.<name>.namespace` | Namespace for the standard cluster. | `""` | **Yes** if cluster provided |
+| `standardClusters.<name>.podCIDRSize` | Pod CIDR block size. | `""` | No |
+| `standardClusters.<name>.serviceCIDRSize` | Service CIDR block size. | `""` | No |
+| `standardClusters.<name>.kubernetesVersion` | Kubernetes version of the cluster. | `""` | No |
+| `standardClusters.<name>.nodePools` | Node pools configuration for the standard cluster. | `[]` | No |
 
 ## Example Configuration (Optional)
 
-This chart expects a top-level `projects` list in the `values.yaml`, with each project having an optional `project-network-policies` list attached.
-
 ```yaml
-projectnetworkpolicies:
-  - name: "allow-all-ingress-example"
-    ingress:
-      - {} # Empty object creates an allow-all rule
+standardClusters:
+  cluster1:
+    name: "smugabe-test-cluster"
+    namespace: "platform"
+    podCIDRSize: 21
+    serviceCIDRSize: 23
+    kubernetesVersion: "1.26.5-gke.2100"
+    nodePools:
+      - name: "pool-1"
+        machineTypeName: "n2-standard-4"
+        nodeCount: 3
 ```
 
 ## CI/CD Pre-Deployment Testing
