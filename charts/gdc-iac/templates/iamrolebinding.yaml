@@ -4,7 +4,7 @@
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: {{ regexReplaceAll "\\W+" (required "A valid subject_name is required" $iamrolebinding.subject_name) "-" }}--{{ regexReplaceAll "\\W+" (required "A valid role is required" $iamrolebinding.role) "-" }}
+  name: {{ regexReplaceAll "\\W+" (required "A valid subject_name is required" $iamrolebinding.subject_name) "-" }}--{{ regexReplaceAll "\\W+" (required "A valid role is required" $iamrolebinding.role) "-" }}--iac
   namespace: {{ required "A valid namespace is required" $.Values.namespace | quote }}
 spec:
   roleRef:
