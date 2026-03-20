@@ -41,6 +41,7 @@ import logging
 import subprocess
 import sys
 import tempfile
+import os
 from typing import List, Tuple, Union
 
 import yaml
@@ -97,6 +98,8 @@ def action_cmd(
     kubeconfig: str = None,
     release_name: str = None,
     chart: str = None,
+    chart_dir: str = None,
+    output_dir: str = None,
     values_file: str = None,
     extra_args: List[str] = None
 ) -> List[str]:
@@ -118,6 +121,8 @@ def action_cmd(
     Raises:
         ValueError: If an explicitly mapped helm action string is not found.
     """
+    if chart_dir:
+        chart = f"{chart_dir}/{chart}"
     if logging.getLogger().isEnabledFor(logging.DEBUG):
         cmd = ["helm", "--debug"]
     else:
@@ -128,6 +133,8 @@ def action_cmd(
         cmd.extend(["list"])
     elif action == "template":
         cmd.extend(["template", release_name, chart, "-f", values_file])
+        if output_dir:
+            cmd.extend(["--output-dir", output_dir])
     elif action == "upgrade":
         cmd.extend(["upgrade", "--install", release_name,
                    chart, "-f", values_file])
@@ -147,6 +154,10 @@ def action_cmd(
         raise ValueError(f"Invalid action: {action}")
     cmd.extend(extra_args)
     return cmd
+
+
+def normalize_name(name: str) -> str:
+    return name.replace("_", "-")
 
 
 def call_global_action(
@@ -181,10 +192,15 @@ def call_global_action(
 def call_resource_action(
     kubeconfig: str,
     action: str,
+    dry_run: bool,
+    parents: List[str],
+    resource_name: str,
     resource_type: str,
     resource_config: dict,
     release_name: str,
-    extra_args: List[str]
+    extra_args: List[str],
+    charts_dir: str,
+    output_dir: str
 ) -> None:
     """
     Executes a helm action for a specific resource.
@@ -200,28 +216,38 @@ def call_resource_action(
         parents: The parent context.
         extra_args: Extra arguments for the helm command.
     """
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-            values_yaml = yaml.safe_dump(resource_config)
-            logging.debug(values_yaml)
-            tmp.write(values_yaml)
-            tmp.flush()
-            cmd = action_cmd(
-                kubeconfig=kubeconfig, action=action,
-                release_name=release_name,
-                chart=f"../../charts/gdc-{resource_type}",
-                values_file=tmp.name, extra_args=extra_args
-            )
-            logging.info(f"{' '.join(cmd)}")
-            output = subprocess.check_output(cmd, text=True)
-            logging.info(f"Helm {action} {release_name} finished")
-            if output:
-                logging.info(output)
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Helm failed with return code {e.returncode}")
-        logging.error(f"Error output (if captured): {e.output}")
-    except FileNotFoundError as e:
-        logging.error(f"Error: Helm not found or could not be executed. {e}")
+    if action == "hydrate":
+        if output_dir is None:
+            output_dir = f"./hydrated/"
+        os.makedirs(f"{output_dir}/{resource_type}", exist_ok=True)
+        with open(f"{output_dir}/{resource_type}/{resource_name}.yaml", "w") as f:
+            logging.info(f"Hydrating {resource_type}/{resource_name}.yaml")
+            yaml.dump(resource_config, f)
+    else:
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
+                values_yaml = yaml.safe_dump(resource_config)
+                logging.debug(values_yaml)
+                tmp.write(values_yaml)
+                tmp.flush()
+                cmd = action_cmd(
+                    kubeconfig=kubeconfig, action=action,
+                    release_name=normalize_name(release_name),
+                    chart=f"gdc-{resource_type}",
+                    chart_dir=charts_dir,
+                    output_dir=output_dir,
+                    values_file=tmp.name, extra_args=extra_args
+                )
+                logging.info(f"{' '.join(cmd)}")
+                output = subprocess.check_output(cmd, text=True)
+                logging.info(f"Helm {action} {release_name} finished")
+                if output:
+                    logging.info(output)
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Helm failed with return code {e.returncode}")
+            logging.error(f"Error output (if captured): {e.output}")
+        except FileNotFoundError as e:
+            logging.error(f"Error: Helm not found or could not be executed. {e}")
 
 
 def process_type(
@@ -234,7 +260,9 @@ def process_type(
     kubeconfig: str,
     dry_run: bool,
     parents: List[dict],
-    extra_args: List[str]
+    extra_args: List[str],
+    charts_dir: str,
+    output_dir: str
 ) -> None:
     """
     Recursively processes a node in the resource tree configuration.
@@ -264,14 +292,18 @@ def process_type(
             'namespace': parent.get('name'),
             'iamrolebindings': iac_config
         }
-        if not dry_run:
-            call_resource_action(
+        call_resource_action(
                 kubeconfig=kubeconfig,
                 action=action,
+                dry_run=dry_run,
+                parents=parents,
                 resource_type="iac",
+                resource_name=parent_name,
                 resource_config=resource_config,
                 release_name=release_name,
-                extra_args=extra_args
+                extra_args=extra_args,
+                charts_dir=charts_dir,
+                output_dir=output_dir
             )
         return
     if resource_type not in config:
@@ -285,20 +317,24 @@ def process_type(
             'namespace': parent_namespace,
             resource_type.replace("-", ""): obj
         }
-        if not dry_run:
-            call_resource_action(
+        call_resource_action(
                 kubeconfig=kubeconfig,
                 action=action,
+                dry_run=dry_run,
+                parents=parents,
+                resource_name=parent_name,
                 resource_type=resource_type,
                 resource_config=resource_config,
                 release_name=release_name,
-                extra_args=extra_args
+                extra_args=extra_args,
+                charts_dir=charts_dir,
+                output_dir=output_dir
             )
         return
     if type_tree is str:  # generate one release per object
         items = config[resource_type]
         if isinstance(items, dict):
-            obj_name = items.get('name', '')
+            obj_name = items.get('name', list(items.keys())[0])
             release_name = f"{parent_name}-{resource_type}-{obj_name}" if obj_name else f"{parent_name}-{resource_type}"
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
@@ -308,14 +344,18 @@ def process_type(
                 'namespace': parent_namespace,
                 'location': items.get('location', parents[0].get('name'))
             }}
-            if not dry_run:
-                call_resource_action(
+            call_resource_action(
                     kubeconfig=kubeconfig,
                     action=action,
+                    dry_run=dry_run,
+                    parents=parents,
+                    resource_name=obj_name,
                     resource_type=resource_type,
                     resource_config=resource_config,
                     release_name=release_name,
-                    extra_args=extra_args
+                    extra_args=extra_args,
+                    charts_dir=charts_dir,
+                    output_dir=output_dir
                 )
             return
 
@@ -330,14 +370,18 @@ def process_type(
                 'namespace': parent_namespace,
                 'location': obj.get('location', parents[0].get('name'))
             }]}
-            if not dry_run:
-                call_resource_action(
+            call_resource_action(
                     kubeconfig=kubeconfig,
                     action=action,
+                    dry_run=dry_run,
+                    parents=parents,
+                    resource_name=obj_name,
                     resource_type=resource_type,
                     resource_config=resource_config,
                     release_name=release_name,
-                    extra_args=extra_args
+                    extra_args=extra_args,
+                    charts_dir=charts_dir,
+                    output_dir=output_dir
                 )
         return
     # type_tree is a dict. Generate one release per object if TYPE_SCOPE
@@ -361,10 +405,15 @@ def process_type(
             call_resource_action(
                 kubeconfig=kubeconfig,
                 action=action,
+                dry_run=dry_run,
+                parents=parents,
+                resource_name=obj_name,
                 resource_type=resource_type,
                 resource_config=resource_config,
                 release_name=release_name,
-                extra_args=extra_args
+                extra_args=extra_args,
+                charts_dir=charts_dir,
+                output_dir=output_dir
             )
         for t, v in type_tree.items():
             parents.append(obj)
@@ -373,12 +422,16 @@ def process_type(
                 resource_type=t, type_tree=v,
                 config=config[resource_type][i],
                 iac_config=iac_config, kubeconfig=kubeconfig,
-                dry_run=dry_run, parents=parents, extra_args=extra_args
+                dry_run=dry_run, parents=parents, extra_args=extra_args,
+                charts_dir=charts_dir,
+                output_dir=output_dir
             )
 
 
 def process(
     config: dict, action: str, dry_run: bool, api: str,
+    charts_dir: str,
+    output_dir: str,
     api_kubeconfig: str, extra_args: List[str]
 ) -> bool:
     """
@@ -436,7 +489,9 @@ def process(
                 iac_config=iac_config, kubeconfig=kubeconfig,
                 dry_run=dry_run, parents=[
                     {'name': actual_name, 'namespace': namespace}],
-                extra_args=extra_args
+                extra_args=extra_args,
+                charts_dir=charts_dir,
+                output_dir=output_dir
             )
     return True
 
@@ -473,6 +528,20 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
     )
 
     parser.add_argument(
+        "--charts-dir",
+        help="Directory containing the helm charts",
+        type=str,
+        default="../../charts"
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        help="Directory to output the hydrated charts to",
+        type=str,
+        default=None
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Dry run mode"
@@ -502,6 +571,8 @@ def main() -> int:
             process(
                 config=config, action=args.action,
                 dry_run=args.dry_run, api=args.api,
+                charts_dir=args.charts_dir,
+                output_dir=args.output_dir,
                 api_kubeconfig=args.api_kubeconfig, extra_args=extra_args
             )
     else:
