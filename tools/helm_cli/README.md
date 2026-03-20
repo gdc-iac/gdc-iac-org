@@ -74,7 +74,7 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 
 ### Arguments
 
-- `<action>`: (Required) The Helm action to perform (e.g., `template`, `install`, `upgrade`, `lint`, `list`, etc.).
+- `<action>`: (Required) The Helm action to perform (e.g., `template`, `install`, `upgrade`, `lint`, `list`, etc.) or the custom `hydrate` action to simply extract the generated values YAML without invoking Helm.
 - `[config_file]`: (Optional) Path to the YAML configuration file containing the resource definitions. If omitted, the action is executed globally without trying to iterate on nested objects.
 - `[helm_flags]`: (Optional) Any additional arguments or flags supported by the raw Helm CLI (e.g., `--set key=value`, `--namespace mynamespace`). These arguments are directly passed through to `helm`.
 
@@ -82,7 +82,9 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 
 - `--api`: (Optional) Comma-separated list of APIs to process from the configuration file. If omitted, all APIs are processed.
 - `--api-kubeconfig`: (Optional) Comma-separated list of kubeconfigs to use for API processing. It must match the number of specified APIs if `--api` is used and specify kubeconfig for each API. If not specified, the script will use the default kubeconfig for each API.
+- `--charts-dir`: (Optional) Directory containing the Helm charts to be deployed. Defaults to `../../charts`.
 - `--dry-run`: If set, the script will parse the configuration and log the intended actions but will not execute the specific Helm commands that modify the state.
+- `--output-dir`: (Optional) Directory to write the output to when using the `hydrate` or `template` actions. Defaults to `./hydrated/` for `hydrate`.
 - `-v`, `--verbose`: Enable verbose (debug) logging output.
 
 ## Configuration
@@ -123,8 +125,8 @@ user:<cluster-name>:
 
 1.  **Parses Configuration**: Reads the provided YAML file.
 2.  **Iterates Resources**: Traverses the configuration based on the defined `RESOURCE_TYPES` hierarchy.
-3.  **Generates Values**: Constructs a temporary values YAML file for each resource found.
-4.  **Executes Helm**: Calls the Helm CLI with the specified action (e.g., `helm template ...`) targeting the corresponding chart (e.g., `../../charts/gdc-<resource_type>`).
+3.  **Generates Values**: Constructs a values YAML file for each resource found. If the action is `hydrate`, these files are saved to the specified `--output-dir` (default `./hydrated/`) and the process stops for that resource.
+4.  **Executes Helm**: For all other actions, it constructs a temporary values file and calls the Helm CLI (e.g., `helm template ...`) targeting the corresponding chart from the directory specified by `--charts-dir` (e.g., `../../charts/gdc-<resource_type>`).
 
 ## Running Tests
 
