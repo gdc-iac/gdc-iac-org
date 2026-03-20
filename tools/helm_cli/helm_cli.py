@@ -59,9 +59,7 @@ RESOURCE_SCHEMA = {
             "harbors": str,
             "backup-repositories": str,
             "backup-plans": str,
-            "dashboards": list,
-            "backup-repositories": str,
-            "backup-plans": str
+            "dashboards": list
         }
     },
     "user": {
