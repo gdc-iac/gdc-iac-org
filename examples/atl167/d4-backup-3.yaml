@@ -66,3 +66,8 @@ us-east67-b:
             name: "stress-test"
         cronSchedule: "0 2 * * *"
         clusterBackupRepositoryName: *cluster_backup_repo_name
+      harbor:
+      - name: "d4-ets-harbor-backup-plan"
+        harborInstance: "data-ets-mhs"
+        cronSchedule: "0 3 * * *"
+        backupRepository: *harbor_backup_repo_name
