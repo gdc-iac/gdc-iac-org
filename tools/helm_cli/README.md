@@ -99,13 +99,16 @@ iac: # Mapped to: charts/gdc-iac
   subject_name: "fop-iac001@example.com"
 global:
     iam-roles # Mapped to: charts/gdc-iam-roles
+    billing # Mapped to: charts/gdc-billing (Legacy)
+    billing-accounts # Mapped to: charts/gdc-billing-accounts
     projects: # Mapped to: charts/gdc-projects
       - IAC # Mapped to: charts/gdc-iac
       - iam-roles # Mapped to: charts/gdc-iam-roles
       - project-service-accounts # Mapped to: charts/gdc-project-service-accounts
       - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
       - project-network-policies # Mapped to: charts/gdc-project-network-policies
-      - billing # Mapped to: charts/gdc-billing
+      - billing # Mapped to: charts/gdc-billing (Legacy)
+      - billing-bindings # Mapped to: charts/gdc-billing-bindings
 <zone1>:
     clusters: # Mapped to: charts/gdc-clusters
     projects: # Mapped to: charts/gdc-projects

@@ -68,8 +68,9 @@ RESOURCE_SCHEMA = {
         "user-cluster-workloads": list
     },
     "global": {
-        "iam-roles": str,
+        "iam-roles": list,
         "billing": str,
+        "billing-accounts": str,
         "projects": {
             "TYPE_SCOPE": "global",
             "IAC": list,
@@ -78,6 +79,7 @@ RESOURCE_SCHEMA = {
             "iam-role-bindings": list,
             "project-network-policies": list,
             "billing": str,
+            "billing-bindings": str,
         }
     }
 }
@@ -133,7 +135,7 @@ def action_cmd(
         cmd.extend(["list"])
     elif action == "template":
         cmd.extend(["template", release_name, chart, "-f", values_file])
-        if output_dir:
+        if output_dir is not None:
             cmd.extend(["--output-dir", output_dir])
     elif action == "upgrade":
         cmd.extend(["upgrade", "--install", release_name,
@@ -220,6 +222,8 @@ def call_resource_action(
         if output_dir is None:
             output_dir = f"./hydrated/"
         os.makedirs(f"{output_dir}/{resource_type}", exist_ok=True)
+        if resource_name == "":
+            resource_name = parents[-1].get('name')
         with open(f"{output_dir}/{resource_type}/{resource_name}.yaml", "w") as f:
             logging.info(f"Hydrating {resource_type}/{resource_name}.yaml")
             yaml.dump(resource_config, f)
@@ -334,7 +338,7 @@ def process_type(
     if type_tree is str:  # generate one release per object
         items = config[resource_type]
         if isinstance(items, dict):
-            obj_name = items.get('name', list(items.keys())[0])
+            obj_name = items.get('name', '')
             release_name = f"{parent_name}-{resource_type}-{obj_name}" if obj_name else f"{parent_name}-{resource_type}"
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"

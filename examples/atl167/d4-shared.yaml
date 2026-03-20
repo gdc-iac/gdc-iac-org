@@ -57,7 +57,7 @@ global:
   shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
   billing:
     accounts:
-      name: *shared_infra_project_name
+    - name: *shared_infra_project_name
       display_name: "Shared Billing Account"
       cloud_billing_config_account_id: "01797D-641480-93C471"
   iam-roles:
