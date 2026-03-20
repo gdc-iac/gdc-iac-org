@@ -12,9 +12,53 @@ This repository provides a flexible toolkit for managing infrastructure as code 
   - `helmfile/`: Declarative, data-driven orchestration using `helmfile`.
   - `helm_cli/`: Custom python wrapper script for processing configurations and deploying.
   - `config-sync/`: Examples for operators using GitOps.
-- `examples/`: Sample configuration files (e.g., `tenants.yaml` or `org.yaml`) representing a desired state.
+  - `kpt/`: Package management integration using kpt.
+- `examples/`: Sample configuration files organized by organization or use case (e.g., `sample-org`, `atl167`) representing desired state layouts.
 - `scripts/`: Helper utilities for testing charts and updating documentation.
 - `policy/`: OPA/Rego policies for security and configuration validation.
+
+---
+
+## Prerequisites
+
+To use this framework successfully, you'll need the following tools installed and authenticated with your GDCag environment:
+
+- `gdcloud` CLI configured with an active context
+- `kubectl` and `helm`
+- Access to the target GDCag organization and project
+
+You will also need elevated permissions to bootstrap the initial organization roles. Run the following script syntax to grant your `IAC_USER` the necessary IAM policies:
+
+```bash
+# Grant IAC_USER required Org roles:
+for role in \
+  organization-iam-admin \
+  organization-billing-account-admin \
+  organization-billing-manager \
+  project-creator \
+  project-editor \
+  user-cluster-admin \
+  dr-backup-admin \
+  organization-backup-admin \
+  organization-cluster-backup-admin \
+  system-cluster-backup-repository-admin \
+  user-cluster-backup-admin; do
+  
+  gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+    --member="user:$IAC_USER" \
+    --role="$role"
+done
+
+# Grant IAC_USER required IAM permissions on IAC_PROJECT:
+for role in \
+  secret-admin \
+  backup-creator; do
+
+  gdcloud projects add-iam-policy-binding "$IAC_PROJECT" \
+    --member="user:$IAC_USER" \
+    --role="$role"
+done
+```
 
 ---
 
@@ -43,85 +87,52 @@ When provisioning GDCag standard clusters, it is highly recommended to logically
 
 ## Deployment Strategies
 
-The toolkit allows you to use different tools to template and synchronize these configurations based on your operational needs. The detailed setup workflows and prerequisites for each method are documented in their respective tool directories:
+The toolkit allows you to use different tools to template and synchronize these configurations based on your operational needs. The detailed setup workflows and prerequisites for each method are documented in their respective tool directories.
 
 ### Method 1: Infrastructure Automation via Helmfile (Recommended)
 This method utilizes a **data-driven approach** linking `tenants.yaml` inputs through a logic engine (`helmfile.yaml`) to dynamically generate and sequence Helm releases based on the required dependency chain.
-
 👉 **[View Helmfile Documentation & Setup Guide](tools/helmfile/README.md)**
 
 ### Method 2: Deployment via Custom Helm CLI wrapper
 A custom Python wrapper script (`helm_cli.py`) designed for local or CI/CD usage. It streamlines the parsing of YAML configurations and loops through the charts imperatively, substituting the correct contexts and environments automatically.
-
 👉 **[View Helm CLI Documentation & Setup Guide](tools/helm_cli/README.md)**
 
 ### Method 3: Config Sync (GitOps)
 Continuous state synchronization using the Config Sync operator. It acts as an in-cluster reconciliation agent, applying changes made directly to this repository.
-
 👉 **[View Config Sync Documentation & Setup Guide](tools/config-sync/README.md)**
-### Grant IAC_USER required Org roles:
-for role in \
-  organization-iam-admin \
-  organization-billing-account-admin \
-  organization-billing-manager \
-  project-creator \
-  project-editor \
-  user-cluster-admin \
-  dr-backup-admin \
-  organization-backup-admin \
-  organization-cluster-backup-admin \
-  system-cluster-backup-repository-admin \
-  user-cluster-backup-admin \
-; do \
-   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-   --member="user:$IAC_USER" \
-   --role="$role";\
-done
 
-### Grant IAC_USER required IAM permissions on `IAC_PROJECT` :
-for role in \
-  secret-admin \
-  backup-creator \
-; do \
-  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
-  --member=user:$IAC_USER \
-  --role=$role;\
-done
-```
+---
 
-### 4. Deploying GDCH Resources `VirtualMachine`, `Bucket`, `DBCluster`
+## Quick Start & Forking Guide
 
-0. gdcloud auth login (as fop-iac@example.com)
+If you are planning to fork this repository as a starting template for your GDCag air-gapped deployments:
 
-`gdcloud auth login --login-config-cert=/tmp/org-1-web-tls-ca.cert`
-
-1. Prechecks Helm Chart
-```bash
-cd helm-iac
-helmfile lint
-helmfile list
-helmfile show-dag
-```
-
-
-2. Helmfile diff to show resources to deploy
-
-```bash
-helmfile diff
-```
-
-Note: this is like to fail because of a "Chicken and Egg" problem.  `helmfile diff` or even `helmfile apply` attempts to calculate diffs for all groups before it applies anything.
-However, this is a fresh install and  the namespaces (e.g lotus-prj, snowflake-prj) does not exist yet.
-
-2. Use `helmfile sync` for ``first run``.
-
-Note: `helmfile sync` does not try to read the state first. It will simply execute the DAG in order ensuring the resources are deployed base on the order and dependency defined using the `needs` keyword.
-
-4. Use `helmfile apply` for subsequent resources deployment once project and rolebindings exists.
-
-```bash
-helmfile apply
-```
+1. **Review Example Layouts**:
+   Browse the `examples/` directory to see sample structures (`sample-org`, `atl167`, `dga`) demonstrating how to define your desired infrastructure state using values.
+2. **Define Your State**:
+   Adapt one of these examples or create your own directory with your specific `org.yaml` and `tenants.yaml` configuration parameters. These files drive your Helm deployments.
+3. **Authenticate Iterative Deployment Tools**:
+   ```bash
+   gdcloud auth login --login-config-cert=/tmp/org-1-web-tls-ca.cert
+   ```
+4. **Deploy Lifecycle (Using Helmfile as an Example)**:
+   ```bash
+   # 1. Prechecks
+   cd tools/helmfile # or the path matching your setup
+   helmfile lint
+   helmfile show-dag
+   
+   # 2. First Run Provisioning
+   # Note: 'helmfile diff' will likely fail on a fresh install due to chicken-and-egg 
+   # resource sequencing dependencies (e.g. attempting to interact with namespaces that don't yet exist).
+   # The 'helmfile sync' command applies the DAG sequentially in correct order.
+   helmfile sync
+   
+   # 3. Subsequent Updates
+   # Once foundational project resources and rolebindings exist, you can generate normal diffs:
+   helmfile diff
+   helmfile apply
+   ```
 
 ---
 
