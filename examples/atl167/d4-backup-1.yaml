@@ -58,6 +58,7 @@ global:
   harbor_backup_bucket_name: &harbor_backup_bucket_name "harbor-backup"
   backup_project_name: &backup_project_name "data-ets-backup"
   backup_sa: &backup_sa "backup-sa"
+  shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
   projects:
     - name: *backup_project_name
       project-service-accounts:
