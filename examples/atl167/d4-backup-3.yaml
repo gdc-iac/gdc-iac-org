@@ -52,8 +52,6 @@ global:
   vm_backup_repo_name: &vm_backup_repo_name "d4-ets-vm-backup"
   harbor_backup_repo_name: &harbor_backup_repo_name "d4-ets-harbor-backup"
   shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
-  projects:
-    - name: *backup_project_name
 us-east67-b:
   projects:
   - name: *backup_project_name
