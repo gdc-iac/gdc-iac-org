@@ -22,7 +22,7 @@ This setup orchestrates resources across two distinct Kubernetes contexts requir
 
 ### State Management Strategy
 * **Helm State (Secrets):** All Helm release secrets are stored in a centralized namespace called **`iac-root`**.
-* **Resource Destination:** The actual resources are deployed into their respective Project Namespaces (e.g., `lotus-prj`, `snowflake-prj`).
+* **Resource Destination:** The actual resources are deployed into their respective Project Namespaces (e.g., `lambda-prj`, `snowflake-prj`).
 
 ### Dependency Chain
 Helmfile enforces the following strict execution order to satisfy GDCH API requirements:
@@ -127,7 +127,7 @@ helmfile diff
 ```
 
 Note: this is like to fail because of a "Chicken and Egg" problem.  `helmfile diff` or even `helmfile apply` attempts to calculate diffs for all groups before it applies anything.
-However, this is a fresh install and  the namespaces (e.g lotus-prj, snowflake-prj) does not exist yet.
+However, this is a fresh install and  the namespaces (e.g lambda-prj, snowflake-prj) does not exist yet.
 
 2. Use `helmfile sync` for ``first run``.
 

@@ -28,7 +28,7 @@ helm install my-iac ./gdc-iac -f values.yaml
 ```yaml
 global:
   projects:
-    - name: "lotus-prj"
+    - name: "lambda-prj"
     - name: "snowflake-prj"
 iac:
   subject_name: "fop-iac@example.com"
