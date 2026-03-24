@@ -4,7 +4,7 @@
 # The template iterates over this list to set the namespace
 # global:
 #   projects:
-#     - name: "lotus-prj"
+#     - name: "lambda-prj"
 #     - name: "snowflake-prj"
 
 # This corresponds to {{ $.Values.iac }}

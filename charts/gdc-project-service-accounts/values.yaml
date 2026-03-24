@@ -4,6 +4,6 @@
 # Create a list of project level serviceaccounts. The vairable name defines the project where service accounts are to be created.
 # name: {}
 # projectserviceaccounts: {}
-  # - "lotus-frontend-sa"
-  # - "lotus-backend-sa"
-  # - "lotus-db-admin-sa"
+  # - "lambda-frontend-sa"
+  # - "lambda-backend-sa"
+  # - "lambda-db-admin-sa"
