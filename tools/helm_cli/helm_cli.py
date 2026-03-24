@@ -59,9 +59,7 @@ RESOURCE_SCHEMA = {
             "harbors": str,
             "backup-repositories": str,
             "backup-plans": str,
-            "dashboards": list,
-            "backup-repositories": str,
-            "backup-plans": str
+            "dashboards": list
         }
     },
     "user": {
@@ -159,7 +157,7 @@ def action_cmd(
 
 
 def normalize_name(name: str) -> str:
-    return name.replace("_", "-")
+    return name.replace("_", "-").lower()
 
 
 def call_global_action(

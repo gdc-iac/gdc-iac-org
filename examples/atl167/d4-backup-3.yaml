@@ -51,8 +51,7 @@ global:
   cluster_backup_repo_name: &cluster_backup_repo_name "d4-ets-cluster-backup"
   vm_backup_repo_name: &vm_backup_repo_name "d4-ets-vm-backup"
   harbor_backup_repo_name: &harbor_backup_repo_name "d4-ets-harbor-backup"
-  projects:
-    - name: *backup_project_name
+  shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
 us-east67-b:
   projects:
   - name: *backup_project_name
@@ -66,6 +65,8 @@ us-east67-b:
             name: "stress-test"
         cronSchedule: "0 2 * * *"
         clusterBackupRepositoryName: *cluster_backup_repo_name
+  - name: *shared_infra_project_name
+    backup-plans:
       harbor:
       - name: "d4-ets-harbor-backup-plan"
         harborInstance: "data-ets-mhs"
