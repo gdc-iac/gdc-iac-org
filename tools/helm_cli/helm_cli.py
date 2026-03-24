@@ -157,7 +157,7 @@ def action_cmd(
 
 
 def normalize_name(name: str) -> str:
-    return name.replace("_", "-")
+    return name.replace("_", "-").lower()
 
 
 def call_global_action(
