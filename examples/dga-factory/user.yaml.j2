@@ -16,6 +16,12 @@ iac:
 - role: "workbench-notebooks-viewer"
   subject_kind: "User"
   subject_name:  *iac_subject_name
+- role: "secret-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "namespace-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name  
 global:
   # end user aka data scientist
   user_subject_name: &user_subject_name "{{ user }}"
