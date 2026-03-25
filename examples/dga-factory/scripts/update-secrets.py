@@ -88,12 +88,23 @@ def main():
                 "get", "buckets", f"{team_name}-s3-rw1",
                 "-o", "jsonpath={.status.endpoint}"
             ]
+            buckets_config = {}
             logging.debug(' '.join(endpoint_cmd))
-            try:
-                endpoint = subprocess.check_output(
-                    endpoint_cmd, text=True).strip()
-            except subprocess.CalledProcessError:
-                endpoint = ""
+            buckets_config['endpoint'] = subprocess.check_output(
+                endpoint_cmd, text=True).strip()
+
+            for bucket_name in ["ro1", "rw1", "tools"]: 
+                fqn_cmd = [
+                    "kubectl", f"--kubeconfig={config['ZONE_KUBECONFIG']}",
+                    "--namespace", f"{team_name}-shared-infra",
+                    "get", "buckets", f"{team_name}-s3-{bucket_name}",
+                    "-o", "jsonpath={.status.fullyQualifiedName}"
+                ]
+                logging.debug(' '.join(fqn_cmd))
+                bucket_fqn = subprocess.check_output(
+                    fqn_cmd, text=True).strip()
+                buckets_config[bucket_name] = bucket_fqn
+            logging.debug(f"Buckets config: {buckets_config}")
 
             subject_key = 'object\\.gdc\\.goog/subject'
             annotations_filter = (
@@ -108,10 +119,11 @@ def main():
                 "-o", jsonpath_cmd
             ]
             logging.debug(' '.join(secret_name_cmd))
-            secret_name = subprocess.check_output(
+            secret_names = subprocess.check_output(
                 secret_name_cmd, text=True).strip()
-
-            if secret_name:
+            logging.debug(f"Secret names: {secret_names}")
+            if secret_names:
+                secret_name = secret_names.split()[1]
                 access_key_cmd = [
                     "kubectl", f"--kubeconfig={config['ZONE_KUBECONFIG']}",
                     "get", "-n", "object-storage-access-keys",
@@ -141,7 +153,7 @@ def main():
                     s_template = jinja2.Template(tf.read())
                 with open(secret_yaml_path, 'w') as of:
                     of.write(s_template.render(
-                        endpoint=endpoint,
+                        buckets_config=buckets_config,
                         aws_access_key_id=aws_access_key_id,
                         aws_secret_access_key=aws_secret_access_key,
                         config=config,

@@ -39,6 +39,9 @@ global:
     - name: *tools_bucket_role
       title: *tools_bucket_role
       description: *tools_bucket_role
+      scope: project
+      roleNamespaces:
+      - *shared_infra_project_name
       stage: "GA"
       zonalRules: |
         - apiGroups:
@@ -53,6 +56,9 @@ global:
     - name: *ro_bucket_role
       title: *ro_bucket_role
       description: *ro_bucket_role
+      scope: project
+      roleNamespaces:
+      - *shared_infra_project_name
       stage: "GA"
       zonalRules: |
         - apiGroups:
@@ -67,6 +73,9 @@ global:
     - name: *rw_bucket_role
       title: *rw_bucket_role
       description: *rw_bucket_role
+      scope: project
+      roleNamespaces:
+      - *shared_infra_project_name
       stage: "GA"
       zonalRules: |
         - apiGroups:
@@ -134,7 +143,7 @@ global:
         subject_name: *admin_subject_name
       billing:
         account_ref: *shared_infra_project_name
-us-east67-b:
+{{ config.ZONE_NAME }}:
   projects:
   - name: *shared_infra_project_name
     buckets:
@@ -149,7 +158,7 @@ us-east67-b:
         creatorkind: "User"
         creatorname: *iac_sa
   clusters:
-  - name: "stress-test"
+  - name: "{{ config.CLUSTER_NAME }}"
     clusterNetwork:
       podCIDRSize: 21
       serviceCIDRSize: 23

@@ -70,6 +70,10 @@ global:
       - role: "workbench-notebooks-viewer"
         subject_kind: "User"
         subject_name:  *user_subject_name
+      # Data scientist has view permissions to the user project buckets
+      - role: "project-bucket-object-viewer"
+        subject_kind: "User"
+        subject_name:  *user_subject_name
 us-east67-b:
   projects:
   - name: *user_project_name
