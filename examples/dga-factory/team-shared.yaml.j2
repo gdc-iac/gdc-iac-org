@@ -1,0 +1,169 @@
+iac:
+  # IaC can be invoked by user or service account
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: &iac_sa "{{ config.IAC_SA_FQN }}"
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "harbor-project-creator"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "standard-cluster-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "workbench-notebooks-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+global:
+  admin_subject_name: &admin_subject_name "{{ team_admin }}"
+  tools_bucket_name: &tools_bucket_name "{{ team_name }}-s3-tools"
+  tools_bucket_role: &tools_bucket_role "{{ team_name }}-s3-tools"
+  ro_bucket_name: &ro_bucket_name "{{ team_name }}-s3-ro1"
+  ro_bucket_role: &ro_bucket_role "{{ team_name }}-s3-ro1"
+  rw_bucket_name: &rw_bucket_name "{{ team_name }}-s3-rw1"
+  rw_bucket_name: &rw_bucket_role "{{ team_name }}-s3-rw1"
+  shared_infra_project_name: &shared_infra_project_name "{{ team_name }}-shared-infra"
+  billing:
+    accounts:
+    - name: *shared_infra_project_name
+      display_name: "Shared Billing Account {{ team_name }}"
+      cloud_billing_config_account_id: "01797D-641480-93C471"
+  iam-roles:
+    - name: *tools_bucket_role
+      title: *tools_bucket_role
+      description: *tools_bucket_role
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - object.gdc.goog
+          resources:
+          - buckets
+          resourceNames:
+          - "{{ team_name }}-s3-tools"
+          verbs:
+          - list
+          - read-object
+    - name: *ro_bucket_role
+      title: *ro_bucket_role
+      description: *ro_bucket_role
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - object.gdc.goog
+          resources:
+          - buckets
+          resourceNames:
+          - "{{ team_name }}-s3-ro1"
+          verbs:
+          - list
+          - read-object
+    - name: *rw_bucket_role
+      title: *rw_bucket_role
+      description: *rw_bucket_role
+      stage: "GA"
+      zonalRules: |
+        - apiGroups:
+          - object.gdc.goog
+          resources:
+          - buckets
+          resourceNames:
+          - "{{ team_name }}-s3-rw1"
+          verbs:
+          - list
+          - read-object
+          - write-object
+  projects:
+    - name: *shared_infra_project_name
+      project-network-policies:
+{% for user in users_lowercase %}
+      - subject:
+          subject_type: ManagedService
+          managed_services:
+            match_types:
+            - 'mhs'
+        ingress:
+        - from:
+          - project_selector:
+              projects:
+                match_names:
+                - "{{ user }}"
+{% endfor %}
+      iam-role-bindings:
+{% for user in users %}
+      # Data scientist has access to the shared tools bucket and read only access to the data buckets, 
+      - role: *tools_bucket_role
+        subject_kind: "User"
+        subject_name: "{{ user }}"
+      - role: *rw_bucket_role
+        subject_kind: "User"
+        subject_name: "{{ user }}"
+      - role: *ro_bucket_role
+        subject_kind: "User"
+        subject_name: "{{ user }}"
+{% endfor %} 
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-bucket-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-bucket-object-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "harbor-instance-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "harbor-project-creator"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      billing:
+        account_ref: *shared_infra_project_name
+us-east67-b:
+  projects:
+  - name: *shared_infra_project_name
+    buckets:
+    - name: *tools_bucket_name
+    - name: *ro_bucket_name
+    - name: *rw_bucket_name
+    harbors:
+    - name: "data-ets-mhs"
+      projects:
+      - name: "{{ team_name }}"
+        autoscan: false
+        creatorkind: "User"
+        creatorname: *iac_sa
+  clusters:
+  - name: "stress-test"
+    clusterNetwork:
+      podCIDRSize: 21
+      serviceCIDRSize: 23
+    initialVersion:
+      kubernetesVersion: "1.30.12-gke.300"
+    loadBalancer:
+      ingressServiceIPSize: 20
+    nodePools:
+    - name: "pool-1"
+      machineTypeName: "n3-standard-4-gdc"
+      nodeCount: 3
+    releaseChannel: "UNSPECIFIED"
+    projectBindings:
+    - *shared_infra_project_name
+{% for user in users_lowercase %}
+    - "{{ user }}"
+{% endfor %}

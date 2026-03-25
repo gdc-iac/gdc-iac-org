@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/instance: {{ .Values.nb_name }}
+    app.kubernetes.io/part-of: vtxwb
+  name: {{ .Values.nb_name }}
+  namespace: {{ .Values.nb_project }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard-rwo
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/instance: {{ .Values.nb_name }}
+    app.kubernetes.io/part-of: vtxwb
+  name: {{ .Values.nb_name }}-s3-proxy-config
+  namespace: {{ .Values.nb_project }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard-rwo
