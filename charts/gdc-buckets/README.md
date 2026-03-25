@@ -30,9 +30,9 @@ helm install my-buckets ./gdc-buckets -f values.yaml
 ```yaml
 location: "lux-central1-b"
 buckets:
-  - name: "lotus-bucket-1"
-    namespace: "lotus-prj"
-    description: "Primary storage for lotus app"
+  - name: "lambda-bucket-1"
+    namespace: "lambda-prj"
+    description: "Primary storage for lambda app"
     storageClass: "Standard"
     enableCorsPolicy: "true"
 ```

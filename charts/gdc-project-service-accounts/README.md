@@ -23,10 +23,10 @@ helm install my-project-sa ./gdc-project-service-accounts -f values.yaml
 ## Example Configuration (Optional)
 
 ```yaml
-name: "lotus-project"
+name: "lambda-project"
 projectserviceaccounts:
-  - "lotus-frontend-sa"
-  - "lotus-backend-sa"
+  - "lambda-frontend-sa"
+  - "lambda-backend-sa"
 ```
 
 ## CI/CD Pre-Deployment Testing
