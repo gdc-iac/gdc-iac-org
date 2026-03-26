@@ -1,4 +1,4 @@
-export SCRIPTS_DIR=$( readlink -e $(dirname $0))
+export SCRIPTS_DIR=$( readlink -e $(dirname "${BASH_SOURCE[0]}"))
 export OUTPUT_DIR=/tmp/dga-factory
 export SECRETS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../secrets)
 export USERS_YAML=$( readlink -e ${SCRIPTS_DIR:?}/../users.yaml)
