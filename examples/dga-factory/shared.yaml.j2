@@ -3,19 +3,19 @@ iac:
   clusters:
   - name: "{{ config.CLUSTER_NAME }}"
     clusterNetwork:
-      podCIDRSize: 21
-      serviceCIDRSize: 23
+      podCIDRSize: "{{ config.CLUSTER_POD_CIDR_SIZE }}"
+      serviceCIDRSize: "{{ config.CLUSTER_SERVICE_CIDR_SIZE }}"
     initialVersion:
-      kubernetesVersion: "1.30.12-gke.300"
+      kubernetesVersion: "{{ config.CLUSTER_K8S_VERSION }}"
     loadBalancer:
-      ingressServiceIPSize: 20
+      ingressServiceIPSize: "{{ config.CLUSTER_INGRESS_SERVICE_IP_SIZE }}"
     nodePools:
-    - name: "pool-1"
-      machineTypeName: "n3-standard-4-gdc"
-      nodeCount: 3
+    - name: "{{ config.CLUSTER_NODE_POOL_NAME }}"
+      machineTypeName: "{{ config.CLUSTER_MACHINE_TYPE }}"
+      nodeCount: "{{ config.CLUSTER_NODE_COUNT }}"
     releaseChannel: "UNSPECIFIED"
     projectBindings:
     - "{{ config.IAC_PROJECT }}"
-{% for user in users_lowercase %}
-    - "{{ user }}"
+{% for project in all_projects %}
+    - "{{ project }}"
 {% endfor %}

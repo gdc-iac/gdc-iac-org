@@ -68,7 +68,7 @@ def main():
         )
         raise RuntimeError(error_msg)
 
-    project_dir_path = pathlib.Path(config['SCRIPTS_DIR']).parent
+    output_dir_path = pathlib.Path(config['OUTPUT_DIR'])
     users_yaml_path = pathlib.Path(config['USERS_YAML'])
 
     with open(users_yaml_path, 'r') as f:
@@ -77,7 +77,7 @@ def main():
     for team_name, team_data in users.items():
         team_users = team_data['users']
         # create team subdirectory in the secrets directory
-        team_dir = project_dir_path / 'secrets' / team_name
+        team_dir = output_dir_path / 'secrets' / team_name
         team_dir.mkdir(parents=True, exist_ok=True)
 
         for user in team_users:
