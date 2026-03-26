@@ -10,7 +10,7 @@ CONFIG_VARS = [
     'HELM_CLI', 'ORG_NAME', 'IAC_PROJECT', 'IAC_SA', 'IAC_SA_FQN',
     'GDCH_ZONE', 'GDCH_DOMAIN', 'GDCH_CONSOLE', 'CLUSTER_NAME',
     'KUBECONFIG_PATH', 'GLOBAL_API_KUBECONFIG', 'ZONE_KUBECONFIG',
-    'USER_CLUSTER_KUBECONFIG', 'SECRETS_DIR'
+    'USER_CLUSTER_KUBECONFIG', 'SECRETS_DIR', 'CHARTS_DIR', 'S3_PROXY_ENABLED'
 ]
 
 def setup_logging(verbose: bool = False) -> None:
@@ -71,7 +71,7 @@ def main():
             user = file.replace("-secret.yaml", "")
             user_lowercase = user.lower()
 
-            secret_name = f"{user_lowercase}-s3-proxy-config"
+            secret_name = f"s3-proxy-config"
             namespace = user_lowercase
 
             logging.info(f"Creating secret {secret_name} in namespace {namespace} from {file_path}")

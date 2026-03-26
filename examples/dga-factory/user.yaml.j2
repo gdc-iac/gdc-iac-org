@@ -80,13 +80,14 @@ global:
       - role: "project-bucket-object-viewer"
         subject_kind: "User"
         subject_name:  *user_subject_name
-us-east67-b:
+{{ config.GDCH_ZONE }}:
   projects:
   - name: *user_project_name
     notebooks:
-    - name: &user_subject_name_nb "nb"
+    - name: &notebook_name "nb"
       nb_jupyter_image: "{{ config.NB_JUPYTER_IMAGE }}"
       user_cluster_name: "{{ config.CLUSTER_NAME }}"
+{% if config.S3_PROXY_ENABLED == 1 %}
       sidecars:
       - name: "s3-proxy"
         image: {{ config.S3_PROXY_IMAGE }}
@@ -97,3 +98,15 @@ us-east67-b:
         - name: s3-proxy-config
           persistentVolumeClaim:
             claimName: *user_subject_name_nb
+{% endif %}
+user:{{ config.CLUSTER_NAME }}:
+  charts:
+  - name: "{{ config.CHARTS_DIR }}/dga-user-config"
+    release_name: "dga-user-config"
+    values:
+      namespace: *user_project_name
+      notebook_name: *notebook_name
+      notebook_pvc_size: "5Gi"
+{% if config.S3_PROXY_ENABLED == 1 %}
+      s3_proxy_config_pvc: "s3-proxy-config"
+{% endif %}

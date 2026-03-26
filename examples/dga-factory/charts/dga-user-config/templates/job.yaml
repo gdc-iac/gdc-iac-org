@@ -2,7 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: config-copy-{{ .Values.nb_name }}
-  namespace: {{ .Values.nb_project }}
+  namespace: {{ .Values.namespace }}
 spec:
   template:
     spec:

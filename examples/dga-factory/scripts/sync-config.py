@@ -11,7 +11,7 @@ CONFIG_VARS = [
     'GDCH_ZONE', 'GDCH_DOMAIN', 'GDCH_CONSOLE', 'CLUSTER_NAME',
     'KUBECONFIG_PATH', 'GLOBAL_API_KUBECONFIG', 'ZONE_KUBECONFIG',
     'USER_CLUSTER_KUBECONFIG', 'SECRETS_DIR', 'NB_JUPYTER_IMAGE', 
-    'S3_PROXY_IMAGE'
+    'S3_PROXY_IMAGE', 'CHARTS_DIR', 'S3_PROXY_ENABLED'
 ]
 
 
@@ -43,12 +43,10 @@ def run_helm(file_path, config, verbose):
         f"--namespace={config['IAC_PROJECT']}",
         f"--charts-dir={config['GDCH_CHARTS_DIR']}",
         "-v" if verbose else "",
-        f"--api=global,{config['GDCH_ZONE']}",
+        f"--api=global,{config['GDCH_ZONE']},user:{config['CLUSTER_NAME']}",
         f"--api-kubeconfig={config['GLOBAL_API_KUBECONFIG']},"
-        f"{config['ZONE_KUBECONFIG']}"
+        f"{config['ZONE_KUBECONFIG']},{config['USER_CLUSTER_KUBECONFIG']}"
     ]
-    # Filter out empty arguments
-    cmd = [c for c in cmd if c]
 
     logging.info(f"Running: {' '.join(cmd)}")
     try:

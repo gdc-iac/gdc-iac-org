@@ -509,17 +509,17 @@ def process(
     Returns:
         True if validation succeeds, False otherwise.
     """
-    selected_apis = [api for api in config.keys() if api not in ["iac"]]
     api_kubeconfigs = []
     iac_config = config["iac"]
     if api:
-        apis = api.split(",")
-        selected_apis = [api for api in selected_apis if api in apis]
+        selected_apis = api.split(",")
     if api_kubeconfig:
         api_kubeconfigs = api_kubeconfig.split(",")
         if len(api_kubeconfigs) != len(selected_apis):
             raise ValueError(
-                "Number of api_kubeconfigs must match number of apis"
+                f"Number of api_kubeconfigs must match number of apis:\n"
+                f"apis={selected_apis}\n"
+                f"api_kubeconfigs={api_kubeconfigs}"
             )
     for i, selected_api in enumerate(selected_apis):
         kubeconfig = api_kubeconfigs[i] if api_kubeconfig else None
@@ -537,6 +537,9 @@ def process(
             namespace = actual_name
         api_schema = RESOURCE_SCHEMA.get(api_type, RESOURCE_SCHEMA["zone"])
 
+        if selected_api not in config:
+            logging.debug(f"API {selected_api} not found in config")
+            continue
         if api_type in ["global", "zone"]:
             for t, v in api_schema.items():
                 process_type(
