@@ -1,0 +1,5 @@
+data-ets:
+  admin_user: "HGY395@example.com"
+  users:
+    - PUF587@example.com
+    - RND123@example.com
