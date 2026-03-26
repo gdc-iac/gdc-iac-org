@@ -1,0 +1,21 @@
+iac:
+{{ config.GDCH_ZONE }}:
+  clusters:
+  - name: "{{ config.CLUSTER_NAME }}"
+    clusterNetwork:
+      podCIDRSize: 21
+      serviceCIDRSize: 23
+    initialVersion:
+      kubernetesVersion: "1.30.12-gke.300"
+    loadBalancer:
+      ingressServiceIPSize: 20
+    nodePools:
+    - name: "pool-1"
+      machineTypeName: "n3-standard-4-gdc"
+      nodeCount: 3
+    releaseChannel: "UNSPECIFIED"
+    projectBindings:
+    - "{{ config.IAC_PROJECT }}"
+{% for user in users_lowercase %}
+    - "{{ user }}"
+{% endfor %}

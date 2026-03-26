@@ -3,27 +3,28 @@ kind: PersistentVolumeClaim
 metadata:
   labels:
     app.kubernetes.io/component: storage
-    app.kubernetes.io/instance: {{ .Values.nb_name }}
+    app.kubernetes.io/instance: {{ .Values.notebook_name }}
     app.kubernetes.io/part-of: vtxwb
-  name: {{ .Values.nb_name }}
-  namespace: {{ .Values.nb_project }}
+  name: {{ .Values.notebook_name }}
+  namespace: {{ .Values.namespace }}
 spec:
   accessModes:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: {{ .Values.notebook_pvc_size }}
   storageClassName: standard-rwo
 ---
+{{- if .Values.s3_proxy_config_pvc }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   labels:
     app.kubernetes.io/component: storage
-    app.kubernetes.io/instance: {{ .Values.nb_name }}
+    app.kubernetes.io/instance: {{ .Values.notebook_name }}
     app.kubernetes.io/part-of: vtxwb
-  name: {{ .Values.nb_name }}-s3-proxy-config
-  namespace: {{ .Values.nb_project }}
+  name: {{ .Values.s3_proxy_config_pvc }}
+  namespace: {{ .Values.namespace }}
 spec:
   accessModes:
   - ReadWriteOnce
@@ -31,3 +32,4 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: standard-rwo
+{{- end }}
