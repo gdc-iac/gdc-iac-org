@@ -17,6 +17,6 @@ export KUBECONFIG_PATH="/mnt/c/temp/DGA/cert/"
 export GLOBAL_API_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA:?}-global-api.kubeconfig
 export ZONE_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA:?}-${GDCH_ZONE:?}.kubeconfig
 export USER_CLUSTER_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA}-${GDCH_ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
-export NB_JUPYTER_IMAGE="gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/tf2-gpu:m125"
+export NB_JUPYTER_IMAGE="gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/base-cpu:m125_ext"
 export S3_PROXY_IMAGE="data-ets-mhs-data-ets-infra.org-70033.lux-central1-a.lux.clr/dga/lu/etat/ci/ets/platform/ops/s3-proxy@sha256:7eff03cd821638cde5f1fa8d02c130471451c23b69069e3384a81eb235bcbd02"
 export S3_PROXY_ENABLED=0
