@@ -1,5 +1,5 @@
 export SCRIPTS_DIR=$( readlink -e $(dirname $0))
-export OUTPUT_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../users)
+export OUTPUT_DIR=/tmp/dga-factory
 export SECRETS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../secrets)
 export USERS_YAML=$( readlink -e ${SCRIPTS_DIR:?}/../users.yaml)
 export GDCH_CHARTS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../../../charts)

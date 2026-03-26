@@ -68,7 +68,7 @@ def main():
 
     output_dir_path = pathlib.Path(config['OUTPUT_DIR'])
     users_yaml_path = pathlib.Path(config['USERS_YAML'])
-
+    all_users_lowercase = []
     with open(users_yaml_path, 'r') as f:
         users = yaml.safe_load(f)
 
@@ -76,7 +76,7 @@ def main():
         team_users = team_data['users']
         team_admin = team_data['admin_user']
         # create team subdirectory in the users directory
-        team_dir = output_dir_path / team_name
+        team_dir = pathlib.Path(f"{output_dir_path}/users/{team_name}")
         team_dir.mkdir(parents=True, exist_ok=True)
         # create team shared yaml in the team directory
         team_shared_yaml_path = team_dir / f"{team_name}-shared.yaml"
@@ -96,6 +96,7 @@ def main():
                 f"Rendered {template_path} to {team_shared_yaml_path}")
             f.write(rendered_template)
         for user in team_users:
+            all_users_lowercase.append(user.lower())
             # render user template from user.yaml.j2
             user_yaml_path = team_dir / f"{user}.yaml"
             template_path = script_dir.parent / "user.yaml.j2"
@@ -111,7 +112,18 @@ def main():
             with open(user_yaml_path, 'w') as f:
                 logging.info(f"Rendered {template_path} to {user_yaml_path}")
                 f.write(rendered_template)
-
+    # render shared services for all users
+    shared_yaml_path = output_dir_path / "shared.yaml"
+    template_path = script_dir.parent / "shared.yaml.j2"
+    with open(template_path, 'r') as f:
+        template = jinja2.Template(f.read())
+    rendered_template = template.render(
+        users_lowercase=all_users_lowercase,
+        config=config
+    )
+    with open(shared_yaml_path, 'w') as f:
+        logging.info(f"Rendered {template_path} to {shared_yaml_path}")
+        f.write(rendered_template)
 
 if __name__ == "__main__":
     main()

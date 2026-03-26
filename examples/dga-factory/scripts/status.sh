@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+
 export SCRIPTS_DIR=$( readlink -e $(dirname $0))
 source ${SCRIPTS_DIR:?}/config.sh
 

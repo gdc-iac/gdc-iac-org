@@ -42,11 +42,12 @@ def run_helm(file_path, config, verbose):
         str(file_path),
         f"--namespace={config['IAC_PROJECT']}",
         f"--charts-dir={config['GDCH_CHARTS_DIR']}",
-        "-v" if verbose else "",
         f"--api=global,{config['GDCH_ZONE']},user:{config['CLUSTER_NAME']}",
         f"--api-kubeconfig={config['GLOBAL_API_KUBECONFIG']},"
         f"{config['ZONE_KUBECONFIG']},{config['USER_CLUSTER_KUBECONFIG']}"
     ]
+    if verbose:
+        cmd.append("-v")
 
     logging.info(f"Running: {' '.join(cmd)}")
     try:
@@ -90,8 +91,11 @@ def main():
         raise RuntimeError(error_msg)
 
     output_dir_path = pathlib.Path(config['OUTPUT_DIR'])
+    users_dir_path = output_dir_path / "users"
+    shared_yaml_path = output_dir_path / "shared.yaml"
+    run_helm(shared_yaml_path, config, args.verbose)
 
-    for root, dirs, files in os.walk(output_dir_path):
+    for root, dirs, files in os.walk(users_dir_path):
         # Sort files so that -shared.yaml files are processed first
         files.sort(key=lambda f: (not f.endswith("-shared.yaml"), f))
         for file in files:

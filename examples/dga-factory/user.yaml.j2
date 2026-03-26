@@ -44,6 +44,9 @@ global:
       iam-role-bindings: 
         # Admin user has admin permissions to manage the lifecycle of the user notebook and its dependencies 
         # This is optional and can be removed if you want to manage the user notebook lifecycle using the iac service account only
+      - role: "project-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
       - role: "project-grafana-viewer"
         subject_kind: "User"
         subject_name: *admin_subject_name
@@ -102,7 +105,7 @@ global:
 user:{{ config.CLUSTER_NAME }}:
   charts:
   - name: "{{ config.CHARTS_DIR }}/dga-user-config"
-    release_name: "dga-user-config"
+    release_name: "{{ user_lowercase }}-config"
     values:
       namespace: *user_project_name
       notebook_name: *notebook_name

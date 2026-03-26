@@ -15,6 +15,7 @@ spec:
       storage: {{ .Values.notebook_pvc_size }}
   storageClassName: standard-rwo
 ---
+{{- if .Values.s3_proxy_config_pvc }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -31,3 +32,4 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: standard-rwo
+{{- end }}
