@@ -139,3 +139,15 @@ us-east67-b:
     releaseChannel: "UNSPECIFIED"
     projectBindings:
     - *shared_infra_project_name
+user:shared-user-vm:
+  charts:
+  - name: "../../examples/sample-org/dummy-config"
+    release_name: "dummy-config"
+    values:
+      namespace: *shared_infra_project_name
+      pvc: "shared-infra-1-nb-01-s3-proxy-config"
+  - name: "sample-config"
+    release_name: "dga-notebook-config"
+    values:
+      namespace: *shared_infra_project_name
+      pvc: "shared-infra-1-nb-01-s3-proxy-config"
