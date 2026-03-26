@@ -16,6 +16,6 @@ iac:
     releaseChannel: "UNSPECIFIED"
     projectBindings:
     - "{{ config.IAC_PROJECT }}"
-{% for user in users_lowercase %}
-    - "{{ user }}"
+{% for project in all_projects %}
+    - "{{ project }}"
 {% endfor %}

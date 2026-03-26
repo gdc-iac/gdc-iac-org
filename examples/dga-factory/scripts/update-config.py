@@ -16,7 +16,8 @@ CONFIG_VARS = [
     'S3_PROXY_IMAGE', 'CHARTS_DIR', 'S3_PROXY_ENABLED',
     'CLUSTER_K8S_VERSION', 'CLUSTER_POD_CIDR_SIZE', 'CLUSTER_SERVICE_CIDR_SIZE',
     'CLUSTER_INGRESS_SERVICE_IP_SIZE', 'CLUSTER_MACHINE_TYPE',
-    'CLUSTER_NODE_COUNT', 'CLUSTER_NODE_POOL_NAME',
+    'CLUSTER_NODE_COUNT', 'CLUSTER_NODE_POOL_NAME', 'AIS_PREFIX',
+    'CLOUD_BILLING_CONFIG_ACCOUNT_ID'
 ]
 
 
@@ -71,13 +72,13 @@ def main():
 
     output_dir_path = pathlib.Path(config['OUTPUT_DIR'])
     users_yaml_path = pathlib.Path(config['USERS_YAML'])
-    all_users_lowercase = []
+    all_projects = []
     with open(users_yaml_path, 'r') as f:
         users = yaml.safe_load(f)
 
     for team_name, team_data in users.items():
         team_users = team_data['users']
-        team_admin = team_data['admin_user']
+        team_admin_fqn = f"{config['AIS_PREFIX']}{team_data['admin_user']}"
         # create team subdirectory in the users directory
         team_dir = pathlib.Path(f"{output_dir_path}/users/{team_name}")
         team_dir.mkdir(parents=True, exist_ok=True)
@@ -89,9 +90,9 @@ def main():
             template = jinja2.Template(f.read())
         rendered_template = template.render(
             team_name=team_name,
-            users=team_users,
-            users_lowercase=[user.lower() for user in team_users],
-            team_admin=team_admin,
+            team_projects=[ user.lower().split('@')[0] for user in team_users],
+            user_fqns=[f"{config['AIS_PREFIX']}{user}" for user in team_users],
+            team_admin_fqn=team_admin_fqn,
             config=config
         )
         with open(team_shared_yaml_path, 'w') as f:
@@ -99,17 +100,19 @@ def main():
                 f"Rendered {template_path} to {team_shared_yaml_path}")
             f.write(rendered_template)
         for user in team_users:
-            all_users_lowercase.append(user.lower())
+            project = user.lower().split('@')[0]
+            user_fqn = f"{config['AIS_PREFIX']}{user}"
+            all_projects.append(project)
             # render user template from user.yaml.j2
-            user_yaml_path = team_dir / f"{user}.yaml"
+            user_yaml_path = team_dir / f"{project}.yaml"
             template_path = script_dir.parent / "user.yaml.j2"
             with open(template_path, 'r') as f:
                 template = jinja2.Template(f.read())
             rendered_template = template.render(
                 team_name=team_name,
-                user=user,
-                user_lowercase=user.lower(),
-                team_admin=team_admin,
+                project=project,
+                user_fqn=user_fqn,
+                team_admin_fqn=team_admin_fqn,
                 config=config
             )
             with open(user_yaml_path, 'w') as f:
@@ -121,7 +124,7 @@ def main():
     with open(template_path, 'r') as f:
         template = jinja2.Template(f.read())
     rendered_template = template.render(
-        users_lowercase=all_users_lowercase,
+        all_projects=all_projects,
         config=config
     )
     with open(shared_yaml_path, 'w') as f:
