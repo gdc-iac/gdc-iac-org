@@ -1,6 +1,6 @@
 export SCRIPTS_DIR=$( readlink -e $(dirname "${BASH_SOURCE[0]}"))
-export OUTPUT_DIR=/tmp/dga-factory
-export SECRETS_DIR=/tmp/dga-factory-secrets
+export OUTPUT_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../generated/output)
+export SECRETS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../generated/secrets)
 export USERS_YAML=$( readlink -e ${SCRIPTS_DIR:?}/../users.yaml)
 export GDCH_CHARTS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../../../charts)
 export CHARTS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../charts)
@@ -13,7 +13,7 @@ export GDCH_ZONE="us-east67-b"
 export GDCH_DOMAIN="google.gdch.test"
 export GDCH_CONSOLE="console.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
 export CLUSTER_NAME="stress-test"
-export KUBECONFIG_PATH="/tmp/kubeconfig/"
+export KUBECONFIG_PATH=${SCRIPTS_DIR:?}/../generated/kubeconfig
 export GLOBAL_API_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA:?}-global-api.kubeconfig
 export ZONE_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA:?}-${GDCH_ZONE:?}.kubeconfig
 export USER_CLUSTER_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA}-${GDCH_ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
