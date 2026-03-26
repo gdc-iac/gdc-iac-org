@@ -1,5 +1,5 @@
 #!/bin/bash
-export SCRIPTS_DIR=$( readlink -e $(dirname $0))
+export SCRIPTS_DIR=$( readlink -e $(dirname "${BASH_SOURCE[0]}"))
 source ${SCRIPTS_DIR:?}/config.sh
 set -e
 mkdir -p ${KUBECONFIG_PATH:?}

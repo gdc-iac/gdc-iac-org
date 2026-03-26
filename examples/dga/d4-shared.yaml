@@ -190,7 +190,7 @@ lux-central1-b:
       podCIDRSize: 18
       serviceCIDRSize: 20
     initialVersion:
-      kubernetesVersion: "1.29.12-gke.800"
+      kubernetesVersion: "1.30.14-gke.2300"
     loadBalancer:
       ingressServiceIPSize: 20
     nodePools:
