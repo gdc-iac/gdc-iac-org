@@ -1,10 +1,10 @@
 export SCRIPTS_DIR=$( readlink -e $(dirname "${BASH_SOURCE[0]}"))
-export OUTPUT_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../generated/output)
-export SECRETS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../generated/secrets)
-export USERS_YAML=$( readlink -e ${SCRIPTS_DIR:?}/../users.yaml)
-export GDCH_CHARTS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../../../charts)
-export CHARTS_DIR=$( readlink -e ${SCRIPTS_DIR:?}/../charts)
-export HELM_CLI=$( readlink -e ${SCRIPTS_DIR:?}/../../../tools/helm_cli/helm_cli.py)
+export OUTPUT_DIR=${SCRIPTS_DIR:?}/../generated/output
+export SECRETS_DIR=${SCRIPTS_DIR:?}/../generated/secrets
+export USERS_YAML=${SCRIPTS_DIR:?}/../users.yaml
+export GDCH_CHARTS_DIR=${SCRIPTS_DIR:?}/../../../charts
+export CHARTS_DIR=${SCRIPTS_DIR:?}/../charts
+export HELM_CLI=${SCRIPTS_DIR:?}/../../../tools/helm_cli/helm_cli.py
 export ORG_NAME="gdchservices"
 export IAC_PROJECT="iac-root"
 export IAC_SA="iac001-sa"
