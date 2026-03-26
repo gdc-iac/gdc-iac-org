@@ -119,7 +119,11 @@ global:
       - backup-repositories # Mapped to: charts/gdc-backup-repositories
       - backup-plans # Mapped to: charts/gdc-backup-plans
 user:<cluster-name>:
-    user-cluster-workloads: # Mapped to: charts/gdc-user-cluster-workloads
+    charts: # List of charts to deploy directly to the user cluster
+      - name: "path/to/chart" # Mapped to: path/to/chart
+        release_name: "my-release"
+        values: # Values to pass to the chart
+          key: value
     projects: # Mapped to: charts/gdc-projects
       - project-iam-roles # Mapped to: charts/gdc-project-iam-roles
       - project-iam-role-bindings # Mapped to: charts/gdc-project-iam-role-bindings

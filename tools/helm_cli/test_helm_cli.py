@@ -214,18 +214,6 @@ class TestHelmCli(unittest.TestCase):
         self.assertEqual(kwargs["action"], action)
         self.assertEqual(kwargs["extra_args"], extra_args)
 
-    @patch("helm_cli.process_type")
-    def test_process_with_api_prefix(self, mock_process_type):
-        config = {"user:clstr-1": {"user-cluster-workloads": []}, "iac": {}}
-        action = "template"
-        helm_cli.process(
-            config, action, False, "user:clstr-1", "../../charts", None, None, []
-        )
-        mock_process_type.assert_called()
-        _, kwargs = mock_process_type.call_args
-        self.assertEqual(kwargs["resource_type"], "user-cluster-workloads")
-        self.assertEqual(kwargs["parents"], [
-                         {'name': 'clstr-1', 'namespace': 'clstr-1'}])
 
     @patch("helm_cli.process_type")
     def test_process_with_global_api(self, mock_process_type):
@@ -406,6 +394,78 @@ class TestHelmCli(unittest.TestCase):
         with patch("helm_cli.sys.argv", ["helm_cli.py", "template"]):
             helm_cli.main()
             mock_process.assert_called_once()
+
+
+    @patch("helm_cli.subprocess.check_output")
+    @patch("helm_cli.tempfile.NamedTemporaryFile")
+    def test_process_user_workload(self, mock_tempfile, mock_subprocess):
+        mock_file = MagicMock()
+        mock_tempfile.return_value.__enter__.return_value = mock_file
+        mock_file.name = "/tmp/values.yaml"
+
+        action = "upgrade"
+        cluster_name = "clstr-1"
+        config = {
+            "charts": [
+                {
+                    "name": "my-chart",
+                    "release_name": "r1",
+                    "values": {"foo": "bar"}
+                }
+            ]
+        }
+        dry_run = False
+        extra_args = []
+
+        helm_cli.process_user_workload(
+            action=action, cluster_name=cluster_name, config=config,
+            iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
+            extra_args=extra_args, output_dir=None
+        )
+
+        mock_file.write.assert_called()
+        expected_cmd = [
+            "helm", "--kubeconfig", "kubeconfig", "upgrade", "--install", "r1",
+            "my-chart", "-f", "/tmp/values.yaml"
+        ]
+        mock_subprocess.assert_called_with(expected_cmd, text=True)
+
+    @patch("helm_cli.os.makedirs")
+    @patch("builtins.open", new_callable=MagicMock)
+    def test_process_user_workload_hydrate(self, mock_open, mock_makedirs):
+        action = "hydrate"
+        cluster_name = "clstr-1"
+        config = {
+            "charts": [
+                {
+                    "name": "my-chart",
+                    "release_name": "r1",
+                    "values": {"foo": "bar"}
+                }
+            ]
+        }
+        dry_run = False
+        extra_args = []
+
+        helm_cli.process_user_workload(
+            action=action, cluster_name=cluster_name, config=config,
+            iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
+            extra_args=extra_args, output_dir=None
+        )
+
+        mock_makedirs.assert_called_with("./hydrated/clstr-1/my-chart", exist_ok=True)
+        mock_open.assert_called_with("./hydrated/clstr-1/my-chart/r1.yaml", "w")
+
+    @patch("helm_cli.process_user_workload")
+    def test_process_with_user_api(self, mock_process_user_workload):
+        config = {"user:clstr-1": {"charts": []}, "iac": {}}
+        action = "template"
+        helm_cli.process(
+            config, action, False, "user:clstr-1", "../../charts", None, None, []
+        )
+        mock_process_user_workload.assert_called_once()
+        _, kwargs = mock_process_user_workload.call_args
+        self.assertEqual(kwargs["cluster_name"], "clstr-1")
 
 
 if __name__ == "__main__":

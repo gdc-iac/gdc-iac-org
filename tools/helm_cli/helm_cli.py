@@ -430,6 +430,59 @@ def process_type(
             )
 
 
+def process_user_workload(
+    action: str, cluster_name: str, config: dict, iac_config: dict,
+    kubeconfig: str, dry_run: bool, extra_args: List[str],
+    output_dir: str
+) -> bool:
+    """
+    Process user workload configuration.
+    """
+    logging.debug(f"process_user_workload action: {action}, "
+    f"cluster_name: {cluster_name}, config: {config}, "
+    f"iac_config: {iac_config}, kubeconfig: {kubeconfig}, "
+    f"dry_run: {dry_run}, extra_args: {extra_args}, "
+    f"output_dir: {output_dir}")
+    for chart in config.get("charts", []):
+        logging.info(f"Processing chart: {chart}")
+        if action == "hydrate":
+            current_output_dir = output_dir if output_dir else "./hydrated"
+            current_output_dir = current_output_dir.rstrip('/')
+            # chart name can be path
+            chart_name = chart['name'].split('/')[-1]
+            chart_output_dir = os.path.join(current_output_dir, cluster_name, chart_name)
+            os.makedirs(chart_output_dir, exist_ok=True)
+            with open(os.path.join(chart_output_dir, f"{chart['release_name']}.yaml"), "w") as f:
+                logging.info(f"Hydrating {cluster_name}/{chart_name}/{chart['release_name']}.yaml")
+                yaml.dump(chart['values'], f)
+        else:
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
+                    values_yaml = yaml.safe_dump(chart['values'])
+                    logging.debug(values_yaml)
+                    tmp.write(values_yaml)
+                    tmp.flush()
+                    cmd = action_cmd(
+                        kubeconfig=kubeconfig, action=action,
+                        release_name=chart['release_name'],
+                        chart=chart['name'],
+                        output_dir=output_dir,
+                        values_file=tmp.name, extra_args=extra_args
+                    )
+                    logging.info(f"{' '.join(cmd)}")
+                    output = subprocess.check_output(cmd, text=True)
+                    logging.info(f"Helm {action} {chart['release_name']} finished")
+                    if output:
+                        logging.info(output)
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Helm failed with return code {e.returncode}")
+                logging.error(f"Error output (if captured): {e.output}")
+            except FileNotFoundError as e:
+                logging.error(f"Error: Helm not found or could not be executed. {e}")
+            
+            
+    
+
 def process(
     config: dict, action: str, dry_run: bool, api: str,
     charts_dir: str,
@@ -484,15 +537,25 @@ def process(
             namespace = actual_name
         api_schema = RESOURCE_SCHEMA.get(api_type, RESOURCE_SCHEMA["zone"])
 
-        for t, v in api_schema.items():
-            process_type(
-                action=action, type_path=selected_api, resource_type=t,
-                type_tree=v, config=config[selected_api],
-                iac_config=iac_config, kubeconfig=kubeconfig,
+        if api_type in ["global", "zone"]:
+            for t, v in api_schema.items():
+                process_type(
+                    action=action, type_path=selected_api, resource_type=t,
+                    type_tree=v, config=config[selected_api],
+                    iac_config=iac_config, kubeconfig=kubeconfig,
                 dry_run=dry_run, parents=[
                     {'name': actual_name, 'namespace': namespace}],
                 extra_args=extra_args,
                 charts_dir=charts_dir,
+                output_dir=output_dir
+            ) 
+        else:
+            process_user_workload(
+                action=action, cluster_name=actual_name,
+                config=config[selected_api],
+                iac_config=iac_config, kubeconfig=kubeconfig,
+                dry_run=dry_run, 
+                extra_args=extra_args,
                 output_dir=output_dir
             )
     return True
