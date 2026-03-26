@@ -66,13 +66,12 @@ def main():
         for file in files:
             if not file.endswith("-secret.yaml"):
                 continue
-
+            logging.debug(f"Processing file {file}")
             file_path = pathlib.Path(root) / file
-            user = file.replace("-secret.yaml", "")
-            user_lowercase = user.lower()
+            project = file.replace("-secret.yaml", "")
 
             secret_name = f"s3-proxy-config"
-            namespace = user_lowercase
+            namespace = project
 
             logging.info(f"Creating secret {secret_name} in namespace {namespace} from {file_path}")
             
@@ -96,8 +95,40 @@ def main():
                 ]
                 subprocess.run(apply_cmd, input=manifest, text=True, check=True)
                 logging.info(f"Successfully applied secret {secret_name}")
+
+                # Deploy dga-secret-sync
+                helm_cmd = [
+                    "helm", "upgrade", "--install",
+                    f"{namespace}-secret-sync",
+                    str(pathlib.Path(config['CHARTS_DIR']) / "dga-secret-sync"),
+                    f"--namespace={config['IAC_PROJECT']}",
+                    f"--kubeconfig={config['USER_CLUSTER_KUBECONFIG']}",
+                    f"--set", f"namespace={namespace}",
+                    f"--set", f"notebook_name=nb",
+                    f"--set", f"s3_proxy_config_pvc=s3-proxy-config",
+                    f"--set", f"secret_name={secret_name}",
+                    "--debug"
+                ]
+                
+                logging.info(f"Running: {' '.join(helm_cmd)}")
+                try:
+                    result = subprocess.run(helm_cmd, text=True, capture_output=True)
+                    if result.stdout:
+                        logging.info("Helm output:")
+                        logging.info(result.stdout)
+                    result.check_returncode()
+                    logging.info(f"Successfully deployed dga-secret-sync for {namespace}")
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"Failed to deploy dga-secret-sync for {namespace}: {e}")
+                    if e.stdout:
+                        logging.info("Helm output (error):")
+                        logging.info(e.stdout)
+                    if e.stderr:
+                        logging.warning("Helm error output (error):")
+                        logging.warning(e.stderr)
+                    raise
             except subprocess.CalledProcessError as e:
-                logging.error(f"Failed to create secret {secret_name}: {e}")
+                logging.error(f"Failed to process secret {secret_name}: {e}")
                 raise
 
 if __name__ == "__main__":
