@@ -17,7 +17,7 @@ spec:
       - args:
         - jupyter labextension disable beatrix_jupyterlab dataproc_jupyter_plugin;
           jupyter lab --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
-          --NotebookApp.ip='0.0.0.0' --NotebookApp.base_url='\$(NB_PREFIX)'
+          --NotebookApp.ip='0.0.0.0' --NotebookApp.base_url='$(NB_PREFIX)'
         command:
         - bash
         - -c
