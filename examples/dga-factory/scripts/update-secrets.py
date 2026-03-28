@@ -2,6 +2,7 @@
 import os
 import subprocess
 import pathlib
+import hashlib
 import logging
 import yaml
 import jinja2
@@ -37,6 +38,19 @@ def parse_args():
         help="Enable verbose logging"
     )
     return parser.parse_known_args()
+
+
+def write_if_changed(file_path: pathlib.Path, content: str) -> None:
+    """Writes the content to the file if the content has changed."""
+    new_hash = hashlib.sha256(content.encode()).hexdigest()
+    old_hash = ""
+    if file_path.exists():
+        with open(file_path, 'r') as f:
+            old_hash = hashlib.sha256(f.read().encode()).hexdigest()
+    if new_hash != old_hash:
+        with open(file_path, 'w') as f:
+            logging.info(f"Saved {file_path}")
+            f.write(content)
 
 
 def main():
@@ -105,12 +119,13 @@ def main():
         logging.debug(f"Team {team_name} buckets: {buckets_config}")
 
         for user in team_users:
-            project_name = user.lower().split('@')[0]
+            email = list(user.keys())[0]
+            project_name = email.lower().split('@')[0]
             secret_yaml_path = team_dir / f"{project_name}-secret.yaml"
 
             subject_key = 'object\\.gdc\\.goog/subject'
             annotations_filter = (
-                f"?(@.metadata.annotations['{subject_key}']=='{config['AIS_PREFIX']}{user}')"
+                f"?(@.metadata.annotations['{subject_key}']=='{config['AIS_PREFIX']}{email}')"
             )
             jsonpath_cmd = (
                 f"jsonpath={{.items[{annotations_filter}].metadata.name}}"
@@ -153,15 +168,13 @@ def main():
                 secret_template_path = script_dir.parent / 'secret.yaml.j2'
                 with open(secret_template_path, 'r') as tf:
                     s_template = jinja2.Template(tf.read())
-                with open(secret_yaml_path, 'w') as of:
-                    of.write(s_template.render(
-                        buckets_config=buckets_config,
-                        aws_access_key_id=aws_access_key_id,
-                        aws_secret_access_key=aws_secret_access_key,
-                        config=config,
-                    ))
-                logging.info(
-                    f"Rendered {secret_template_path} to {secret_yaml_path}")
+                rendered_template = s_template.render(
+                    buckets_config=buckets_config,
+                    aws_access_key_id=aws_access_key_id,    
+                    aws_secret_access_key=aws_secret_access_key,
+                    config=config,
+                )
+                write_if_changed(secret_yaml_path, rendered_template)
             else:
                 logging.warning(
                     f"No secret found for user {user} in team {team_name}")

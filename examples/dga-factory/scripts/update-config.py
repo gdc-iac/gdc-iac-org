@@ -2,6 +2,7 @@
 import os
 import subprocess
 import pathlib
+import hashlib
 import logging
 import yaml
 import jinja2
@@ -39,6 +40,19 @@ def parse_args():
         help="Enable verbose logging"
     )
     return parser.parse_known_args()
+
+
+def write_if_changed(file_path: pathlib.Path, content: str) -> None:
+    """Writes the content to the file if the content has changed."""
+    new_hash = hashlib.sha256(content.encode()).hexdigest()
+    old_hash = ""
+    if file_path.exists():
+        with open(file_path, 'r') as f:
+            old_hash = hashlib.sha256(f.read().encode()).hexdigest()
+    if new_hash != old_hash:
+        with open(file_path, 'w') as f:
+            logging.info(f"Saved {file_path}")
+            f.write(content)
 
 
 def main():
@@ -90,18 +104,17 @@ def main():
             template = jinja2.Template(f.read())
         rendered_template = template.render(
             team_name=team_name,
-            team_projects=[ user.lower().split('@')[0] for user in team_users],
-            user_fqns=[f"{config['AIS_PREFIX']}{user}" for user in team_users],
+            team_projects=[ list(user.keys())[0].lower().split('@')[0] for user in team_users],
+            user_fqns=[f"{config['AIS_PREFIX']}{list(user.keys())[0]}" for user in team_users],
             team_admin_fqn=team_admin_fqn,
             config=config
         )
-        with open(team_shared_yaml_path, 'w') as f:
-            logging.info(
-                f"Rendered {template_path} to {team_shared_yaml_path}")
-            f.write(rendered_template)
+        write_if_changed(team_shared_yaml_path, rendered_template)
         for user in team_users:
-            project = user.lower().split('@')[0]
-            user_fqn = f"{config['AIS_PREFIX']}{user}"
+            email = list(user.keys())[0]
+            status = user[email]
+            project = email.lower().split('@')[0]
+            user_fqn = f"{config['AIS_PREFIX']}{email}"
             all_projects.append(project)
             # render user template from user.yaml.j2
             user_yaml_path = team_dir / f"{project}.yaml"
@@ -113,11 +126,10 @@ def main():
                 project=project,
                 user_fqn=user_fqn,
                 team_admin_fqn=team_admin_fqn,
-                config=config
+                config=config,
+                ready=status.casefold()=='ready'.casefold()
             )
-            with open(user_yaml_path, 'w') as f:
-                logging.info(f"Rendered {template_path} to {user_yaml_path}")
-                f.write(rendered_template)
+            write_if_changed(user_yaml_path, rendered_template)
     # render shared services for all users
     shared_yaml_path = output_dir_path / "shared.yaml"
     template_path = script_dir.parent / "shared.yaml.j2"
@@ -127,9 +139,7 @@ def main():
         all_projects=all_projects,
         config=config
     )
-    with open(shared_yaml_path, 'w') as f:
-        logging.info(f"Rendered {template_path} to {shared_yaml_path}")
-        f.write(rendered_template)
+    write_if_changed(shared_yaml_path, rendered_template)
 
 if __name__ == "__main__":
     main()

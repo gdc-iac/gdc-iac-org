@@ -62,12 +62,20 @@ def main():
 
     secrets_dir_path = pathlib.Path(config['SECRETS_DIR'])
 
+
     for root, dirs, files in os.walk(secrets_dir_path):
         for file in files:
             if not file.endswith("-secret.yaml"):
                 continue
-            logging.debug(f"Processing file {file}")
+            last_sync = 0
             file_path = pathlib.Path(root) / file
+            if os.path.exists(f"{file_path}.last-sync"):
+                with open(f"{file_path}.last-sync", 'r') as f:
+                    last_sync = os.path.getmtime(f"{file_path}.last-sync")
+            if os.path.getmtime(file_path) < last_sync:
+                logging.info(f"Skipping {file_path} as it has not been modified since last sync")
+                continue
+            logging.debug(f"Processing file {file}")
             project = file.replace("-secret.yaml", "")
 
             secret_name = f"s3-proxy-config"
@@ -113,6 +121,8 @@ def main():
                 logging.info(f"Running: {' '.join(helm_cmd)}")
                 try:
                     result = subprocess.run(helm_cmd, text=True, capture_output=True)
+                    with open(f"{file_path}.last-sync", 'w') as f:
+                        f.write(str(os.path.getmtime(file_path)))
                     if result.stdout:
                         logging.info("Helm output:")
                         logging.info(result.stdout)

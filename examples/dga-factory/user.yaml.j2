@@ -90,6 +90,9 @@ global:
     - name: &notebook_name "nb"
       nb_jupyter_image: "{{ config.NB_JUPYTER_IMAGE }}"
       user_cluster_name: "{{ config.CLUSTER_NAME }}"
+{% if not ready %}
+      stopped: true
+{% endif %}
 {% if config.S3_PROXY_ENABLED == 1 %}
       sidecars:
       - name: "s3-proxy"
