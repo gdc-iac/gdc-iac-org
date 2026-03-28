@@ -4,6 +4,10 @@
 apiVersion: aiplatform.gdc.goog/v1
 kind: Notebook
 metadata:
+  annotations:
+  {{- if $notebook.stopped }}
+    kubeflow-resource-stopped: "1970-01-01T00:00:00Z"
+  {{- end }}
   finalizers:
   - notebooks.aiplatform.gdc.goog/notebook-controller-finalizer
   labels:
