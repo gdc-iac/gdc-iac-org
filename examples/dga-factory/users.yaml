@@ -2,6 +2,6 @@ team-1:
   admin_user: "HGY395@example.com"
   users:
     - PUF587@example.com: ready
-    - RND123@example.com: not-ready
+    - RND123@example.com: ready
     - RND567@example.com: not-ready
     - RND890@example.com: not-ready

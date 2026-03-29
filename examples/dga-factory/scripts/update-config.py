@@ -18,7 +18,7 @@ CONFIG_VARS = [
     'CLUSTER_K8S_VERSION', 'CLUSTER_POD_CIDR_SIZE', 'CLUSTER_SERVICE_CIDR_SIZE',
     'CLUSTER_INGRESS_SERVICE_IP_SIZE', 'CLUSTER_MACHINE_TYPE',
     'CLUSTER_NODE_COUNT', 'CLUSTER_NODE_POOL_NAME', 'AIS_PREFIX',
-    'CLOUD_BILLING_CONFIG_ACCOUNT_ID'
+    'CLOUD_BILLING_CONFIG_ACCOUNT_ID', 'HARBOR_ADMIN_EMAIL'
 ]
 
 
@@ -105,7 +105,7 @@ def main():
         rendered_template = template.render(
             team_name=team_name,
             team_projects=[ list(user.keys())[0].lower().split('@')[0] for user in team_users],
-            user_fqns=[f"{config['AIS_PREFIX']}{list(user.keys())[0]}" for user in team_users],
+            user_fqns=[f"{config['AIS_PREFIX']}{list(user.keys())[0]}" for user in team_users if user[list(user.keys())[0]].casefold()=='ready'.casefold()],
             team_admin_fqn=team_admin_fqn,
             config=config
         )
