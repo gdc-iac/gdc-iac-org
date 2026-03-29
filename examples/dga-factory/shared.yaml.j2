@@ -1,4 +1,28 @@
 iac:
+  # IaC can be invoked by user or service account
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: &iac_sa "{{ config.IAC_SA_FQN }}"
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "harbor-instance-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "harbor-project-creator"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "standard-cluster-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+- role: "workbench-notebooks-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
+global:
+  shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
 {{ config.GDCH_ZONE }}:
   clusters:
   - name: "{{ config.CLUSTER_NAME }}"
@@ -19,3 +43,12 @@ iac:
 {% for project in all_projects %}
     - "{{ project }}"
 {% endfor %}
+  projects:
+  - name: *shared_infra_project_name
+    harbors:
+    - name: "data-ets-mhs"
+      projects:
+      - name: "shared"
+        autoscan: false
+        creatorkind: "User"
+        creatorname: *iac_sa
