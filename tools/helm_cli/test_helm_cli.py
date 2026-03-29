@@ -275,24 +275,39 @@ class TestHelmCli(unittest.TestCase):
         mock_tempfile.return_value.__enter__.return_value = mock_file
         mock_file.name = "/tmp/values.yaml"
         import subprocess
+        mock_subprocess.side_effect = None
+        mock_subprocess.return_value = "success"
+        with patch('time.sleep') as mock_sleep:
+            helm_cli.call_resource_action(
+                kubeconfig=None, action="upgrade", dry_run=False,
+                parents=[{"name": "p1"}], resource_name="p1", resource_type="projects",
+                resource_config={"name": "obj1"},
+                release_name="p1-projects-obj1", extra_args=[],
+                charts_dir="../../charts", output_dir=None
+            )
+            mock_sleep.assert_called_once_with(10)
+
         mock_subprocess.side_effect = subprocess.CalledProcessError(
             1, ["helm"]
         )
-        helm_cli.call_resource_action(
-            kubeconfig=None, action="upgrade", dry_run=False,
-            parents=[{"name": "p1"}], resource_name="p1", resource_type="test-res",
-            resource_config={"name": "obj1"},
-            release_name="p1-test-res-obj1", extra_args=[],
-            charts_dir="../../charts", output_dir=None
-        )
+        with self.assertRaises(subprocess.CalledProcessError):
+            helm_cli.call_resource_action(
+                kubeconfig=None, action="upgrade", dry_run=False,
+                parents=[{"name": "p1"}], resource_name="p1", resource_type="test-res",
+                resource_config={"name": "obj1"},
+                release_name="p1-test-res-obj1", extra_args=[],
+                charts_dir="../../charts", output_dir=None
+            )
         mock_subprocess.side_effect = FileNotFoundError()
-        helm_cli.call_resource_action(
-            kubeconfig=None, action="upgrade", dry_run=False,
-            parents=[{"name": "p1"}], resource_name="p1", resource_type="test-res",
-            resource_config={"name": "obj1"},
-            release_name="p1-test-res-obj1", extra_args=[],
-            charts_dir="../../charts", output_dir=None
-        )
+        with self.assertRaises(FileNotFoundError):
+            helm_cli.call_resource_action(
+                kubeconfig=None, action="upgrade", dry_run=False,
+                parents=[{"name": "p1"}], resource_name="p1", resource_type="test-res",
+                resource_config={"name": "obj1"},
+                release_name="p1-test-res-obj1", extra_args=[],
+                charts_dir="../../charts", output_dir=None
+            )
+
 
     @patch("helm_cli.call_resource_action")
     def test_process_type_iac(self, mock_call_resource_action):
@@ -429,6 +444,25 @@ class TestHelmCli(unittest.TestCase):
             "my-chart", "-f", "/tmp/values.yaml"
         ]
         mock_subprocess.assert_called_with(expected_cmd, text=True)
+
+        import subprocess
+        mock_subprocess.side_effect = subprocess.CalledProcessError(
+            1, ["helm"]
+        )
+        with self.assertRaises(subprocess.CalledProcessError):
+            helm_cli.process_user_workload(
+                action=action, cluster_name=cluster_name, config=config,
+                iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
+                extra_args=extra_args, output_dir=None
+            )
+        
+        mock_subprocess.side_effect = FileNotFoundError()
+        with self.assertRaises(FileNotFoundError):
+            helm_cli.process_user_workload(
+                action=action, cluster_name=cluster_name, config=config,
+                iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
+                extra_args=extra_args, output_dir=None
+            )
 
     @patch("helm_cli.os.makedirs")
     @patch("builtins.open", new_callable=MagicMock)

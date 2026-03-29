@@ -35,10 +35,10 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
     ```
 2. Log in as user $IAC_USER:
     ```bash
-    gdcloud auth login (as $IAC_USER)"
+    gdcloud auth login (as $IAC_USER)
     ```
 
-4. Global configuration:
+3. Global configuration:
     ```bash
     gdcloud clusters get-credentials global-api
     python3 helm_cli.py list \
@@ -46,18 +46,18 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
     ```
     ```bash
     gdcloud clusters get-credentials global-api
-    python3 helm_cli.py template ../../examples/multi-value-org/example-infra.yaml \
+    python3 helm_cli.py template ../../examples/org-admin/example-infra.yaml \
         --namespace=${IAC_PROJECT:?} \
         --api=iac,global
     ```
     ```bash
     gdcloud clusters get-credentials global-api
-    python3 helm_cli.py upgrade ../../examples/multi-value-org/example-infra.yaml \
+    python3 helm_cli.py upgrade ../../examples/org-admin/example-infra.yaml \
         --namespace=${IAC_PROJECT:?} \
         --api=iac,global
     ```
 
-3. Zonal configuration (for each zone):
+4. Zonal configuration (for each zone):
     ```bash
     gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${GDCH_ZONE:?}
     python3 helm_cli.py list \
@@ -67,7 +67,7 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 
     ```bash
     gdcloud clusters get-credentials ${ORG_NAME:?}-admin --zone ${GDCH_ZONE:?}
-    python3 helm_cli.py template ../../examples/multi-value-org/example-infra.yaml \
+    python3 helm_cli.py template ../../examples/org-admin/example-infra.yaml \
         --namespace=${IAC_PROJECT:?} \
         --api=iac,${GDCH_ZONE:?}
     ```
@@ -118,6 +118,7 @@ global:
       - harbors # Mapped to: charts/gdc-harbors
       - backup-repositories # Mapped to: charts/gdc-backup-repositories
       - backup-plans # Mapped to: charts/gdc-backup-plans
+      - dashboards # Mapped to: charts/gdc-dashboards
 user:<cluster-name>:
     charts: # List of charts to deploy directly to the user cluster
       - name: "path/to/chart" # Mapped to: path/to/chart
@@ -134,22 +135,30 @@ user:<cluster-name>:
 2.  **Iterates Resources**: Traverses the configuration based on the defined `RESOURCE_TYPES` hierarchy.
 3.  **Generates Values**: Constructs a values YAML file for each resource found. If the action is `hydrate`, these files are saved to the specified `--output-dir` (default `./hydrated/`) and the process stops for that resource.
 4.  **Executes Helm**: For all other actions, it constructs a temporary values file and calls the Helm CLI (e.g., `helm template ...`) targeting the corresponding chart from the directory specified by `--charts-dir` (e.g., `../../charts/gdc-<resource_type>`).
+5.  **Role Propagation Delay**: When applying IAM bindings or Project IAM resources (`projects`, `iam-roles`, `iam-role-bindings`), the tool will automatically introduce a 10 second delay after the Helm operation to allow for the roles to propagate within the GDCH API.
 
 ## Running Tests
 
-Unit tests are provided using the standard Python `unittest` framework in `test_helm_cli.py`. You can run the tests using any of the following commands from the `tools/helm_cli` directory:
+Unit tests are provided using the standard Python `unittest` framework in `test_helm_cli.py`.
 
-1. **Direct execution:**
+To run the unit tests and check code coverage, run the following from the root of the helm charts directory (`gdc-iac-helm`):
+
+1. **Run unit tests and generate coverage report:**
 ```bash
-python3 test_helm_cli.py
+python3 -m coverage run -m unittest discover -s tools/helm_cli -p "test_*.py" && python3 -m coverage report -m
 ```
 
-2. **Using the `unittest` module explicitly:**
+2. **Direct execution:**
 ```bash
-python3 -m unittest test_helm_cli.py
+python3 tools/helm_cli/test_helm_cli.py
 ```
 
-3. **Running `unittest` with verbose logging:**
+3. **Using the `unittest` module explicitly:**
 ```bash
-python3 -m unittest -v test_helm_cli.py
+python3 -m unittest discover -s tools/helm_cli -p "test_*.py"
+```
+
+4. **Running `unittest` with verbose logging:**
+```bash
+python3 -m unittest -v discover -s tools/helm_cli -p "test_*.py"
 ```
