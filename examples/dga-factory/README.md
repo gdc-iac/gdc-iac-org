@@ -21,8 +21,8 @@ The DGA Factory follows a 3-step pipeline:
 │   ├── dga-secret-sync/       # Helm chart for managing the syncing of S3 credentials from Secrets to PVCs
 │   └── dga-user-config/       # Helm chart for user-specific Kubernetes resources
 ├── scripts/
+│   ├── authenticate.sh       # Script to authenticate and set kubeconfig credentials
 │   ├── bootstrap-sa.sh       # Script to bootstrap IAM bindings for the IaC SA
-│   ├── bootstrap.sh          # Script to bootstrap project-level IAM bindings
 │   ├── cluster-uninstall.sh  # Uninstalls previously deployed config artifacts at the cluster level
 │   ├── config.sh             # Central environment variable configuration
 │   ├── global-uninstall.sh   # Uninstalls previously deployed config artifacts at the global level
@@ -76,7 +76,15 @@ Run the bootstrap scripts to set up the necessary IAM bindings for the IaC Servi
 ./scripts/bootstrap-sa.sh
 ```
 
-### 2. Generate Configurations and Secrets
+### 2. Authentication
+
+Before attempting to generate configurations that need kubernetes context, load the IaC service account credentials and set up kubeconfigs for global, zonal, and user APIs. Place your service account json key at `generated/secrets/iac001-sa.json`.
+
+```bash
+./scripts/authenticate.sh
+```
+
+### 3. Generate Configurations and Secrets
 
 Run the update scripts to render the YAML files from templates based on `users.yaml` and logic inside the python scripts based on GDCH API calls checking provisioning statuses.
 
@@ -87,7 +95,7 @@ Run the update scripts to render the YAML files from templates based on `users.y
 
 This will populate the `generated/output/` and `generated/secrets/` directories. Output generated code files will be checked against matching file hashes, resulting in new saves only if content has drifted.
 
-### 3. Sync Configurations and Secrets
+### 4. Sync Configurations and Secrets
 
 Apply the generated configurations and secrets to the GDC environment using the sync scripts.
 
@@ -98,7 +106,7 @@ Apply the generated configurations and secrets to the GDC environment using the 
 
 These scripts are built identically to leverage timestamps for file comparison against `.last-sync` temporary files, completely skipping un-modified definitions.
 
-### 4. Verify Status
+### 5. Verify Status
 
 You can use the `status.sh` script to display all Helm installations operating in all cluster topology API spaces via global, zonal or cluster definitions.
 
@@ -106,7 +114,7 @@ You can use the `status.sh` script to display all Helm installations operating i
 ./scripts/status.sh
 ```
 
-### 5. Uninstall Workloads
+### 6. Uninstall Workloads
 
 If necessary, you have access to three uninstallation shell scripts targeting all possible deployment spaces (`global-uninstall.sh`, `zone-uninstall.sh`, `cluster-uninstall.sh`) that use raw wildcard inputs (`$@`) passed directly to `helm uninstall`.
 
