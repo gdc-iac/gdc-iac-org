@@ -158,7 +158,11 @@ def action_cmd(
 
 
 def normalize_name(name: str) -> str:
-    return name.replace("_", "-").lower()
+    normalized_name = name.replace("_", "-").lower()
+    if len(normalized_name) > 53:
+        suffix = sha256(name.encode()).hexdigest()[:8]
+        normalized_name = normalized_name[:45] + "-" + suffix
+    return normalized_name
 
 
 def call_global_action(
