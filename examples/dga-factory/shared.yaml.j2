@@ -37,7 +37,7 @@ global:
   # kubectl get buckets -n *shared_infra_project_name
   cluster_backup_bucket_fqdn: &cluster_backup_bucket_fqdn "lblzqcw-cluster-backup"
   harbor_backup_bucket_fqdn: &harbor_backup_bucket_fqdn "lblzqcw-harbor-backup"
-  backup_bucket_endpoint: &backup_bucket_endpoint "https://objectstorage.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+  backup_bucket_endpoint: &backup_bucket_endpoint "https://objectstorage.{{ config.ORG_NAME}}.{{ config.GDCH_ZONE}}.{{ config.GDCH_DOMAIN}}"
   # follow https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/platform/pa-user/grant-obtain-storage-access#obtain_service_account_access
   # to obtain the secret name:
   # kubectl get secrets --namespace $PROJECT_NAME -o json | jq -r --arg USER_NAME "${SA_NAME:?}" '.items[] | select( (.metadata.annotations."object.gdc.goog/subject"==$USER_NAME)) | .metadata.name'
