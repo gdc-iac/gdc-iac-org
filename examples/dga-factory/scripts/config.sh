@@ -29,6 +29,5 @@ export CLUSTER_INGRESS_SERVICE_IP_SIZE=20
 export CLUSTER_MACHINE_TYPE="n3-standard-16-gdc"
 export CLUSTER_NODE_COUNT=5
 export CLUSTER_NODE_POOL_NAME="pool-20260224"
-export CLOUD_BILLING_CONFIG_ACCOUNT_ID="Organization Billing Account"
 export HARBOR_ADMIN_EMAIL="sdobrica-sa@opscenter.local"
 
