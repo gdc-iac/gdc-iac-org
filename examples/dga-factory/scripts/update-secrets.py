@@ -140,7 +140,7 @@ def main():
                 secret_name_cmd, text=True).strip()
             logging.debug(f"User {user} secret names: {secret_names}")
             if secret_names:
-                secret_name = secret_names.split()[1]
+                secret_name = secret_names.split()[0]
                 access_key_cmd = [
                     "kubectl", f"--kubeconfig={config['ZONE_KUBECONFIG']}",
                     "get", "-n", "object-storage-access-keys",
