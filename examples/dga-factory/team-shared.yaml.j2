@@ -34,60 +34,7 @@ global:
     accounts:
     - name: *shared_infra_project_name
       display_name: "Shared Billing Account {{ team_name }}"
-      cloud_billing_config_account_id: "{{ config.CLOUD_BILLING_CONFIG_ACCOUNT_ID }}"
-  iam-roles:
-    - name: *tools_bucket_role
-      title: *tools_bucket_role
-      description: *tools_bucket_role
-      scope: project
-      roleNamespaces:
-      - *shared_infra_project_name
-      stage: "GA"
-      zonalRules: |
-        - apiGroups:
-          - object.gdc.goog
-          resources:
-          - buckets
-          resourceNames:
-          - "{{ team_name }}-s3-tools"
-          verbs:
-          - list
-          - read-object
-    - name: *ro_bucket_role
-      title: *ro_bucket_role
-      description: *ro_bucket_role
-      scope: project
-      roleNamespaces:
-      - *shared_infra_project_name
-      stage: "GA"
-      zonalRules: |
-        - apiGroups:
-          - object.gdc.goog
-          resources:
-          - buckets
-          resourceNames:
-          - "{{ team_name }}-s3-ro1"
-          verbs:
-          - list
-          - read-object
-    - name: *rw_bucket_role
-      title: *rw_bucket_role
-      description: *rw_bucket_role
-      scope: project
-      roleNamespaces:
-      - *shared_infra_project_name
-      stage: "GA"
-      zonalRules: |
-        - apiGroups:
-          - object.gdc.goog
-          resources:
-          - buckets
-          resourceNames:
-          - "{{ team_name }}-s3-rw1"
-          verbs:
-          - list
-          - read-object
-          - write-object
+      cloud_billing_config_account_id: *shared_infra_project_name
   projects:
     - name: *shared_infra_project_name
       project-network-policies:
@@ -143,6 +90,59 @@ global:
         subject_name: *admin_subject_name
       billing:
         account_ref: *shared_infra_project_name
+      iam-roles:
+        - name: *tools_bucket_role
+          title: *tools_bucket_role
+          description: *tools_bucket_role
+          scope: project
+          roleNamespaces:
+          - *shared_infra_project_name
+          stage: "GA"
+          zonalRules: |
+            - apiGroups:
+              - object.gdc.goog
+              resources:
+              - buckets
+              resourceNames:
+              - "{{ team_name }}-s3-tools"
+              verbs:
+              - list
+              - read-object
+        - name: *ro_bucket_role
+          title: *ro_bucket_role
+          description: *ro_bucket_role
+          scope: project
+          roleNamespaces:
+          - *shared_infra_project_name
+          stage: "GA"
+          zonalRules: |
+            - apiGroups:
+              - object.gdc.goog
+              resources:
+              - buckets
+              resourceNames:
+              - "{{ team_name }}-s3-ro1"
+              verbs:
+              - list
+              - read-object
+        - name: *rw_bucket_role
+          title: *rw_bucket_role
+          description: *rw_bucket_role
+          scope: project
+          roleNamespaces:
+          - *shared_infra_project_name
+          stage: "GA"
+          zonalRules: |
+            - apiGroups:
+              - object.gdc.goog
+              resources:
+              - buckets
+              resourceNames:
+              - "{{ team_name }}-s3-rw1"
+              verbs:
+              - list
+              - read-object
+              - write-object
 {{ config.GDCH_ZONE }}:
   projects:
   - name: *shared_infra_project_name

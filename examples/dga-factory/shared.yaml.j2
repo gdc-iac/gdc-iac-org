@@ -22,8 +22,49 @@ iac:
   subject_kind: "User"
   subject_name: *iac_sa
 global:
-  shared_infra_project_name: &shared_infra_project_name "data-ets-shared-infra"
+  shared_infra_project_name: &shared_infra_project_name "data-ets-15357-infra"
   shared_harbor_admin_name: &shared_harbor_admin_name "{{ config.AIS_PREFIX }}{{ config.HARBOR_ADMIN_EMAIL }}"
+  projects:
+    - name: *shared_infra_project_name
+      iam-role-bindings:
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "project-bucket-admin"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "project-bucket-object-admin"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "harbor-instance-admin"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      - role: "harbor-project-creator"
+        subject_kind: "User"
+        subject_name: *shared_harbor_admin_name
+      project-network-policies:
+{% for project in all_projects %}
+      - subject:
+          subject_type: ManagedService
+          managed_services:
+            match_types:
+            - 'mhs'
+        ingress:
+        - from:
+          - project_selector:
+              projects:
+                match_names:
+                - "{{ project }}"
+{% endfor %}
 {{ config.GDCH_ZONE }}:
   clusters:
   - name: "{{ config.CLUSTER_NAME }}"
@@ -47,9 +88,9 @@ global:
   projects:
   - name: *shared_infra_project_name
     harbors:
-    - name: "data-ets-mhs"
+    - name: "data-ets-mhs-574"
       projects:
-      - name: "data-ets"
+      - name: "data-ets-574"
         autoscan: false
         creatorkind: "User"
         creatorname: *shared_harbor_admin_name

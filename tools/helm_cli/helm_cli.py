@@ -248,7 +248,7 @@ def call_resource_action(
                     logging.info(output)
                 if resource_type in ['projects', 'iam-roles', 'iam-role-bindings']:
                     logging.info(f"Waiting seconds for {resource_type} to propagate")
-                    time.sleep(10)
+                    time.sleep(15)
         except subprocess.CalledProcessError as e:
             logging.error(f"Helm failed with return code {e.returncode}")
             logging.error(f"Error output (if captured): {e.output}")
