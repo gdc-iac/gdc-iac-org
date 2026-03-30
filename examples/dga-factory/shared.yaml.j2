@@ -31,7 +31,7 @@ global:
   # FQN can be obtained from the bucket object metadata after creation
   # this is a rationale for splitting the deployment into two steps
   # to obtain FQDNs use:
-  # kubectl get buckets -n data-ets-backup
+  # kubectl get buckets -n *shared_infra_project_name
   cluster_backup_bucket_fqdn: &cluster_backup_bucket_fqdn "<TODO>-cluster-backup"
   harbor_backup_bucket_fqdn: &harbor_backup_bucket_fqdn "<TODO>-harbor-backup"
   backup_bucket_endpoint: &backup_bucket_endpoint "https://objectstorage.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
