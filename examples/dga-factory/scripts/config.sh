@@ -30,7 +30,7 @@ export CLUSTER_MACHINE_TYPE="n3-standard-16-gdc"
 export CLUSTER_NODE_COUNT=5
 export CLUSTER_NODE_POOL_NAME="pool-20260224"
 export HARBOR_ADMIN_EMAIL="sdobrica-sa@opscenter.local"
-export COPY_JOB_IMAGE="alpine:latest"
+export COPY_JOB_IMAGE="data-ets-shr-mhs-data-ets-infra.org-15357.lux-central1-b.lux.clr/dga/alpine:latest"
 export BACKUP_BUCKETS_READY="no"
 export BACKUP_REPOS_READY="no"
 
