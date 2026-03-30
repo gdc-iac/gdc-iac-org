@@ -21,6 +21,9 @@ iac:
 - role: "workbench-notebooks-admin"
   subject_kind: "User"
   subject_name: *iac_sa
+- role: "secret-admin"
+  subject_kind: "User"
+  subject_name: *iac_sa
 global:
   shared_infra_project_name: &shared_infra_project_name "data-ets-15357-infra"
   shared_harbor_admin_name: &shared_harbor_admin_name "{{ config.AIS_PREFIX }}{{ config.HARBOR_ADMIN_EMAIL }}"
@@ -32,14 +35,14 @@ global:
   # this is a rationale for splitting the deployment into two steps
   # to obtain FQDNs use:
   # kubectl get buckets -n *shared_infra_project_name
-  cluster_backup_bucket_fqdn: &cluster_backup_bucket_fqdn "<TODO>-cluster-backup"
-  harbor_backup_bucket_fqdn: &harbor_backup_bucket_fqdn "<TODO>-harbor-backup"
+  cluster_backup_bucket_fqdn: &cluster_backup_bucket_fqdn "lblzqcw-cluster-backup"
+  harbor_backup_bucket_fqdn: &harbor_backup_bucket_fqdn "lblzqcw-harbor-backup"
   backup_bucket_endpoint: &backup_bucket_endpoint "https://objectstorage.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
   # follow https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/platform/pa-user/grant-obtain-storage-access#obtain_service_account_access
   # to obtain the secret name:
   # kubectl get secrets --namespace $PROJECT_NAME -o json | jq -r --arg USER_NAME "${SA_NAME:?}" '.items[] | select( (.metadata.annotations."object.gdc.goog/subject"==$USER_NAME)) | .metadata.name'
-  cluster_backup_secret_name: &cluster_backup_secret_name "<TODO>"
-  harbor_backup_secret_name: &harbor_backup_secret_name "<TODO>"
+  cluster_backup_secret_name: &cluster_backup_secret_name "object-storage-key-std-sa-vnrs26g2liavqc2lyn2cobqcoz2jaq4n5ji5hy2gnzhylbqg44aq"
+  harbor_backup_secret_name: &harbor_backup_secret_name "object-storage-key-std-sa-gpfvqopuc4btolnno75w57zgtyy7bzcoa73dao53s4i22ut6vsuq"
   backup_location: &backup_location "{{ config.GDCH_ZONE }}"
   cluster_backup_repo_name: &cluster_backup_repo_name "{{ config.CLUSTER_NAME }}-cluster-backup"
   harbor_backup_repo_name: &harbor_backup_repo_name "harbor-backup"
