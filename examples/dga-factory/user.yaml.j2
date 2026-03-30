@@ -70,6 +70,7 @@ global:
         subject_name: *admin_subject_name
         # Data scientist has view permissions to the user project - this is only needed
         # if this user is using the GDC console to access the notebooks
+{% if ready %}
       - role: "project-viewer"
         subject_kind: "User"
         subject_name: *user_subject_name
@@ -79,7 +80,10 @@ global:
       - role: "workbench-notebooks-viewer"
         subject_kind: "User"
         subject_name:  *user_subject_name
-      # Data scientist has view permissions to the user project buckets
+{% endif %}
+      # Data scientist has view permissions to the user project buckets.
+      # This role is needed even if the user is not yet ready, to allow 
+      # provisioning of the user s3 secret
       - role: "project-bucket-object-viewer"
         subject_kind: "User"
         subject_name:  *user_subject_name
@@ -90,6 +94,9 @@ global:
     - name: &notebook_name "nb"
       nb_jupyter_image: "{{ config.NB_JUPYTER_IMAGE }}"
       user_cluster_name: "{{ config.CLUSTER_NAME }}"
+{% if not ready %}
+      stopped: true
+{% endif %}
 {% if config.S3_PROXY_ENABLED == 1 %}
       sidecars:
       - name: "s3-proxy"

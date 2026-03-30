@@ -62,17 +62,24 @@ def main():
 
     secrets_dir_path = pathlib.Path(config['SECRETS_DIR'])
 
+
     for root, dirs, files in os.walk(secrets_dir_path):
         for file in files:
             if not file.endswith("-secret.yaml"):
                 continue
-
+            last_sync = 0
             file_path = pathlib.Path(root) / file
-            user = file.replace("-secret.yaml", "")
-            user_lowercase = user.lower()
+            if os.path.exists(f"{file_path}.last-sync"):
+                with open(f"{file_path}.last-sync", 'r') as f:
+                    last_sync = os.path.getmtime(f"{file_path}.last-sync")
+            if os.path.getmtime(file_path) < last_sync:
+                logging.info(f"Skipping {file_path} as it has not been modified since last sync")
+                continue
+            logging.debug(f"Processing file {file}")
+            project = file.replace("-secret.yaml", "")
 
             secret_name = f"s3-proxy-config"
-            namespace = user_lowercase
+            namespace = project
 
             logging.info(f"Creating secret {secret_name} in namespace {namespace} from {file_path}")
             
@@ -96,8 +103,42 @@ def main():
                 ]
                 subprocess.run(apply_cmd, input=manifest, text=True, check=True)
                 logging.info(f"Successfully applied secret {secret_name}")
+
+                # Deploy dga-secret-sync
+                helm_cmd = [
+                    "helm", "upgrade", "--install",
+                    f"{namespace}-secret-sync",
+                    str(pathlib.Path(config['CHARTS_DIR']) / "dga-secret-sync"),
+                    f"--namespace={config['IAC_PROJECT']}",
+                    f"--kubeconfig={config['USER_CLUSTER_KUBECONFIG']}",
+                    f"--set", f"namespace={namespace}",
+                    f"--set", f"notebook_name=nb",
+                    f"--set", f"s3_proxy_config_pvc=s3-proxy-config",
+                    f"--set", f"secret_name={secret_name}",
+                    "--debug"
+                ]
+                
+                logging.info(f"Running: {' '.join(helm_cmd)}")
+                try:
+                    result = subprocess.run(helm_cmd, text=True, capture_output=True)
+                    with open(f"{file_path}.last-sync", 'w') as f:
+                        f.write(str(os.path.getmtime(file_path)))
+                    if result.stdout:
+                        logging.info("Helm output:")
+                        logging.info(result.stdout)
+                    result.check_returncode()
+                    logging.info(f"Successfully deployed dga-secret-sync for {namespace}")
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"Failed to deploy dga-secret-sync for {namespace}: {e}")
+                    if e.stdout:
+                        logging.info("Helm output (error):")
+                        logging.info(e.stdout)
+                    if e.stderr:
+                        logging.warning("Helm error output (error):")
+                        logging.warning(e.stderr)
+                    raise
             except subprocess.CalledProcessError as e:
-                logging.error(f"Failed to create secret {secret_name}: {e}")
+                logging.error(f"Failed to process secret {secret_name}: {e}")
                 raise
 
 if __name__ == "__main__":

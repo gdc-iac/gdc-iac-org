@@ -43,6 +43,7 @@ import sys
 import tempfile
 import os
 from typing import List, Tuple, Union
+import time
 
 import yaml
 
@@ -245,11 +246,16 @@ def call_resource_action(
                 logging.info(f"Helm {action} {release_name} finished")
                 if output:
                     logging.info(output)
+                if resource_type in ['projects', 'iam-roles', 'iam-role-bindings']:
+                    logging.info(f"Waiting seconds for {resource_type} to propagate")
+                    time.sleep(10)
         except subprocess.CalledProcessError as e:
             logging.error(f"Helm failed with return code {e.returncode}")
             logging.error(f"Error output (if captured): {e.output}")
+            raise e
         except FileNotFoundError as e:
             logging.error(f"Error: Helm not found or could not be executed. {e}")
+            raise e
 
 
 def process_type(
@@ -477,8 +483,10 @@ def process_user_workload(
             except subprocess.CalledProcessError as e:
                 logging.error(f"Helm failed with return code {e.returncode}")
                 logging.error(f"Error output (if captured): {e.output}")
+                raise e
             except FileNotFoundError as e:
                 logging.error(f"Error: Helm not found or could not be executed. {e}")
+                raise e
             
             
     

@@ -2,6 +2,7 @@
 import os
 import subprocess
 import pathlib
+import hashlib
 import logging
 import yaml
 import jinja2
@@ -14,7 +15,7 @@ CONFIG_VARS = [
     'GDCH_ZONE', 'GDCH_DOMAIN', 'GDCH_CONSOLE', 'CLUSTER_NAME',
     'KUBECONFIG_PATH', 'GLOBAL_API_KUBECONFIG', 'ZONE_KUBECONFIG',
     'USER_CLUSTER_KUBECONFIG', 'SECRETS_DIR', 'NB_JUPYTER_IMAGE',
-    'S3_PROXY_IMAGE', 'CHARTS_DIR', 'S3_PROXY_ENABLED'
+    'S3_PROXY_IMAGE', 'CHARTS_DIR', 'S3_PROXY_ENABLED', 'AIS_PREFIX'
 ]
 
 
@@ -37,6 +38,19 @@ def parse_args():
         help="Enable verbose logging"
     )
     return parser.parse_known_args()
+
+
+def write_if_changed(file_path: pathlib.Path, content: str) -> None:
+    """Writes the content to the file if the content has changed."""
+    new_hash = hashlib.sha256(content.encode()).hexdigest()
+    old_hash = ""
+    if file_path.exists():
+        with open(file_path, 'r') as f:
+            old_hash = hashlib.sha256(f.read().encode()).hexdigest()
+    if new_hash != old_hash:
+        with open(file_path, 'w') as f:
+            logging.info(f"Saved {file_path}")
+            f.write(content)
 
 
 def main():
@@ -68,7 +82,7 @@ def main():
         )
         raise RuntimeError(error_msg)
 
-    output_dir_path = pathlib.Path(config['OUTPUT_DIR'])
+    secrets_dir_path = pathlib.Path(config['SECRETS_DIR'])
     users_yaml_path = pathlib.Path(config['USERS_YAML'])
 
     with open(users_yaml_path, 'r') as f:
@@ -77,38 +91,41 @@ def main():
     for team_name, team_data in users.items():
         team_users = team_data['users']
         # create team subdirectory in the secrets directory
-        team_dir = output_dir_path / 'secrets' / team_name
+        team_dir = secrets_dir_path / team_name
         team_dir.mkdir(parents=True, exist_ok=True)
 
-        for user in team_users:
-            secret_yaml_path = team_dir / f"{user}-secret.yaml"
-            endpoint_cmd = [
+        endpoint_cmd = [
+            "kubectl", f"--kubeconfig={config['ZONE_KUBECONFIG']}",
+            "--namespace", f"{team_name}-shared-infra",
+            "get", "buckets", f"{team_name}-s3-rw1",
+            "-o", "jsonpath={.status.endpoint}"
+        ]
+        buckets_config = {}
+        logging.debug(' '.join(endpoint_cmd))
+        buckets_config['endpoint'] = subprocess.check_output(
+            endpoint_cmd, text=True).strip()
+
+        for bucket_name in ["ro1", "rw1", "tools"]: 
+            fqn_cmd = [
                 "kubectl", f"--kubeconfig={config['ZONE_KUBECONFIG']}",
                 "--namespace", f"{team_name}-shared-infra",
-                "get", "buckets", f"{team_name}-s3-rw1",
-                "-o", "jsonpath={.status.endpoint}"
+                "get", "buckets", f"{team_name}-s3-{bucket_name}",
+                "-o", "jsonpath={.status.fullyQualifiedName}"
             ]
-            buckets_config = {}
-            logging.debug(' '.join(endpoint_cmd))
-            buckets_config['endpoint'] = subprocess.check_output(
-                endpoint_cmd, text=True).strip()
+            logging.debug(' '.join(fqn_cmd))
+            bucket_fqn = subprocess.check_output(
+                fqn_cmd, text=True).strip()
+            buckets_config[bucket_name] = bucket_fqn
+        logging.debug(f"Team {team_name} buckets: {buckets_config}")
 
-            for bucket_name in ["ro1", "rw1", "tools"]: 
-                fqn_cmd = [
-                    "kubectl", f"--kubeconfig={config['ZONE_KUBECONFIG']}",
-                    "--namespace", f"{team_name}-shared-infra",
-                    "get", "buckets", f"{team_name}-s3-{bucket_name}",
-                    "-o", "jsonpath={.status.fullyQualifiedName}"
-                ]
-                logging.debug(' '.join(fqn_cmd))
-                bucket_fqn = subprocess.check_output(
-                    fqn_cmd, text=True).strip()
-                buckets_config[bucket_name] = bucket_fqn
-            logging.debug(f"Buckets config: {buckets_config}")
+        for user in team_users:
+            email = list(user.keys())[0]
+            project_name = email.lower().split('@')[0]
+            secret_yaml_path = team_dir / f"{project_name}-secret.yaml"
 
             subject_key = 'object\\.gdc\\.goog/subject'
             annotations_filter = (
-                f"?(@.metadata.annotations['{subject_key}']=='{user}')"
+                f"?(@.metadata.annotations['{subject_key}']=='{config['AIS_PREFIX']}{email}')"
             )
             jsonpath_cmd = (
                 f"jsonpath={{.items[{annotations_filter}].metadata.name}}"
@@ -121,7 +138,7 @@ def main():
             logging.debug(' '.join(secret_name_cmd))
             secret_names = subprocess.check_output(
                 secret_name_cmd, text=True).strip()
-            logging.debug(f"Secret names: {secret_names}")
+            logging.debug(f"User {user} secret names: {secret_names}")
             if secret_names:
                 secret_name = secret_names.split()[1]
                 access_key_cmd = [
@@ -148,18 +165,16 @@ def main():
                 aws_secret_access_key = base64.b64decode(
                     aws_secret_access_key_b64).decode('utf-8')
 
-                secret_template_path = project_dir_path / 'secret.yaml.j2'
+                secret_template_path = script_dir.parent / 'secret.yaml.j2'
                 with open(secret_template_path, 'r') as tf:
                     s_template = jinja2.Template(tf.read())
-                with open(secret_yaml_path, 'w') as of:
-                    of.write(s_template.render(
-                        buckets_config=buckets_config,
-                        aws_access_key_id=aws_access_key_id,
-                        aws_secret_access_key=aws_secret_access_key,
-                        config=config,
-                    ))
-                logging.info(
-                    f"Rendered {secret_template_path} to {secret_yaml_path}")
+                rendered_template = s_template.render(
+                    buckets_config=buckets_config,
+                    aws_access_key_id=aws_access_key_id,    
+                    aws_secret_access_key=aws_secret_access_key,
+                    config=config,
+                )
+                write_if_changed(secret_yaml_path, rendered_template)
             else:
                 logging.warning(
                     f"No secret found for user {user} in team {team_name}")

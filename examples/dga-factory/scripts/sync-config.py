@@ -4,6 +4,7 @@ import subprocess
 import pathlib
 import logging
 import argparse
+import time
 
 CONFIG_VARS = [
     'SCRIPTS_DIR', 'OUTPUT_DIR', 'USERS_YAML', 'GDCH_CHARTS_DIR',
@@ -39,6 +40,14 @@ def parse_args():
 
 
 def run_helm(file_path, config, verbose):
+    last_sync = 0
+    if os.path.exists(f"{file_path}.last-sync"):
+        with open(f"{file_path}.last-sync", 'r') as f:
+            last_sync = os.path.getmtime(f"{file_path}.last-sync")
+    if os.path.getmtime(file_path) < last_sync:
+        logging.info(f"Skipping {file_path} as it has not been modified since last sync")
+        return
+
     cmd = [
         config['HELM_CLI'],
         "upgrade",
@@ -55,6 +64,8 @@ def run_helm(file_path, config, verbose):
     logging.info(f"Running: {' '.join(cmd)}")
     try:
         output = subprocess.check_output(cmd, text=True)
+        with open(f"{file_path}.last-sync", 'w') as f:
+            f.write(str(time.time()))
         if output and verbose:
             logging.debug(output)
     except subprocess.CalledProcessError as e:
