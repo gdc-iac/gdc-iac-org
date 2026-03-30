@@ -105,7 +105,7 @@ def main():
         rendered_template = template.render(
             team_name=team_name,
             team_projects=[ list(user.keys())[0].lower().split('@')[0] for user in team_users],
-            user_fqns=[f"{config['AIS_PREFIX']}{list(user.keys())[0]}" for user in team_users if user[list(user.keys())[0]].casefold()=='ready'.casefold()],
+            user_fqns=[f"{config['AIS_PREFIX']}{list(user.keys())[0]}" for user in team_users],
             team_admin_fqn=team_admin_fqn,
             config=config
         )
