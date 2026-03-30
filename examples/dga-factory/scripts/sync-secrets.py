@@ -10,7 +10,8 @@ CONFIG_VARS = [
     'HELM_CLI', 'ORG_NAME', 'IAC_PROJECT', 'IAC_SA', 'IAC_SA_FQN',
     'GDCH_ZONE', 'GDCH_DOMAIN', 'GDCH_CONSOLE', 'CLUSTER_NAME',
     'KUBECONFIG_PATH', 'GLOBAL_API_KUBECONFIG', 'ZONE_KUBECONFIG',
-    'USER_CLUSTER_KUBECONFIG', 'SECRETS_DIR', 'CHARTS_DIR', 'S3_PROXY_ENABLED'
+    'USER_CLUSTER_KUBECONFIG', 'SECRETS_DIR', 'CHARTS_DIR', 'S3_PROXY_ENABLED',
+    'COPY_JOB_IMAGE'
 ]
 
 def setup_logging(verbose: bool = False) -> None:
@@ -114,6 +115,7 @@ def main():
                     f"--set", f"namespace={namespace}",
                     f"--set", f"notebook_name=nb",
                     f"--set", f"s3_proxy_config_pvc=s3-proxy-config",
+                    f"--set", f"copy_job_image={config['COPY_JOB_IMAGE']}",
                     f"--set", f"secret_name={secret_name}",
                     "--debug"
                 ]

@@ -15,7 +15,7 @@ spec:
             secretName: {{ .Values.secret_name }}
       containers:
         - name: alpine
-          image: {{ .Values.nb_conf_image | default "alpine:latest" }}
+          image: {{ .Values.copy_job_image | default "alpine:latest" }}
           command:
             - find 
             - /src 

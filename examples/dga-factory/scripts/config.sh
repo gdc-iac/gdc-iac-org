@@ -30,4 +30,5 @@ export CLUSTER_MACHINE_TYPE="n3-standard-16-gdc"
 export CLUSTER_NODE_COUNT=5
 export CLUSTER_NODE_POOL_NAME="pool-20260224"
 export HARBOR_ADMIN_EMAIL="sdobrica-sa@opscenter.local"
+export COPY_JOB_IMAGE="alpine:latest"
 
