@@ -46,6 +46,7 @@ def run_helm(file_path, config, verbose):
         str(file_path),
         f"--namespace={config['IAC_PROJECT']}",
         f"--charts-dir={config['GDCH_CHARTS_DIR']}",
+        f"--sync-wait=0",
         f"--api=global,{config['GDCH_ZONE']},user:{config['CLUSTER_NAME']}",
         f"--api-kubeconfig={config['GLOBAL_API_KUBECONFIG']},"
         f"{config['ZONE_KUBECONFIG']},{config['USER_CLUSTER_KUBECONFIG']}"
