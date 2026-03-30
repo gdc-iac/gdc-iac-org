@@ -107,7 +107,7 @@ global:
         volumes:
         - name: s3-proxy-config
           persistentVolumeClaim:
-            claimName: *user_subject_name_nb
+            claimName: "s3-proxy-config"
 {% endif %}
 user:{{ config.CLUSTER_NAME }}:
   charts:
