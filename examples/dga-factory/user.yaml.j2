@@ -97,7 +97,7 @@ global:
 {% if not ready %}
       stopped: true
 {% endif %}
-{% if config.S3_PROXY_ENABLED == 1 %}
+{% if config.S3_PROXY_ENABLED == "yes" %}
       sidecars:
       - name: "s3-proxy"
         image: {{ config.S3_PROXY_IMAGE }}
