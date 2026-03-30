@@ -194,7 +194,8 @@ class TestHelmCli(unittest.TestCase):
             release_name='root-my-list-res',
             extra_args=extra_args,
             charts_dir="../../charts",
-            output_dir=None
+            output_dir=None,
+            sync_wait=10
         )
 
     @patch("helm_cli.process_type")
@@ -318,11 +319,12 @@ class TestHelmCli(unittest.TestCase):
         )
         mock_call_resource_action.assert_called_once_with(
             kubeconfig=None, action="template", dry_run=False,
-            parents=[{"name": "root"}], resource_name="root", resource_type="iac",
+            parents=[{"name": "root"}], resource_type="iac", resource_name="root", 
             resource_config={'namespace': 'root',
                              'iamrolebindings': {'some': 'iac'}},
             release_name='root-iac', extra_args=[],
-            charts_dir="../../charts", output_dir=None
+            charts_dir="../../charts", output_dir=None,
+            sync_wait=10
         )
 
     def test_process_type_not_in_config(self):
