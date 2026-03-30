@@ -1,5 +1,10 @@
 team-15357:
   admin_user: "sdobrica-sa@opscenter.local"
   users:
-    - test-15357@opscenter.local: notready
-    - test-15358@opscenter.local: notready
+    - test-15357@opscenter.local: ready
+    - test-15358@opscenter.local: ready
+team-75351:
+  admin_user: "sdobrica-sa@opscenter.local"
+  users:
+    - test-75351@opscenter.local: ready
+    - test-75352@opscenter.local: ready
