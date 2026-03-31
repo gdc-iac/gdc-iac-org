@@ -2,9 +2,9 @@
 
 # Configure gdcloud configuration
 ## Variables for Org Admin Cluster
-export ORG=org-15357
+export ORG=org-70033
 export DOMAIN=lux.clr
-export ZONE=lux-central1-b
+export ZONE=lux-central1-a
 export CONFIG="${ORG}-${ZONE}"
 
 
@@ -22,9 +22,10 @@ export KUBECONFIG=~/${CONFIG:?}.yaml
 echo "Kubeconfig file: ${KUBECONFIG}"
 
 ### Install GDC Organization Console Certificate
-echo -n | openssl s_client -showcerts -connect ${CONSOLE_URL#https://}:443 2>/dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /usr/share/pki/ca-trust-source/anchors/${CONFIG:?}.crt
-echo "Certificate is exported to: /usr/share/pki/ca-trust-source/anchors/${CONFIG:?}.crt"
-update-ca-trust
+echo -n | openssl s_client -showcerts -connect artifact-server-gateway.${ORG}.${ZONE}.${DOMAIN}:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee /usr/local/share/ca-certificates/${ORG}-web-tls-artifact.crt > /dev/null
+
+#  Update the trust store
+sudo update-ca-certificates
 
 ### Install gdcloud components
 gdcloud components install gdcloud-k8s-auth-plugin
