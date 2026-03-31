@@ -1,17 +1,17 @@
-team-15357:
-  admin_user: "HGY395"
+team-1:
+  admin_user: "dgadmin@example.com"
   users:
-    - LEC623: notready
-    # - LGW322: notready
-    # - TGS351: notready
-    # - UPF458: notready
-    # - PRL249: notready
+    - dguser11@example.com: notready
+    - dguser12@example.com: notready
+    - dguser13@example.com: notready
+    - dguser14@example.com: notready
+    - dguser15@example.com: notready
 
-team-587489:
-  admin_user: "HGY395"
+team-2:
+  admin_user: "dgadmin@example.com"
   users:
-    # - LEC623: notready
-    - LGW322: notready
-    - TGS351: notready
-    # - UPF458: notready
-    # - PRL249: notready
+    - dguser21@example.com: notready
+    - dguser22@example.com: notready
+    - dguser23@example.com: notready
+    - dguser24@example.com: notready
+    - dguser25@example.com: notready
