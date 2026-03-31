@@ -37,12 +37,14 @@ python3 tools/helm_cli/helm_cli.py upgrade \
 """
 
 import argparse
+import hashlib
 import logging
 import subprocess
 import sys
 import tempfile
 import os
 from typing import List, Tuple, Union
+import time
 
 import yaml
 
@@ -111,6 +113,8 @@ def action_cmd(
         kubeconfig: The path to the kubeconfig file (optional).
         release_name: The name of the helm release (optional).
         chart: The path to the local helm chart (optional).
+        chart_dir: The directory containing the local helm charts (optional).
+        output_dir: The directory where hydrated charts are saved (optional).
         values_file: The path to the values YAML file (optional).
         extra_args: Any extra arguments to append to the command (optional).
 
@@ -157,7 +161,24 @@ def action_cmd(
 
 
 def normalize_name(name: str) -> str:
-    return name.replace("_", "-").lower()
+    """
+    Normalizes a resource name to be DNS-compliant and within Kubernetes limits.
+
+    It replaces underscores with hyphens and converts to lowercase. If the
+    resulting length exceeds 53 characters, truncates the name and appends a
+    sha256 hash suffix to ensure uniqueness and compliance with length limits.
+
+    Args:
+        name: The original resource string name.
+
+    Returns:
+        A normalized and potentially truncated safe string identifier.
+    """
+    normalized_name = name.replace("_", "-").lower()
+    if len(normalized_name) > 53:
+        suffix = hashlib.sha256(name.encode()).hexdigest()[:8]
+        normalized_name = normalized_name[:45] + "-" + suffix
+    return normalized_name
 
 
 def call_global_action(
@@ -200,7 +221,8 @@ def call_resource_action(
     release_name: str,
     extra_args: List[str],
     charts_dir: str,
-    output_dir: str
+    output_dir: str,
+    sync_wait: int = 10,
 ) -> None:
     """
     Executes a helm action for a specific resource.
@@ -211,10 +233,16 @@ def call_resource_action(
     Args:
         kubeconfig: The path to the kubeconfig file.
         action: The helm action to perform.
-        resource_type: The type of the resource.
-        obj: The resource object or list.
-        parents: The parent context.
+        dry_run: If True, prints actions without executing them.
+        parents: The parent context logic elements accumulation.
+        resource_name: The logical identifier of the resource.
+        resource_type: The type of the resource being processed.
+        resource_config: The payload defining configuring fields.
+        release_name: The corresponding helm target release identifier.
         extra_args: Extra arguments for the helm command.
+        charts_dir: Directory housing base template configuration charts.
+        output_dir: Path layout for outputting hydrated resource renders.
+        sync_wait: Pre-configured sleep amount waiting for GDCH IAM propagation.
     """
     if action == "hydrate":
         if output_dir is None:
@@ -245,11 +273,16 @@ def call_resource_action(
                 logging.info(f"Helm {action} {release_name} finished")
                 if output:
                     logging.info(output)
+                if resource_type in ['projects', 'iam-roles', 'iam-role-bindings']:
+                    logging.info(f"Waiting seconds for {resource_type} to propagate")
+                    time.sleep(sync_wait)
         except subprocess.CalledProcessError as e:
             logging.error(f"Helm failed with return code {e.returncode}")
             logging.error(f"Error output (if captured): {e.output}")
+            raise e
         except FileNotFoundError as e:
             logging.error(f"Error: Helm not found or could not be executed. {e}")
+            raise e
 
 
 def process_type(
@@ -264,7 +297,8 @@ def process_type(
     parents: List[dict],
     extra_args: List[str],
     charts_dir: str,
-    output_dir: str
+    output_dir: str,
+    sync_wait: int = 10,
 ) -> None:
     """
     Recursively processes a node in the resource tree configuration.
@@ -280,6 +314,9 @@ def process_type(
         dry_run: If True, prints actions without executing them.
         parents: A list of parent nodes accumulating context.
         extra_args: Extra arguments to pass down to helm executions.
+        charts_dir: Directory pointing to the helm templates.
+        output_dir: Target output location for 'hydrate' renders.
+        sync_wait: Number of seconds to suspend execution post role binding.
     """
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
@@ -305,7 +342,8 @@ def process_type(
                 release_name=release_name,
                 extra_args=extra_args,
                 charts_dir=charts_dir,
-                output_dir=output_dir
+                output_dir=output_dir,
+                sync_wait=sync_wait
             )
         return
     if resource_type not in config:
@@ -330,7 +368,8 @@ def process_type(
                 release_name=release_name,
                 extra_args=extra_args,
                 charts_dir=charts_dir,
-                output_dir=output_dir
+                output_dir=output_dir,
+                sync_wait=sync_wait
             )
         return
     if type_tree is str:  # generate one release per object
@@ -357,7 +396,8 @@ def process_type(
                     release_name=release_name,
                     extra_args=extra_args,
                     charts_dir=charts_dir,
-                    output_dir=output_dir
+                    output_dir=output_dir,
+                    sync_wait=sync_wait
                 )
             return
 
@@ -383,7 +423,8 @@ def process_type(
                     release_name=release_name,
                     extra_args=extra_args,
                     charts_dir=charts_dir,
-                    output_dir=output_dir
+                    output_dir=output_dir,
+                    sync_wait=sync_wait
                 )
         return
     # type_tree is a dict. Generate one release per object if TYPE_SCOPE
@@ -415,7 +456,8 @@ def process_type(
                 release_name=release_name,
                 extra_args=extra_args,
                 charts_dir=charts_dir,
-                output_dir=output_dir
+                output_dir=output_dir,
+                sync_wait=sync_wait
             )
         for t, v in type_tree.items():
             parents.append(obj)
@@ -426,15 +468,85 @@ def process_type(
                 iac_config=iac_config, kubeconfig=kubeconfig,
                 dry_run=dry_run, parents=parents, extra_args=extra_args,
                 charts_dir=charts_dir,
-                output_dir=output_dir
+                output_dir=output_dir,
+                sync_wait=sync_wait
             )
 
+
+def process_user_workload(
+    action: str, cluster_name: str, config: dict, iac_config: dict,
+    kubeconfig: str, dry_run: bool, extra_args: List[str],
+    output_dir: str
+) -> bool:
+    """
+    Process user workload configuration and iterate over nested custom charts.
+
+    Allows execution of arbitrary helm charts within a specific user cluster
+    namespace without coupling them strictly to standard factory-provided charts.
+
+    Args:
+        action: The action to perform on each user workload chart.
+        cluster_name: The target physical user cluster identifier.
+        config: Specific workload configuration slice.
+        iac_config: IaC specific binding configurations.
+        kubeconfig: Path to the correct user cluster kubeconfig.
+        dry_run: If True, log intended actions without executing side-effects.
+        extra_args: Additional arbitrary arguments for commands.
+        output_dir: Target output location for 'hydrate' render generation.
+    """
+    logging.debug(f"process_user_workload action: {action}, "
+    f"cluster_name: {cluster_name}, config: {config}, "
+    f"iac_config: {iac_config}, kubeconfig: {kubeconfig}, "
+    f"dry_run: {dry_run}, extra_args: {extra_args}, "
+    f"output_dir: {output_dir}")
+    for chart in config.get("charts", []):
+        logging.info(f"Processing chart: {chart}")
+        if action == "hydrate":
+            current_output_dir = output_dir if output_dir else "./hydrated"
+            current_output_dir = current_output_dir.rstrip('/')
+            # chart name can be path
+            chart_name = chart['name'].split('/')[-1]
+            chart_output_dir = os.path.join(current_output_dir, cluster_name, chart_name)
+            os.makedirs(chart_output_dir, exist_ok=True)
+            with open(os.path.join(chart_output_dir, f"{chart['release_name']}.yaml"), "w") as f:
+                logging.info(f"Hydrating {cluster_name}/{chart_name}/{chart['release_name']}.yaml")
+                yaml.dump(chart['values'], f)
+        else:
+            try:
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
+                    values_yaml = yaml.safe_dump(chart['values'])
+                    logging.debug(values_yaml)
+                    tmp.write(values_yaml)
+                    tmp.flush()
+                    cmd = action_cmd(
+                        kubeconfig=kubeconfig, action=action,
+                        release_name=chart['release_name'],
+                        chart=chart['name'],
+                        output_dir=output_dir,
+                        values_file=tmp.name, extra_args=extra_args
+                    )
+                    logging.info(f"{' '.join(cmd)}")
+                    output = subprocess.check_output(cmd, text=True)
+                    logging.info(f"Helm {action} {chart['release_name']} finished")
+                    if output:
+                        logging.info(output)
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Helm failed with return code {e.returncode}")
+                logging.error(f"Error output (if captured): {e.output}")
+                raise e
+            except FileNotFoundError as e:
+                logging.error(f"Error: Helm not found or could not be executed. {e}")
+                raise e
+            
+            
+    
 
 def process(
     config: dict, action: str, dry_run: bool, api: str,
     charts_dir: str,
     output_dir: str,
-    api_kubeconfig: str, extra_args: List[str]
+    api_kubeconfig: str, extra_args: List[str],
+    sync_wait: int = 10,
 ) -> bool:
     """
     Entry point for traversing the extracted Python dictionary generated by
@@ -449,6 +561,9 @@ def process(
             generated strings.
         api: A comma-separated string of APIs to process,
              or None for all.
+        charts_dir: Directory containing generic helm charts.
+        output_dir: Directory for generated template outputs if 'hydrate' is passed.
+        sync_wait: Pre-configured integer for waiting between cluster propagations.
         api_kubeconfig: A comma-separated string of kubeconfig files
                         corresponding to the APIs.
         extra_args: Extra arguments appending to the helm commands.
@@ -456,17 +571,17 @@ def process(
     Returns:
         True if validation succeeds, False otherwise.
     """
-    selected_apis = [api for api in config.keys() if api not in ["iac"]]
     api_kubeconfigs = []
     iac_config = config["iac"]
     if api:
-        apis = api.split(",")
-        selected_apis = [api for api in selected_apis if api in apis]
+        selected_apis = api.split(",")
     if api_kubeconfig:
         api_kubeconfigs = api_kubeconfig.split(",")
         if len(api_kubeconfigs) != len(selected_apis):
             raise ValueError(
-                "Number of api_kubeconfigs must match number of apis"
+                f"Number of api_kubeconfigs must match number of apis:\n"
+                f"apis={selected_apis}\n"
+                f"api_kubeconfigs={api_kubeconfigs}"
             )
     for i, selected_api in enumerate(selected_apis):
         kubeconfig = api_kubeconfigs[i] if api_kubeconfig else None
@@ -484,15 +599,29 @@ def process(
             namespace = actual_name
         api_schema = RESOURCE_SCHEMA.get(api_type, RESOURCE_SCHEMA["zone"])
 
-        for t, v in api_schema.items():
-            process_type(
-                action=action, type_path=selected_api, resource_type=t,
-                type_tree=v, config=config[selected_api],
-                iac_config=iac_config, kubeconfig=kubeconfig,
+        if selected_api not in config:
+            logging.debug(f"API {selected_api} not found in config")
+            continue
+        if api_type in ["global", "zone"]:
+            for t, v in api_schema.items():
+                process_type(
+                    action=action, type_path=selected_api, resource_type=t,
+                    type_tree=v, config=config[selected_api],
+                    iac_config=iac_config, kubeconfig=kubeconfig,
                 dry_run=dry_run, parents=[
                     {'name': actual_name, 'namespace': namespace}],
                 extra_args=extra_args,
                 charts_dir=charts_dir,
+                output_dir=output_dir,
+                sync_wait=sync_wait
+            ) 
+        else:
+            process_user_workload(
+                action=action, cluster_name=actual_name,
+                config=config[selected_api],
+                iac_config=iac_config, kubeconfig=kubeconfig,
+                dry_run=dry_run, 
+                extra_args=extra_args,
                 output_dir=output_dir
             )
     return True
@@ -544,6 +673,13 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
     )
 
     parser.add_argument(
+        "--sync-wait",
+        help="Wait for resources to be ready after sync (in seconds)",
+        type=int,
+        default=15
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Dry run mode"
@@ -575,7 +711,8 @@ def main() -> int:
                 dry_run=args.dry_run, api=args.api,
                 charts_dir=args.charts_dir,
                 output_dir=args.output_dir,
-                api_kubeconfig=args.api_kubeconfig, extra_args=extra_args
+                api_kubeconfig=args.api_kubeconfig, extra_args=extra_args,
+                sync_wait=args.sync_wait
             )
     else:
         call_global_action(

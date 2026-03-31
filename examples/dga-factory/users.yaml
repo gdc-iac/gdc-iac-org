@@ -1,0 +1,17 @@
+team-15357:
+  admin_user: "HGY395"
+  users:
+    - LEC623: notready
+    # - LGW322: notready
+    # - TGS351: notready
+    # - UPF458: notready
+    # - PRL249: notready
+
+team-587489:
+  admin_user: "HGY395"
+  users:
+    # - LEC623: notready
+    - LGW322: notready
+    - TGS351: notready
+    # - UPF458: notready
+    # - PRL249: notready

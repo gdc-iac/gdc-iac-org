@@ -1,0 +1,120 @@
+iac:
+  # this service account is used by the iac pipeline to create and manage resources in the user project
+  # it can be impersonated to run helm commands to manage the lifecycle of the user notebook and its dependencies
+- role: "project-iam-admin"
+  subject_kind: "User"
+  subject_name: &iac_subject_name "{{ config.IAC_SA_FQN }}"
+- role: "project-bucket-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "project-networkpolicy-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "workbench-notebooks-admin"
+  subject_kind: "User"
+  subject_name:  *iac_subject_name
+- role: "workbench-notebooks-viewer"
+  subject_kind: "User"
+  subject_name:  *iac_subject_name
+- role: "secret-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name
+- role: "namespace-admin"
+  subject_kind: "User"
+  subject_name: *iac_subject_name  
+global:
+  # end user aka data scientist
+  user_subject_name: &user_subject_name "{{ user_fqn }}"
+  # data privacy engineer with write permissions to the read only bucket 
+  # and admin permissions to the user project to manage the lifecycle 
+  # of the user notebook and its dependencies
+  # admin user permissions for the buckets are defined in the shared infra project
+  admin_subject_name: &admin_subject_name "{{ team_admin_fqn }}"
+  # project and bucket names
+  tools_bucket_name: &tools_bucket_name "{{ team_name }}-s3-tools"
+  tools_bucket_role: &tools_bucket_role "{{ team_name }}-s3-tools"
+  ro_bucket_name: &ro_bucket_name "{{ team_name }}-s3-ro1"
+  ro_bucket_role: &ro_bucket_role "{{ team_name }}-s3-ro1"
+  rw_bucket_name: &rw_bucket_name "{{ team_name }}-s3-rw1"
+  rw_bucket_name: &rw_bucket_role "{{ team_name }}-s3-rw1"
+  shared_infra_project_name: &shared_infra_project_name "{{ team_name }}-shared-infra"
+  user_project_name: &user_project_name "{{ project }}"
+  projects:  
+    - name: *user_project_name
+      iam-role-bindings: 
+        # Admin user has admin permissions to manage the lifecycle of the user notebook and its dependencies 
+        # This is optional and can be removed if you want to manage the user notebook lifecycle using the iac service account only
+      - role: "project-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-grafana-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-iam-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workload-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "workbench-notebooks-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "backup-creator"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "secret-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "namespace-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+        # Data scientist has view permissions to the user project - this is only needed
+        # if this user is using the GDC console to access the notebooks
+      - role: "project-viewer"
+        subject_kind: "User"
+        subject_name: *user_subject_name
+        # Data scientist has admin permissions to manage the lifecycle of the user notebook using 
+        # the notebooks.<zone> URL.
+        # this is not needed if you are not allowing the console access
+      - role: "workbench-notebooks-viewer"
+        subject_kind: "User"
+        subject_name:  *user_subject_name
+      # Data scientist has view permissions to the user project buckets.
+      # This role is needed even if the user is not yet ready, to allow 
+      # provisioning of the user s3 secret
+      - role: "project-bucket-object-viewer"
+        subject_kind: "User"
+        subject_name:  *user_subject_name
+{{ config.GDCH_ZONE }}:
+  projects:
+  - name: *user_project_name
+    notebooks:
+    - name: &notebook_name "nb"
+      nb_jupyter_image: "{{ config.NB_JUPYTER_IMAGE }}"
+      user_cluster_name: "{{ config.CLUSTER_NAME }}"
+{% if not ready %}
+      stopped: true
+{% endif %}
+{% if config.S3_PROXY_ENABLED == "yes" %}
+      sidecars:
+      - name: "s3-proxy"
+        image: {{ config.S3_PROXY_IMAGE }}
+        volumeMounts:
+        - mountPath: /proxy/conf
+          name: s3-proxy-config
+        volumes:
+        - name: s3-proxy-config
+          persistentVolumeClaim:
+            claimName: "s3-proxy-config"
+{% endif %}
+user:{{ config.CLUSTER_NAME }}:
+  charts:
+  - name: "{{ config.CHARTS_DIR }}/dga-user-config"
+    release_name: "{{ project }}-config"
+    values:
+      namespace: *user_project_name
+      notebook_name: *notebook_name
+      notebook_pvc_size: "5Gi"
+{% if config.S3_PROXY_ENABLED == 1 %}
+      s3_proxy_config_pvc: "s3-proxy-config"
+{% endif %}

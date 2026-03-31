@@ -26,25 +26,25 @@ iac:
   # IaC can be invoked by user or service account
   # If invoked by service account, subject_kind is ServiceAccount
 - role: "project-iam-admin"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: &iac_sa "system:serviceaccount:iac-root:iac001-sa"
 - role: "project-bucket-admin"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: *iac_sa
 - role: "project-networkpolicy-admin"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: *iac_sa
 - role: "harbor-instance-admin"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: *iac_sa
 - role: "harbor-project-creator"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: *iac_sa
 - role: "standard-cluster-admin"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: *iac_sa
 - role: "workbench-notebooks-admin"
-  subject_kind: "ServiceAccount"
+  subject_kind: "User"
   subject_name: *iac_sa
 global:
   admin_subject_name: &admin_subject_name "fop-etsadmin@example.com"

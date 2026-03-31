@@ -4,6 +4,10 @@
 apiVersion: aiplatform.gdc.goog/v1
 kind: Notebook
 metadata:
+  annotations:
+  {{- if $notebook.stopped }}
+    kubeflow-resource-stopped: "1970-01-01T00:00:00Z"
+  {{- end }}
   finalizers:
   - notebooks.aiplatform.gdc.goog/notebook-controller-finalizer
   labels:
@@ -17,7 +21,7 @@ spec:
       - args:
         - jupyter labextension disable beatrix_jupyterlab dataproc_jupyter_plugin;
           jupyter lab --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
-          --NotebookApp.ip='0.0.0.0' --NotebookApp.base_url='\$(NB_PREFIX)'
+          --NotebookApp.ip='0.0.0.0' --NotebookApp.base_url='$(NB_PREFIX)'
         command:
         - bash
         - -c
