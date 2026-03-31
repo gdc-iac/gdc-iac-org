@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: config-copy-{{ .Values.notebook_name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  template:
+    spec:
+      volumes:
+        - name: tgt
+          persistentVolumeClaim:
+            claimName: {{ .Values.s3_proxy_config_pvc }}
+        - name: src
+          secret:
+            secretName: {{ .Values.secret_name }}
+      containers:
+        - name: alpine
+          image: {{ .Values.copy_job_image | default "alpine:latest" }}
+          command:
+            - find 
+            - /src 
+            - -type 
+            - f 
+            - -exec 
+            - cp 
+            - -v
+            - "{}" 
+            - /tgt 
+            - ";"
+          volumeMounts:
+            - name: tgt
+              mountPath: /tgt
+            - name: src
+              mountPath: /src
+      restartPolicy: Never

@@ -1,10 +1,17 @@
 team-15357:
-  admin_user: "sdobrica-sa@opscenter.local"
+  admin_user: "HGY395"
   users:
-    - test-15357@opscenter.local: ready
-    - test-15358@opscenter.local: ready
-team-75351:
-  admin_user: "sdobrica-sa@opscenter.local"
+    - LEC623: notready
+    # - LGW322: notready
+    # - TGS351: notready
+    # - UPF458: notready
+    # - PRL249: notready
+
+team-587489:
+  admin_user: "HGY395"
   users:
-    - test-75351@opscenter.local: ready
-    - test-75352@opscenter.local: ready
+    # - LEC623: notready
+    - LGW322: notready
+    - TGS351: notready
+    # - UPF458: notready
+    # - PRL249: notready
