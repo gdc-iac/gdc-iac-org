@@ -210,6 +210,14 @@ def call_global_action(
                 f"Error: Helm not found or could not be executed. {e}")
 
 
+def resource_action_exception_retriable(e):
+    if "forbidden" in e.output:
+        return True
+    if "getting history for release" in e.output:
+        return True
+    return False
+    
+
 def call_resource_action(
     kubeconfig: str,
     action: str,
@@ -222,7 +230,8 @@ def call_resource_action(
     extra_args: List[str],
     charts_dir: str,
     output_dir: str,
-    sync_wait: int = 10,
+    sync_wait: int,
+    max_retries: int
 ) -> None:
     """
     Executes a helm action for a specific resource.
@@ -243,6 +252,7 @@ def call_resource_action(
         charts_dir: Directory housing base template configuration charts.
         output_dir: Path layout for outputting hydrated resource renders.
         sync_wait: Pre-configured sleep amount waiting for GDCH IAM propagation.
+        max_retries: Maximum number of retries for failed executions.
     """
     if action == "hydrate":
         if output_dir is None:
@@ -254,13 +264,12 @@ def call_resource_action(
             logging.info(f"Hydrating {resource_type}/{resource_name}.yaml")
             yaml.dump(resource_config, f)
     else:
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-                values_yaml = yaml.safe_dump(resource_config)
-                logging.debug(values_yaml)
-                tmp.write(values_yaml)
-                tmp.flush()
-                cmd = action_cmd(
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
+            values_yaml = yaml.safe_dump(resource_config)
+            logging.debug(values_yaml)
+            tmp.write(values_yaml)
+            tmp.flush()
+            cmd = action_cmd(
                     kubeconfig=kubeconfig, action=action,
                     release_name=normalize_name(release_name),
                     chart=f"gdc-{resource_type}",
@@ -268,21 +277,31 @@ def call_resource_action(
                     output_dir=output_dir,
                     values_file=tmp.name, extra_args=extra_args
                 )
-                logging.info(f"{' '.join(cmd)}")
-                output = subprocess.check_output(cmd, text=True)
-                logging.info(f"Helm {action} {release_name} finished")
-                if output:
-                    logging.info(output)
-                if resource_type in ['projects', 'iam-roles', 'iam-role-bindings']:
-                    logging.info(f"Waiting seconds for {resource_type} to propagate")
-                    time.sleep(sync_wait)
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Helm failed with return code {e.returncode}")
-            logging.error(f"Error output (if captured): {e.output}")
-            raise e
-        except FileNotFoundError as e:
-            logging.error(f"Error: Helm not found or could not be executed. {e}")
-            raise e
+            retry=0
+            while retry < max_retries:
+                try:
+                    logging.info(f"{' '.join(cmd)}")
+                    output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
+                    logging.info(f"Helm {action} {release_name} finished")
+                    if output:
+                        logging.info(output)
+                    break
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"Helm failed with return code {e.returncode}")
+                    logging.error(f"Error output (if captured): {e.output}")
+                    if resource_action_exception_retriable(e):
+                        retry += 1
+                        logging.info(f"Waiting to retry {action} {release_name} ({retry}/{max_retries})")
+                        time.sleep(sync_wait)
+                        continue
+                    else:
+                        raise e
+                except FileNotFoundError as e:
+                    logging.error(f"Error: Helm not found or could not be executed. {e}")
+                    raise e
+            
+            if retry >= max_retries:
+                raise TimeoutError(f"Helm {action} {release_name} timed out after {max_retries} retries")
 
 
 def process_type(
@@ -298,7 +317,8 @@ def process_type(
     extra_args: List[str],
     charts_dir: str,
     output_dir: str,
-    sync_wait: int = 10,
+    sync_wait: int,
+    max_retries: int
 ) -> None:
     """
     Recursively processes a node in the resource tree configuration.
@@ -317,6 +337,7 @@ def process_type(
         charts_dir: Directory pointing to the helm templates.
         output_dir: Target output location for 'hydrate' renders.
         sync_wait: Number of seconds to suspend execution post role binding.
+        max_retries: Maximum number of retries for failed executions.
     """
     logging.debug(f"process_type {type_path}/{resource_type}")
     parent = parents[-1]
@@ -343,7 +364,8 @@ def process_type(
                 extra_args=extra_args,
                 charts_dir=charts_dir,
                 output_dir=output_dir,
-                sync_wait=sync_wait
+                sync_wait=sync_wait,
+                max_retries=max_retries
             )
         return
     if resource_type not in config:
@@ -369,7 +391,8 @@ def process_type(
                 extra_args=extra_args,
                 charts_dir=charts_dir,
                 output_dir=output_dir,
-                sync_wait=sync_wait
+                sync_wait=sync_wait,
+                max_retries=max_retries
             )
         return
     if type_tree is str:  # generate one release per object
@@ -397,7 +420,8 @@ def process_type(
                     extra_args=extra_args,
                     charts_dir=charts_dir,
                     output_dir=output_dir,
-                    sync_wait=sync_wait
+                    sync_wait=sync_wait,
+                    max_retries=max_retries
                 )
             return
 
@@ -424,7 +448,8 @@ def process_type(
                     extra_args=extra_args,
                     charts_dir=charts_dir,
                     output_dir=output_dir,
-                    sync_wait=sync_wait
+                    sync_wait=sync_wait,
+                    max_retries=max_retries
                 )
         return
     # type_tree is a dict. Generate one release per object if TYPE_SCOPE
@@ -457,7 +482,8 @@ def process_type(
                 extra_args=extra_args,
                 charts_dir=charts_dir,
                 output_dir=output_dir,
-                sync_wait=sync_wait
+                sync_wait=sync_wait,
+                max_retries=max_retries,
             )
         for t, v in type_tree.items():
             parents.append(obj)
@@ -469,14 +495,17 @@ def process_type(
                 dry_run=dry_run, parents=parents, extra_args=extra_args,
                 charts_dir=charts_dir,
                 output_dir=output_dir,
-                sync_wait=sync_wait
+                sync_wait=sync_wait,
+                max_retries=max_retries,
             )
 
 
 def process_user_workload(
     action: str, cluster_name: str, config: dict, iac_config: dict,
     kubeconfig: str, dry_run: bool, extra_args: List[str],
-    output_dir: str
+    output_dir: str,
+    max_retries: int,
+    sync_wait: int = 15
 ) -> bool:
     """
     Process user workload configuration and iterate over nested custom charts.
@@ -493,12 +522,15 @@ def process_user_workload(
         dry_run: If True, log intended actions without executing side-effects.
         extra_args: Additional arbitrary arguments for commands.
         output_dir: Target output location for 'hydrate' render generation.
+        max_retries: Maximum number of retries for failed executions.
     """
     logging.debug(f"process_user_workload action: {action}, "
     f"cluster_name: {cluster_name}, config: {config}, "
     f"iac_config: {iac_config}, kubeconfig: {kubeconfig}, "
     f"dry_run: {dry_run}, extra_args: {extra_args}, "
-    f"output_dir: {output_dir}")
+    f"output_dir: {output_dir}, "
+    f"max_retries: {max_retries}"
+    )
     for chart in config.get("charts", []):
         logging.info(f"Processing chart: {chart}")
         if action == "hydrate":
@@ -512,31 +544,43 @@ def process_user_workload(
                 logging.info(f"Hydrating {cluster_name}/{chart_name}/{chart['release_name']}.yaml")
                 yaml.dump(chart['values'], f)
         else:
-            try:
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
-                    values_yaml = yaml.safe_dump(chart['values'])
-                    logging.debug(values_yaml)
-                    tmp.write(values_yaml)
-                    tmp.flush()
-                    cmd = action_cmd(
-                        kubeconfig=kubeconfig, action=action,
-                        release_name=chart['release_name'],
-                        chart=chart['name'],
-                        output_dir=output_dir,
-                        values_file=tmp.name, extra_args=extra_args
-                    )
-                    logging.info(f"{' '.join(cmd)}")
-                    output = subprocess.check_output(cmd, text=True)
-                    logging.info(f"Helm {action} {chart['release_name']} finished")
-                    if output:
-                        logging.info(output)
-            except subprocess.CalledProcessError as e:
-                logging.error(f"Helm failed with return code {e.returncode}")
-                logging.error(f"Error output (if captured): {e.output}")
-                raise e
-            except FileNotFoundError as e:
-                logging.error(f"Error: Helm not found or could not be executed. {e}")
-                raise e
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as tmp:
+                values_yaml = yaml.safe_dump(chart['values'])
+                logging.debug(values_yaml)
+                tmp.write(values_yaml)
+                tmp.flush()
+                cmd = action_cmd(
+                    kubeconfig=kubeconfig, action=action,
+                    release_name=chart['release_name'],
+                    chart=chart['name'],
+                    output_dir=output_dir,
+                    values_file=tmp.name, extra_args=extra_args
+                )
+                retry=0
+                while retry < max_retries:
+                    try:
+                        logging.info(f"{' '.join(cmd)}")
+                        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
+                        logging.info(f"Helm {action} {chart['release_name']} finished")
+                        if output:
+                            logging.info(output)
+                        break
+                    except subprocess.CalledProcessError as e:
+                        logging.error(f"Helm failed with return code {e.returncode}")
+                        logging.error(f"Error output (if captured): {e.output}")
+                        if resource_action_exception_retriable(e):
+                            retry += 1
+                            logging.info(f"Waiting to retry {action} {chart['release_name']} ({retry}/{max_retries})")
+                            time.sleep(sync_wait)
+                            continue
+                        else:
+                            raise e
+                    except FileNotFoundError as e:
+                        logging.error(f"Error: Helm not found or could not be executed. {e}")
+                        raise e
+                
+                if retry >= max_retries:
+                    raise TimeoutError(f"Helm {action} {chart['release_name']} timed out after {max_retries} retries")
             
             
     
@@ -546,7 +590,8 @@ def process(
     charts_dir: str,
     output_dir: str,
     api_kubeconfig: str, extra_args: List[str],
-    sync_wait: int = 10,
+    sync_wait: int,
+    max_retries: int
 ) -> bool:
     """
     Entry point for traversing the extracted Python dictionary generated by
@@ -563,10 +608,11 @@ def process(
              or None for all.
         charts_dir: Directory containing generic helm charts.
         output_dir: Directory for generated template outputs if 'hydrate' is passed.
-        sync_wait: Pre-configured integer for waiting between cluster propagations.
         api_kubeconfig: A comma-separated string of kubeconfig files
                         corresponding to the APIs.
         extra_args: Extra arguments appending to the helm commands.
+        sync_wait: Pre-configured integer for waiting between cluster propagations.
+        max_retries: Maximum number of retries for failed executions.
 
     Returns:
         True if validation succeeds, False otherwise.
@@ -613,7 +659,8 @@ def process(
                 extra_args=extra_args,
                 charts_dir=charts_dir,
                 output_dir=output_dir,
-                sync_wait=sync_wait
+                sync_wait=sync_wait,
+                max_retries=max_retries
             ) 
         else:
             process_user_workload(
@@ -622,7 +669,9 @@ def process(
                 iac_config=iac_config, kubeconfig=kubeconfig,
                 dry_run=dry_run, 
                 extra_args=extra_args,
-                output_dir=output_dir
+                output_dir=output_dir,
+                max_retries=max_retries,
+                sync_wait=sync_wait
             )
     return True
 
@@ -680,6 +729,13 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
     )
 
     parser.add_argument(
+        "--max-retries",
+        help="Maximum number of retries for failed syncs",
+        type=int,
+        default=3
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Dry run mode"
@@ -712,7 +768,8 @@ def main() -> int:
                 charts_dir=args.charts_dir,
                 output_dir=args.output_dir,
                 api_kubeconfig=args.api_kubeconfig, extra_args=extra_args,
-                sync_wait=args.sync_wait
+                sync_wait=args.sync_wait,
+                max_retries=args.max_retries
             )
     else:
         call_global_action(

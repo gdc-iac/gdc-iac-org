@@ -84,7 +84,9 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 - `--api-kubeconfig`: (Optional) Comma-separated list of kubeconfigs to use for API processing. It must match the number of specified APIs if `--api` is used and specify kubeconfig for each API. If not specified, the script will use the default kubeconfig for each API.
 - `--charts-dir`: (Optional) Directory containing the Helm charts to be deployed. Defaults to `../../charts`.
 - `--dry-run`: If set, the script will parse the configuration and log the intended actions but will not execute the specific Helm commands that modify the state.
+- `--max-retries`: (Optional) Maximum number of retries for failed executions (particularly "forbidden" errors due to propagation delays). Defaults to 3.
 - `--output-dir`: (Optional) Directory to write the output to when using the `hydrate` or `template` actions. Defaults to `./hydrated/` for `hydrate`.
+- `--sync-wait`: (Optional) Number of seconds to wait before retrying a failed execution (particularly "forbidden" errors). Defaults to 15.
 - `-v`, `--verbose`: Enable verbose (debug) logging output.
 
 ## Configuration
@@ -135,7 +137,7 @@ user:<cluster-name>:
 2.  **Iterates Resources**: Traverses the configuration based on the defined `RESOURCE_TYPES` hierarchy.
 3.  **Generates Values**: Constructs a values YAML file for each resource found. If the action is `hydrate`, these files are saved to the specified `--output-dir` (default `./hydrated/`) and the process stops for that resource.
 4.  **Executes Helm**: For all other actions, it constructs a temporary values file and calls the Helm CLI (e.g., `helm template ...`) targeting the corresponding chart from the directory specified by `--charts-dir` (e.g., `../../charts/gdc-<resource_type>`).
-5.  **Role Propagation Delay**: When applying IAM bindings or Project IAM resources (`projects`, `iam-roles`, `iam-role-bindings`), the tool will automatically introduce a 10 second delay after the Helm operation to allow for the roles to propagate within the GDCH API.
+5.  **Retry on Forbidden Errors**: When applying resources, if Helm fails with a "forbidden" error (often indicating that permissions are still propagating), the tool will retry the operation up to `--max-retries` times, waiting `--sync-wait` seconds between attempts.
 
 ## Running Tests
 

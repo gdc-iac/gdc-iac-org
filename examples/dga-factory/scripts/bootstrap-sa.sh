@@ -10,6 +10,10 @@ for role in \
   organization-billing-account-admin \
   organization-billing-account-user \
   organization-billing-manager \
+  organization-backup-admin \
+  organization-cluster-backup-admin \
+  system-cluster-backup-repository-admin \
+  user-cluster-backup-admin \
 ; do \
     gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
     --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
