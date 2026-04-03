@@ -6,6 +6,8 @@ kind: BillingAccount
 metadata:
   name: {{ $acc.name | required "name is required" }}
   namespace: platform
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   displayName: {{ $acc.display_name | required "display_name is required" }}
   paymentSystemConfig:
