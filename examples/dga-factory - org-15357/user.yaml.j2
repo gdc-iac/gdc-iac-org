@@ -21,7 +21,7 @@ iac:
   subject_name: *iac_subject_name
 - role: "namespace-admin"
   subject_kind: "User"
-  subject_name: *iac_subject_name  
+  subject_name: *iac_subject_name
 global:
   # end user aka data scientist
   user_subject_name: &user_subject_name "{{ user_fqn }}"
@@ -66,6 +66,9 @@ global:
         subject_kind: "User"
         subject_name: *admin_subject_name
       - role: "namespace-admin"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
+      - role: "project-networkpolicy-admin"
         subject_kind: "User"
         subject_name: *admin_subject_name
         # Data scientist has view permissions to the user project - this is only needed
