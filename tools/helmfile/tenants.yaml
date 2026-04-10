@@ -62,6 +62,7 @@ gdc_tenants:
               - name: "mellon-bucket1"
                 description: "test bucket"
                 storage_class: "Standard"
+                location: "zone1"
         
         # --- SECOND PROJECT (DBs) ---
         - name: "mellon-db-prj"
@@ -151,3 +152,4 @@ gdc_tenants:
               - name: "glee-bucket"
                 description: "test bucket"
                 storage_class: "Standard"
+                location: "zone1"
