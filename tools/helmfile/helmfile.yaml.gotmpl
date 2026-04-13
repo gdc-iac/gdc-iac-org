@@ -27,7 +27,7 @@ releases:
             {{ $tenantName }}:
               name: {{ $project.name }}
               namespace: platform
-    # --- STAGE 1.a: DEPLOY GDC PROJECT IAM ROLESBINDINGS ---
+    # --- STAGE 1a: DEPLOY GDC PROJECT IAM ROLESBINDINGS ---
     - name: {{ $project.name }}-iam-rolebindings
       chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
       kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
@@ -42,7 +42,7 @@ releases:
         - iamrolebindings: {{ $project.iamrolebindings | toJson }}
           namespace: {{ $project.name }}
 
-    # --- STAGE 1.5: DEPLOY GDC PROJECT SA ---
+    # --- STAGE 1b: DEPLOY GDC PROJECT SA ---
     - name: {{ $project.name }}-project-sa
       chart: {{ $vals.gdc_projects_sa_chart_path }}
       kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
@@ -56,7 +56,11 @@ releases:
         - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}
         - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}-iam-rolebindings
       values:
-        - projectserviceaccounts: {{ $project.serviceaccounts | toJson }}
+        - projectserviceaccounts:
+          {{- range $sa := $project.serviceaccounts }}
+            - name: {{ $sa }}
+              namespace: {{ $project.name }}
+          {{- end }}
           name: {{ $project.name }}
 
     # --- STAGE 2: VMS (LOOP 3a) ---
@@ -109,6 +113,7 @@ releases:
               namespace: {{ $project.name }}
               description: {{ $bucket.description }}
               storageClass: {{ $bucket.storage_class }}
+              location: {{ $bucket.location }}
     {{- end }}
     {{- end }}
 
