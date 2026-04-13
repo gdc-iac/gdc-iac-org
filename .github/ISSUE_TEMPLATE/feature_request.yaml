@@ -1,0 +1,47 @@
+name: Feature Request
+description: Propose a new idea or enhancement for this project.
+labels:
+  - enhancement
+body:
+  - type: textarea
+    attributes:
+      label: What problem does this feature solve?
+      description: Please describe the problem or frustration this feature request aims to address.
+      placeholder: |
+        e.g., I find it difficult to [...]
+    validations:
+      required: false
+
+  - type: dropdown
+    attributes:
+      label: Related Helm Chart(s)
+      description: Select the Helm chart(s) relevant to this feature. You can choose multiple options.
+      multiple: true
+      options:
+        - gdc-ag-iam
+        - gdc-ag-project
+        - gdc-ag-resources
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Describe your proposed solution
+      description: Clearly explain the specific functionality or change you would like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Alternatives Considered
+      description: Briefly describe any alternative solutions or features you have considered.
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Add any other relevant details, mockups, or screenshots to help explain the feature request.
+    validations:
+      required: false

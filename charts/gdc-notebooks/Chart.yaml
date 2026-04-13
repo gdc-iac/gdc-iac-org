@@ -2,5 +2,7 @@ apiVersion: v2
 name: gdc-notebooks
 description: A Helm chart for Google Distributed Cloud hosted notebook management
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.14.6"
+maintainers:
+  - name: gdc-iac

@@ -2,5 +2,7 @@ apiVersion: v2
 name: gdc-backup-repositories
 description: A Helm chart for creating ClusterBackupRepository resources in GDCH
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

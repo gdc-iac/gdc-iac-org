@@ -28,3 +28,14 @@ oracle:
   cdbName: MYORACDB
   # secretName: "" # Defaults to <clusterName>-secret
 
+# AlloyOmni settings
+alloydbomni:
+  enabled: false
+  clusterName: my-alloydbomni-cluster
+  version: "19"
+  cpu: 2
+  memory: 8Gi
+  dataDiskSize: 20Gi
+  logDiskSize: 20Gi
+  cdbName: MYORACDB
+  # secretName: "" # Defaults to <clusterName>-secret

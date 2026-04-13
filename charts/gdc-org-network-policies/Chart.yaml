@@ -2,5 +2,7 @@ apiVersion: v2
 name: gdc-org-network-policies
 description: A Helm chart for Google Distributed Cloud Organization Network Policies
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

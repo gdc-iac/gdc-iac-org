@@ -1,0 +1,66 @@
+---
+name: Bug report
+description: Create a report to help us improve
+labels:
+- bug
+body:
+- type: textarea
+  attributes:
+    label: Describe the bug
+    description: A clear and concise description of what the bug is.
+  validations:
+    required: true
+
+- type: dropdown
+  attributes:
+    label: Related helm chart
+    description: You may select more than one.
+    multiple: true
+    options:
+      - gdc-ag-iam-charts
+      - gdc-ag-projects
+      - gdc-ag-resources
+      - other
+  validations:
+    required: true
+
+- type: input
+  attributes:
+    label: Helm chart version
+    description: Version of the Helm chart this issue relates to
+    placeholder: e.g. 0.1.0
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: To Reproduce
+    description: Steps to reproduce the behavior
+    placeholder: |
+      1. Go to '...'
+      2. Click on '....'
+      3. Scroll down to '....'
+      4. See error
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: Expected behavior
+    description: A clear and concise description of what you expected to happen.
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: Screenshots
+    description: If applicable, add screenshots to help explain your problem.
+  validations:
+    required: false
+
+- type: textarea
+  attributes:
+    label: Additional context
+    description: Add any other context about the problem here.
+  validations:
+    required: false

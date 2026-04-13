@@ -2,6 +2,7 @@ apiVersion: v2
 name: gdch-dbs
 description: A Helm chart for deploying GDCH Database Services (PostgreSQL or Oracle)
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0"
-
+maintainers:
+  - name: gdc-iac
