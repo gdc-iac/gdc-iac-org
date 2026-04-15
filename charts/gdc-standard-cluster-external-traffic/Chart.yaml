@@ -2,5 +2,7 @@ apiVersion: v2
 name: gdc-standard-cluster-external-traffic
 description: A Helm chart for standard cluster external traffic network policies (LB routing, external org IPs) in Google Distributed Cloud (GDC)
 type: application
-version: 1.0.0
+version: 1.0.1
 appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

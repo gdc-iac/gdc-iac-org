@@ -1,1 +1,2 @@
-billing: {}
+billingbindings:
+  account_ref: []
