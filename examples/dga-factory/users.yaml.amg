@@ -1,0 +1,6 @@
+data-ets:
+  admin_user: "gdch-infra-operator-sdobrica-sa@opscenter.local"
+  users:
+    - gdch-infra-operator-test1@opscenter.local
+    - gdch-infra-operator-test2@opscenter.local
+

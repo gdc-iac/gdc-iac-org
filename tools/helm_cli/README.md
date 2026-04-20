@@ -84,10 +84,10 @@ python3 helm_cli.py <action> [config_file] [helm_flags]
 - `--api-kubeconfig`: (Optional) Comma-separated list of kubeconfigs to use for API processing. It must match the number of specified APIs if `--api` is used and specify kubeconfig for each API. If not specified, the script will use the default kubeconfig for each API.
 - `--charts-dir`: (Optional) Directory containing the Helm charts to be deployed. Defaults to `../../charts`.
 - `--dry-run`: If set, the script will parse the configuration and log the intended actions but will not execute the specific Helm commands that modify the state.
-- `--max-retries`: (Optional) Maximum number of retries for failed executions (particularly "forbidden" errors due to propagation delays). Defaults to 3.
 - `--output-dir`: (Optional) Directory to write the output to when using the `hydrate` or `template` actions. Defaults to `./hydrated/` for `hydrate`.
-- `--sync-wait`: (Optional) Number of seconds to wait before retrying a failed execution (particularly "forbidden" errors). Defaults to 15.
-- `-v`, `--verbose`: Enable verbose (debug) logging output.
+- `-v`, `--verbose`: Enable verbose (debug) logging output. Default log level is INFO.
+- `--logfile`: (Optional) Path to log file for all output. If specified, console output is suppressed.
+- `--errorlogfile`: (Optional) Path to log file for error output only (log level ERROR and above). These settings are independent.
 
 ## Configuration
 
@@ -137,7 +137,40 @@ user:<cluster-name>:
 2.  **Iterates Resources**: Traverses the configuration based on the defined `RESOURCE_TYPES` hierarchy.
 3.  **Generates Values**: Constructs a values YAML file for each resource found. If the action is `hydrate`, these files are saved to the specified `--output-dir` (default `./hydrated/`) and the process stops for that resource.
 4.  **Executes Helm**: For all other actions, it constructs a temporary values file and calls the Helm CLI (e.g., `helm template ...`) targeting the corresponding chart from the directory specified by `--charts-dir` (e.g., `../../charts/gdc-<resource_type>`).
-5.  **Retry on Forbidden Errors**: When applying resources, if Helm fails with a "forbidden" error (often indicating that permissions are still propagating), the tool will retry the operation up to `--max-retries` times, waiting `--sync-wait` seconds between attempts.
+5.  **Role Propagation Delay**: When applying IAM bindings or Project IAM resources (`projects`, `iam-roles`, `iam-role-bindings`), the tool will automatically introduce a 10 second delay after the Helm operation to allow for the roles to propagate within the GDCH API.
+6.  **Resource Tree Visualization**: At the end of execution, the tool generates a visual tree representation of the processed resources, showing the hierarchy and relationships (including nested identifiers like names, roles, account references, and subject names).
+7.  **Error Reporting in Tree**: If a resource fails during processing, it is added to the tree with `(error)` marked in brackets.
+
+## Resource Tree Visualization
+
+The tool generates a tree representation of the processed resources at the end of the execution. This tree shows:
+- The hierarchy of resources (Global vs Zonal vs User Cluster).
+- Specific identifiers like resource names, roles, and account references.
+- User names for role bindings.
+- Failed resources marked with `(error)`.
+
+Example output:
+```
+Resource Tree:
+├── global
+│   ├── iam-roles
+│   │   ├── d4-ets-s3-tools
+│   │   ├── d4-ets-s3-ro1
+│   │   └── d4-ets-s3-rw1
+│   ├── billing
+│   │   └── accounts
+│   │       └── data-ets-shared-infra
+│   └── projects
+│       └── data-ets-shared-infra
+│           ├── IAC
+│           ├── iam-role-bindings
+│           │   ├── project-grafana-viewer
+│           │   │   └── gdch-infra-operator-fop-etsadmin@opscenter.local
+│           │   └── ...
+│           ├── project-network-policies
+│           └── billing
+│               └── data-ets-shared-infra
+```
 
 ## Running Tests
 

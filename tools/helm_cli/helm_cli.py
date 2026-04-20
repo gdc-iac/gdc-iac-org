@@ -48,6 +48,59 @@ import time
 
 import yaml
 
+RESOURCE_TREE = {}
+
+
+def add_to_tree(path, obj=None):
+    """Adds a path to the global RESOURCE_TREE and optionally parses an object to add children.
+
+    Args:
+        path: A list of strings representing the path to the node in the tree.
+        obj: Optional object (list or dict) to inspect and add identified children nodes (like names, roles, account references, or subject names).
+    """
+    current = RESOURCE_TREE
+    for node in path:
+        if node not in current:
+            current[node] = {}
+        current = current[node]
+        
+    if obj is not None:
+        if isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, dict):
+                    item_name = item.get('name') or item.get('role')
+                    if item_name:
+                        if item_name not in current:
+                            current[item_name] = {}
+                        subj_name = item.get('subject_name')
+                        if subj_name:
+                            current[item_name][subj_name] = {}
+        elif isinstance(obj, dict):
+            if 'account_ref' in obj:
+                acc_ref = obj['account_ref']
+                if acc_ref not in current:
+                    current[acc_ref] = {}
+            for k, v in obj.items():
+                if isinstance(v, list):
+                    if k not in current:
+                        current[k] = {}
+                    for item in v:
+                        if isinstance(item, dict) and 'name' in item:
+                            name = item['name']
+                            if name not in current[k]:
+                                current[k][name] = {}
+
+
+def log_tree(tree, prefix=""):
+    keys = list(tree.keys())
+    for i, key in enumerate(keys):
+        is_last = (i == len(keys) - 1)
+        connector = "└── " if is_last else "├── "
+        logging.info(f"{prefix}{connector}{key}")
+        new_prefix = prefix + ("    " if is_last else "│   ")
+        log_tree(tree[key], new_prefix)
+
+
 RESOURCE_SCHEMA = {
     # str: each resource instance is a separate release
     # list: all resource instances are a single release
@@ -85,14 +138,37 @@ RESOURCE_SCHEMA = {
 }
 
 
-def setup_logging(verbose: bool = False) -> None:
+def setup_logging(verbose: bool = False, logfile: str = None, errorlogfile: str = None) -> None:
     """Configures the logging settings."""
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+        
+    root_logger.setLevel(level)
+    
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
+    
+    if logfile:
+        file_handler = logging.FileHandler(logfile)
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+    else:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(level)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+        
+    if errorlogfile:
+        error_handler = logging.FileHandler(errorlogfile)
+        error_handler.setLevel(logging.ERROR)
+        error_handler.setFormatter(formatter)
+        root_logger.addHandler(error_handler)
 
 
 def action_cmd(
@@ -211,9 +287,9 @@ def call_global_action(
 
 
 def resource_action_exception_retriable(e):
-    if "forbidden" in e.output:
+    if e.output and "forbidden" in e.output:
         return True
-    if "getting history for release" in e.output:
+    if e.output and "getting history for release" in e.output:
         return True
     return False
     
@@ -287,8 +363,8 @@ def call_resource_action(
                         logging.info(output)
                     break
                 except subprocess.CalledProcessError as e:
-                    logging.error(f"Helm failed with return code {e.returncode}")
-                    logging.error(f"Error output (if captured): {e.output}")
+                    logging.debug(f"Helm {action} {release_name} failed with return code {e.returncode}")
+                    logging.debug(f"Error output: {e.output}")
                     if resource_action_exception_retriable(e):
                         retry += 1
                         logging.info(f"Waiting to retry {action} {release_name} ({retry}/{max_retries})")
@@ -343,8 +419,16 @@ def process_type(
     parent = parents[-1]
     parent_name = parent.get('name', type_path)
     parent_namespace = parent.get('namespace', parent_name)
+    type_parts = type_path.split('/')
+    parent_names = [p.get('name') for p in parents if p.get('name')]
+    tree_path = []
+    for i in range(len(type_parts)):
+        tree_path.append(type_parts[i])
+        if i < len(parent_names) and parent_names[i] != type_parts[i]:
+            tree_path.append(parent_names[i])
     # IAC is a special case. It's not a resource type, but a config fragment
     if resource_type == "IAC":
+        add_to_tree(tree_path + [resource_type])
         logging.debug(
             f"{action} iac {parent_name}/{resource_type}")
         release_name = f"{parent_name}-iac"
@@ -370,7 +454,9 @@ def process_type(
         return
     if resource_type not in config:
         return
-    if type_tree is list:  # generate one release per object list
+    # generate one release per object list
+    # in case of failure, exit function
+    if type_tree is list:  
         logging.debug(
             f"{action} list {parent_name}/{resource_type}")
         obj = config[resource_type]
@@ -379,7 +465,10 @@ def process_type(
             'namespace': parent_namespace,
             resource_type.replace("-", ""): obj
         }
-        call_resource_action(
+        if obj:
+            add_to_tree(tree_path + [resource_type], obj)
+        try:
+            call_resource_action(
                 kubeconfig=kubeconfig,
                 action=action,
                 dry_run=dry_run,
@@ -394,8 +483,15 @@ def process_type(
                 sync_wait=sync_wait,
                 max_retries=max_retries
             )
+        except Exception as e:
+            logging.error(f"Error creating {resource_type}: {e}")
+            add_to_tree(tree_path + [resource_type, "(error)"])
+            raise
         return
-    if type_tree is str:  # generate one release per object
+    # generate one release per object
+    # in case of object failure, exit
+    # in case of sub resource failure, continue
+    if type_tree is str:  
         items = config[resource_type]
         if isinstance(items, dict):
             obj_name = items.get('name', '')
@@ -408,7 +504,10 @@ def process_type(
                 'namespace': parent_namespace,
                 'location': items.get('location', parents[0].get('name'))
             }}
-            call_resource_action(
+            # exit on error in case of main object
+            add_to_tree(tree_path + [resource_type], items)
+            try:
+                call_resource_action(
                     kubeconfig=kubeconfig,
                     action=action,
                     dry_run=dry_run,
@@ -423,10 +522,15 @@ def process_type(
                     sync_wait=sync_wait,
                     max_retries=max_retries
                 )
+            except Exception as e:
+                logging.error(f"Error creating {resource_type}/{obj_name}: {e}")
+                add_to_tree(tree_path + [resource_type, "(error)"])
+                raise
             return
 
         for i, obj in enumerate(items):
             obj_name = obj.get('name', obj)
+            add_to_tree(tree_path + [resource_type, obj_name])
             logging.debug(
                 f"{action} object {parent_name}/{resource_type}/{obj_name}"
             )
@@ -436,7 +540,9 @@ def process_type(
                 'namespace': parent_namespace,
                 'location': obj.get('location', parents[0].get('name'))
             }]}
-            call_resource_action(
+            # continue on error in case of sub resource
+            try:
+                call_resource_action(
                     kubeconfig=kubeconfig,
                     action=action,
                     dry_run=dry_run,
@@ -451,11 +557,16 @@ def process_type(
                     sync_wait=sync_wait,
                     max_retries=max_retries
                 )
+            except Exception as e:
+                logging.error(f"Error creating {resource_type}/{obj_name}: {e}")
+                add_to_tree(tree_path + [resource_type, obj_name, "(error)"])
         return
     # type_tree is a dict. Generate one release per object if TYPE_SCOPE
     # matches parent and recurse
+    # continue loop but don't recurse on error
     for i, obj in enumerate(config[resource_type]):
         obj_name = obj.get('name', obj)
+        add_to_tree(tree_path + [resource_type, obj_name])
         logging.debug(
             f"{action} object {parent_name}/{resource_type}/{obj_name}"
         )
@@ -470,34 +581,45 @@ def process_type(
             'namespace': parent_namespace
         }]}
         if not skip_helm:
-            call_resource_action(
-                kubeconfig=kubeconfig,
-                action=action,
-                dry_run=dry_run,
-                parents=parents,
-                resource_name=obj_name,
-                resource_type=resource_type,
-                resource_config=resource_config,
-                release_name=release_name,
-                extra_args=extra_args,
-                charts_dir=charts_dir,
-                output_dir=output_dir,
-                sync_wait=sync_wait,
-                max_retries=max_retries,
-            )
+            # exit on error in case of main object
+            try:
+                call_resource_action(
+                    kubeconfig=kubeconfig,
+                    action=action,
+                    dry_run=dry_run,
+                    parents=parents,
+                    resource_name=obj_name,
+                    resource_type=resource_type,
+                    resource_config=resource_config,
+                    release_name=release_name,
+                    extra_args=extra_args,
+                    charts_dir=charts_dir,
+                    output_dir=output_dir,
+                    sync_wait=sync_wait,
+                    max_retries=max_retries,
+                )
+            except Exception as e:
+                logging.error(f"Error creating {resource_type}/{obj_name}: {e}")
+                add_to_tree(tree_path + [resource_type, obj_name, "(error)"])
+                raise
         for t, v in type_tree.items():
-            parents.append(obj)
-            process_type(
-                action=action, type_path=f"{type_path}/{resource_type}",
-                resource_type=t, type_tree=v,
-                config=config[resource_type][i],
-                iac_config=iac_config, kubeconfig=kubeconfig,
-                dry_run=dry_run, parents=parents, extra_args=extra_args,
-                charts_dir=charts_dir,
-                output_dir=output_dir,
-                sync_wait=sync_wait,
-                max_retries=max_retries,
-            )
+            new_parents = parents + [obj]
+            # continue loop in case of error
+            try:
+                process_type(
+                    action=action, type_path=f"{type_path}/{resource_type}",
+                    resource_type=t, type_tree=v,
+                    config=config[resource_type][i],
+                    iac_config=iac_config, kubeconfig=kubeconfig,
+                    dry_run=dry_run, parents=new_parents, extra_args=extra_args,
+                    charts_dir=charts_dir,
+                    output_dir=output_dir,
+                    sync_wait=sync_wait,
+                    max_retries=max_retries,
+                )
+            except TimeoutError as e:
+                logging.error(f"Error processing {t}/{v}: {e}")
+                pass
 
 
 def process_user_workload(
@@ -532,6 +654,7 @@ def process_user_workload(
     f"max_retries: {max_retries}"
     )
     for chart in config.get("charts", []):
+        add_to_tree([cluster_name, chart['release_name']])
         logging.info(f"Processing chart: {chart}")
         if action == "hydrate":
             current_output_dir = output_dir if output_dir else "./hydrated"
@@ -673,6 +796,8 @@ def process(
                 max_retries=max_retries,
                 sync_wait=sync_wait
             )
+    logging.info("Resource Tree:")
+    log_tree(RESOURCE_TREE)
     return True
 
 
@@ -747,6 +872,20 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
         help="Enable verbose logging"
     )
 
+    parser.add_argument(
+        "--logfile",
+        help="Path to log file for all output",
+        type=str,
+        default=None
+    )
+
+    parser.add_argument(
+        "--errorlogfile",
+        help="Path to log file for error output only",
+        type=str,
+        default=None
+    )
+
     return parser.parse_known_args(args)
 
 
@@ -757,7 +896,7 @@ def main() -> int:
     core process execution flow logic.
     """
     args, extra_args = parse_args(sys.argv[1:])
-    setup_logging(args.verbose)
+    setup_logging(args.verbose, args.logfile, args.errorlogfile)
     if args.config:
         with open(args.config, "r") as f:
             logging.info(f"Processing file {args.config}")
