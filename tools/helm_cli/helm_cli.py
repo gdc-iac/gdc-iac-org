@@ -85,14 +85,37 @@ RESOURCE_SCHEMA = {
 }
 
 
-def setup_logging(verbose: bool = False) -> None:
+def setup_logging(verbose: bool = False, logfile: str = None, errorlogfile: str = None) -> None:
     """Configures the logging settings."""
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
+    
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+        
+    root_logger.setLevel(level)
+    
+    formatter = logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
+    
+    if logfile:
+        file_handler = logging.FileHandler(logfile)
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+    else:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(level)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+        
+    if errorlogfile:
+        error_handler = logging.FileHandler(errorlogfile)
+        error_handler.setLevel(logging.ERROR)
+        error_handler.setFormatter(formatter)
+        root_logger.addHandler(error_handler)
 
 
 def action_cmd(
@@ -761,6 +784,20 @@ def parse_args(args: List[str]) -> Tuple[argparse.Namespace, List[str]]:
         help="Enable verbose logging"
     )
 
+    parser.add_argument(
+        "--logfile",
+        help="Path to log file for all output",
+        type=str,
+        default=None
+    )
+
+    parser.add_argument(
+        "--errorlogfile",
+        help="Path to log file for error output only",
+        type=str,
+        default=None
+    )
+
     return parser.parse_known_args(args)
 
 
@@ -771,7 +808,7 @@ def main() -> int:
     core process execution flow logic.
     """
     args, extra_args = parse_args(sys.argv[1:])
-    setup_logging(args.verbose)
+    setup_logging(args.verbose, args.logfile, args.errorlogfile)
     if args.config:
         with open(args.config, "r") as f:
             logging.info(f"Processing file {args.config}")
