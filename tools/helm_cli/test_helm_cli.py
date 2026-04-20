@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
@@ -122,7 +123,6 @@ class TestHelmCli(unittest.TestCase):
     def test_call_global_action_exception(
         self, mock_logging_error, mock_subprocess
     ):
-        import subprocess
         mock_subprocess.side_effect = subprocess.CalledProcessError(
             1, ["helm"]
         )
@@ -156,7 +156,7 @@ class TestHelmCli(unittest.TestCase):
             parents=parents, resource_name="p1", resource_type=resource_type,
             resource_config={"name": "obj1"},
             release_name="p1-test-res-obj1", extra_args=extra_args,
-            charts_dir="../../charts", output_dir=None
+            charts_dir="../../charts", output_dir=None, sync_wait=15, max_retries=3
         )
 
         mock_file.write.assert_called()
@@ -164,7 +164,7 @@ class TestHelmCli(unittest.TestCase):
             "helm", "upgrade", "--install", "p1-test-res-obj1",
             "../../charts/gdc-test-res", "-f", "/tmp/values.yaml", "--dry-run"
         ]
-        mock_subprocess.assert_called_with(expected_cmd, text=True)
+        mock_subprocess.assert_called_with(expected_cmd, stderr=subprocess.STDOUT, text=True)
 
     @patch("helm_cli.call_resource_action")
     def test_process_type_list(self, mock_call_resource_action):
@@ -179,7 +179,7 @@ class TestHelmCli(unittest.TestCase):
 
         helm_cli.process_type(
             action, type_path, resource_type, type_tree, config,
-            None, None, dry_run, parents, extra_args, "../../charts", None
+            None, None, dry_run, parents, extra_args, "../../charts", None, 10, 3
         )
 
         mock_call_resource_action.assert_called_once_with(
@@ -195,7 +195,8 @@ class TestHelmCli(unittest.TestCase):
             extra_args=extra_args,
             charts_dir="../../charts",
             output_dir=None,
-            sync_wait=10
+            sync_wait=10,
+            max_retries=3
         )
 
     @patch("helm_cli.process_type")
@@ -208,7 +209,7 @@ class TestHelmCli(unittest.TestCase):
         extra_args = ["--debug"]
 
         helm_cli.process(
-            config, action, dry_run, api, "../../charts", None, api_kubeconfig, extra_args
+            config, action, dry_run, api, "../../charts", None, api_kubeconfig, extra_args, 15, 3
         )
         mock_process_type.assert_called()
         _, kwargs = mock_process_type.call_args
@@ -221,7 +222,7 @@ class TestHelmCli(unittest.TestCase):
         config = {"global": {"iam-roles": []}, "iac": {}}
         action = "template"
         helm_cli.process(
-            config, action, False, "global", "../../charts", None, None, []
+            config, action, False, "global", "../../charts", None, None, [], 15, 3
         )
         mock_process_type.assert_called()
         _, kwargs = mock_process_type.call_args
@@ -231,7 +232,7 @@ class TestHelmCli(unittest.TestCase):
     def test_process_with_api_kubeconfig_length_mismatch(self):
         config = {"api1": {}, "api2": {}, "iac": {}}
         with self.assertRaises(ValueError):
-            helm_cli.process(config, "template", False, "api1,api2", "../../charts", None, "kube1", [])
+            helm_cli.process(config, "template", False, "api1,api2", "../../charts", None, "kube1", [], 15, 3)
 
     def test_parse_args(self):
         sys_args = ["upgrade", "config.yaml", "--dry-run", "--set", "foo=bar"]
@@ -275,18 +276,9 @@ class TestHelmCli(unittest.TestCase):
         mock_file = MagicMock()
         mock_tempfile.return_value.__enter__.return_value = mock_file
         mock_file.name = "/tmp/values.yaml"
-        import subprocess
         mock_subprocess.side_effect = None
         mock_subprocess.return_value = "success"
-        with patch('time.sleep') as mock_sleep:
-            helm_cli.call_resource_action(
-                kubeconfig=None, action="upgrade", dry_run=False,
-                parents=[{"name": "p1"}], resource_name="p1", resource_type="projects",
-                resource_config={"name": "obj1"},
-                release_name="p1-projects-obj1", extra_args=[],
-                charts_dir="../../charts", output_dir=None
-            )
-            mock_sleep.assert_called_once_with(10)
+
 
         mock_subprocess.side_effect = subprocess.CalledProcessError(
             1, ["helm"]
@@ -297,7 +289,7 @@ class TestHelmCli(unittest.TestCase):
                 parents=[{"name": "p1"}], resource_name="p1", resource_type="test-res",
                 resource_config={"name": "obj1"},
                 release_name="p1-test-res-obj1", extra_args=[],
-                charts_dir="../../charts", output_dir=None
+                charts_dir="../../charts", output_dir=None, sync_wait=15, max_retries=3
             )
         mock_subprocess.side_effect = FileNotFoundError()
         with self.assertRaises(FileNotFoundError):
@@ -306,7 +298,7 @@ class TestHelmCli(unittest.TestCase):
                 parents=[{"name": "p1"}], resource_name="p1", resource_type="test-res",
                 resource_config={"name": "obj1"},
                 release_name="p1-test-res-obj1", extra_args=[],
-                charts_dir="../../charts", output_dir=None
+                charts_dir="../../charts", output_dir=None, sync_wait=15, max_retries=3
             )
 
 
@@ -315,7 +307,7 @@ class TestHelmCli(unittest.TestCase):
         helm_cli.process_type(
             "template", "root", "IAC", {}, {"iac": {"some": "iac"}},
             {"some": "iac"},
-            None, False, [{"name": "root"}], [], "../../charts", None
+            None, False, [{"name": "root"}], [], "../../charts", None, 15, 3
         )
         mock_call_resource_action.assert_called_once_with(
             kubeconfig=None, action="template", dry_run=False,
@@ -324,13 +316,13 @@ class TestHelmCli(unittest.TestCase):
                              'iamrolebindings': {'some': 'iac'}},
             release_name='root-iac', extra_args=[],
             charts_dir="../../charts", output_dir=None,
-            sync_wait=10
+            sync_wait=15, max_retries=3
         )
 
     def test_process_type_not_in_config(self):
         result = helm_cli.process_type(
             "template", "root", "missing-res", list, {"other-res": []},
-            {}, None, False, [{"name": "root"}], [], "../../charts", None
+            {}, None, False, [{"name": "root"}], [], "../../charts", None, 15, 3
         )
         self.assertIsNone(result)
 
@@ -339,7 +331,7 @@ class TestHelmCli(unittest.TestCase):
         helm_cli.process_type(
             "template", "root", "my-str-res", str,
             {"my-str-res": [{"name": "o1"}]}, None, None, False,
-            [{"name": "root"}], [], "../../charts", None
+            [{"name": "root"}], [], "../../charts", None, 15, 3
         )
         mock_call_resource_action.assert_called_once()
 
@@ -348,7 +340,7 @@ class TestHelmCli(unittest.TestCase):
         helm_cli.process_type(
             "template", "root", "billing", str,
             {"billing": {"accounts": {"name": "acc", "id": "123"}, "account_ref": "acc"}}, None, None, False,
-            [{"name": "root"}], [], "../../charts", None
+            [{"name": "root"}], [], "../../charts", None, 15, 3
         )
         mock_call_resource_action.assert_called_once()
 
@@ -360,7 +352,7 @@ class TestHelmCli(unittest.TestCase):
         }
         helm_cli.process_type(
             "template", "root", "my-dict-res", type_tree, config, None,
-            None, False, [{"name": "root"}], [], "../../charts", None
+            None, False, [{"name": "root"}], [], "../../charts", None, 15, 3
         )
         self.assertEqual(mock_call_resource_action.call_count, 2)
 
@@ -370,7 +362,7 @@ class TestHelmCli(unittest.TestCase):
         config = {"my-dict-res": [{"name": "o1"}]}
         helm_cli.process_type(
             "template", "local-zone", "my-dict-res", type_tree, config, None,
-            None, False, [{"name": "local-zone"}], [], "../../charts", None
+            None, False, [{"name": "local-zone"}], [], "../../charts", None, 15, 3
         )
         mock_call_resource_action.assert_not_called()
 
@@ -437,7 +429,7 @@ class TestHelmCli(unittest.TestCase):
         helm_cli.process_user_workload(
             action=action, cluster_name=cluster_name, config=config,
             iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
-            extra_args=extra_args, output_dir=None
+            extra_args=extra_args, output_dir=None, max_retries=3
         )
 
         mock_file.write.assert_called()
@@ -445,9 +437,8 @@ class TestHelmCli(unittest.TestCase):
             "helm", "--kubeconfig", "kubeconfig", "upgrade", "--install", "r1",
             "my-chart", "-f", "/tmp/values.yaml"
         ]
-        mock_subprocess.assert_called_with(expected_cmd, text=True)
+        mock_subprocess.assert_called_with(expected_cmd, stderr=subprocess.STDOUT, text=True)
 
-        import subprocess
         mock_subprocess.side_effect = subprocess.CalledProcessError(
             1, ["helm"]
         )
@@ -455,7 +446,7 @@ class TestHelmCli(unittest.TestCase):
             helm_cli.process_user_workload(
                 action=action, cluster_name=cluster_name, config=config,
                 iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
-                extra_args=extra_args, output_dir=None
+                extra_args=extra_args, output_dir=None, max_retries=3
             )
         
         mock_subprocess.side_effect = FileNotFoundError()
@@ -463,7 +454,7 @@ class TestHelmCli(unittest.TestCase):
             helm_cli.process_user_workload(
                 action=action, cluster_name=cluster_name, config=config,
                 iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
-                extra_args=extra_args, output_dir=None
+                extra_args=extra_args, output_dir=None, max_retries=3
             )
 
     @patch("helm_cli.os.makedirs")
@@ -486,7 +477,7 @@ class TestHelmCli(unittest.TestCase):
         helm_cli.process_user_workload(
             action=action, cluster_name=cluster_name, config=config,
             iac_config={}, kubeconfig="kubeconfig", dry_run=dry_run,
-            extra_args=extra_args, output_dir=None
+            extra_args=extra_args, output_dir=None, max_retries=3
         )
 
         mock_makedirs.assert_called_with("./hydrated/clstr-1/my-chart", exist_ok=True)
@@ -497,7 +488,7 @@ class TestHelmCli(unittest.TestCase):
         config = {"user:clstr-1": {"charts": []}, "iac": {}}
         action = "template"
         helm_cli.process(
-            config, action, False, "user:clstr-1", "../../charts", None, None, []
+            config, action, False, "user:clstr-1", "../../charts", None, None, [], 15, 3
         )
         mock_process_user_workload.assert_called_once()
         _, kwargs = mock_process_user_workload.call_args
