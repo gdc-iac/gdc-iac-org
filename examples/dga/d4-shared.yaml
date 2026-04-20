@@ -75,7 +75,7 @@ global:
   user_project_name: &user_project_name "d2-ets-user-1"
   billing:
     accounts:
-      name: *shared_infra_project_name
+    - name: *shared_infra_project_name
       display_name: "Shared Billing Account"
       cloud_billing_config_account_id: "Organization Billing Account"
   iam-roles:

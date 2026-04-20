@@ -61,6 +61,9 @@ global:
       - role: "workbench-notebooks-admin"
         subject_kind: "User"
         subject_name: *admin_subject_name
+      - role: "workbench-notebooks-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
       - role: "backup-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name
@@ -98,3 +101,11 @@ us-east67-b:
         - name: s3-proxy-config
           persistentVolumeClaim:
             claimName: *user_subject_name_nb
+user:dga-ets:
+  charts:
+  - name: "/usr/local/google/home/majduk/workspaces/amg1/gdc-iac-helm/examples/dga-factory/scripts/../charts/dga-user-config"
+    release_name: *user_subject_name_nb
+    values:
+      namespace: *user_project_name
+      notebook_name: *user_subject_name_nb
+      notebook_pvc_size: "5Gi"
