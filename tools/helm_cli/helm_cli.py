@@ -211,9 +211,9 @@ def call_global_action(
 
 
 def resource_action_exception_retriable(e):
-    if "forbidden" in e.output:
+    if e.output and "forbidden" in e.output:
         return True
-    if "getting history for release" in e.output:
+    if e.output and "getting history for release" in e.output:
         return True
     return False
     
@@ -287,8 +287,8 @@ def call_resource_action(
                         logging.info(output)
                     break
                 except subprocess.CalledProcessError as e:
-                    logging.error(f"Helm failed with return code {e.returncode}")
-                    logging.error(f"Error output (if captured): {e.output}")
+                    logging.debug(f"Helm {action} {release_name} failed with return code {e.returncode}")
+                    logging.debug(f"Error output: {e.output}")
                     if resource_action_exception_retriable(e):
                         retry += 1
                         logging.info(f"Waiting to retry {action} {release_name} ({retry}/{max_retries})")
@@ -370,7 +370,9 @@ def process_type(
         return
     if resource_type not in config:
         return
-    if type_tree is list:  # generate one release per object list
+    # generate one release per object list
+    # in case of failure, exit function
+    if type_tree is list:  
         logging.debug(
             f"{action} list {parent_name}/{resource_type}")
         obj = config[resource_type]
@@ -395,7 +397,10 @@ def process_type(
                 max_retries=max_retries
             )
         return
-    if type_tree is str:  # generate one release per object
+    # generate one release per object
+    # in case of object failure, exit
+    # in case of sub resource failure, continue
+    if type_tree is str:  
         items = config[resource_type]
         if isinstance(items, dict):
             obj_name = items.get('name', '')
@@ -408,6 +413,7 @@ def process_type(
                 'namespace': parent_namespace,
                 'location': items.get('location', parents[0].get('name'))
             }}
+            # exit on error in case of main object
             call_resource_action(
                     kubeconfig=kubeconfig,
                     action=action,
@@ -436,6 +442,7 @@ def process_type(
                 'namespace': parent_namespace,
                 'location': obj.get('location', parents[0].get('name'))
             }]}
+            # continue on error in case of sub resource
             call_resource_action(
                     kubeconfig=kubeconfig,
                     action=action,
@@ -454,6 +461,7 @@ def process_type(
         return
     # type_tree is a dict. Generate one release per object if TYPE_SCOPE
     # matches parent and recurse
+    # continue loop but don't recurse on error
     for i, obj in enumerate(config[resource_type]):
         obj_name = obj.get('name', obj)
         logging.debug(
@@ -470,6 +478,7 @@ def process_type(
             'namespace': parent_namespace
         }]}
         if not skip_helm:
+            # exit on error in case of main object
             call_resource_action(
                 kubeconfig=kubeconfig,
                 action=action,
@@ -487,17 +496,22 @@ def process_type(
             )
         for t, v in type_tree.items():
             parents.append(obj)
-            process_type(
-                action=action, type_path=f"{type_path}/{resource_type}",
-                resource_type=t, type_tree=v,
-                config=config[resource_type][i],
-                iac_config=iac_config, kubeconfig=kubeconfig,
-                dry_run=dry_run, parents=parents, extra_args=extra_args,
-                charts_dir=charts_dir,
-                output_dir=output_dir,
-                sync_wait=sync_wait,
-                max_retries=max_retries,
-            )
+            # continue loop in case of error
+            try:
+                process_type(
+                    action=action, type_path=f"{type_path}/{resource_type}",
+                    resource_type=t, type_tree=v,
+                    config=config[resource_type][i],
+                    iac_config=iac_config, kubeconfig=kubeconfig,
+                    dry_run=dry_run, parents=parents, extra_args=extra_args,
+                    charts_dir=charts_dir,
+                    output_dir=output_dir,
+                    sync_wait=sync_wait,
+                    max_retries=max_retries,
+                )
+            except TimeoutError as e:
+                logging.error(f"Error processing {t}/{v}: {e}")
+                pass
 
 
 def process_user_workload(
