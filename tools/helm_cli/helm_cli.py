@@ -654,7 +654,7 @@ def process_user_workload(
     f"max_retries: {max_retries}"
     )
     for chart in config.get("charts", []):
-        add_to_tree([cluster_name, 'charts', chart['release_name']])
+        add_to_tree([cluster_name, chart['release_name']])
         logging.info(f"Processing chart: {chart}")
         if action == "hydrate":
             current_output_dir = output_dir if output_dir else "./hydrated"
