@@ -61,6 +61,9 @@ global:
       - role: "workbench-notebooks-admin"
         subject_kind: "User"
         subject_name: *admin_subject_name
+      - role: "workbench-notebooks-viewer"
+        subject_kind: "User"
+        subject_name: *admin_subject_name
       - role: "backup-creator"
         subject_kind: "User"
         subject_name: *admin_subject_name

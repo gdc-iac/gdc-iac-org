@@ -15,6 +15,44 @@ class TestHelmCli(unittest.TestCase):
     def setUp(self):
         self.maxDiff = None
 
+    def test_add_to_tree_multiple_subjects(self):
+        # Reset RESOURCE_TREE
+        helm_cli.RESOURCE_TREE = {}
+        
+        # Path to add
+        path = ["global", "projects", "my-project", "iam-role-bindings"]
+        
+        # Object with multiple items for same role
+        obj = [
+            {"role": "role1", "subject_name": "user1"},
+            {"role": "role1", "subject_name": "user2"},
+            {"role": "role2", "subject_name": "user3"},
+        ]
+        
+        # Call add_to_tree
+        helm_cli.add_to_tree(path, obj)
+        
+        # Expected structure
+        expected = {
+            "global": {
+                "projects": {
+                    "my-project": {
+                        "iam-role-bindings": {
+                            "role1": {
+                                "user1": {},
+                                "user2": {}
+                            },
+                            "role2": {
+                                "user3": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        self.assertEqual(helm_cli.RESOURCE_TREE, expected)
+
     def test_resource_config_buckets(self):
         resource_type = "buckets"
         obj = {"name": "my-bucket", "location": "us-west1"}
@@ -243,6 +281,8 @@ class TestHelmCli(unittest.TestCase):
         self.assertTrue(args.dry_run)
         self.assertIsNone(args.api)
         self.assertFalse(args.verbose)
+        self.assertIsNone(args.logfile)
+        self.assertIsNone(args.errorlogfile)
         self.assertEqual(extra, ["--set", "foo=bar"])
 
     def test_parse_args_optional_config(self):
@@ -265,6 +305,20 @@ class TestHelmCli(unittest.TestCase):
         self.assertEqual(args.config, "config.yaml")
         self.assertEqual(args.api, "clusters,projects")
         self.assertTrue(args.verbose)
+        self.assertIsNone(args.logfile)
+        self.assertIsNone(args.errorlogfile)
+        self.assertEqual(extra, [])
+
+    def test_parse_args_with_logfiles(self):
+        sys_args = [
+            "validate", "config.yaml", "--logfile", "out.log", "--errorlogfile", "err.log"
+        ]
+        args, extra = helm_cli.parse_args(sys_args)
+
+        self.assertEqual(args.action, "validate")
+        self.assertEqual(args.config, "config.yaml")
+        self.assertEqual(args.logfile, "out.log")
+        self.assertEqual(args.errorlogfile, "err.log")
         self.assertEqual(extra, [])
 
     @patch("helm_cli.logging.error")
@@ -374,6 +428,8 @@ class TestHelmCli(unittest.TestCase):
         mock_args.config = None
         mock_args.dry_run = False
         mock_args.verbose = False
+        mock_args.logfile = None
+        mock_args.errorlogfile = None
         mock_parse_args.return_value = (mock_args, ["-A"])
 
         with patch("helm_cli.sys.argv", ["helm_cli.py", "list", "-A"]):
@@ -397,6 +453,8 @@ class TestHelmCli(unittest.TestCase):
         mock_args.api_kubeconfig = None
         mock_args.dry_run = False
         mock_args.verbose = True
+        mock_args.logfile = None
+        mock_args.errorlogfile = None
         mock_parse_args.return_value = (mock_args, [])
         mock_yaml_load.return_value = {"iac": {}}
 
@@ -407,7 +465,11 @@ class TestHelmCli(unittest.TestCase):
 
     @patch("helm_cli.subprocess.check_output")
     @patch("helm_cli.tempfile.NamedTemporaryFile")
-    def test_process_user_workload(self, mock_tempfile, mock_subprocess):
+    @patch("helm_cli.logging.getLogger")
+    def test_process_user_workload(self, mock_get_logger, mock_tempfile, mock_subprocess):
+        mock_logger = MagicMock()
+        mock_logger.isEnabledFor.return_value = False
+        mock_get_logger.return_value = mock_logger
         mock_file = MagicMock()
         mock_tempfile.return_value.__enter__.return_value = mock_file
         mock_file.name = "/tmp/values.yaml"
