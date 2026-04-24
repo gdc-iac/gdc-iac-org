@@ -1,9 +1,6 @@
 iac:
 - role: "project-iam-admin"
   subject_kind: "User"
-  subject_name: &sdobrica_subject_name "gdch-infra-operator-sdobrica-sa@opscenter.local"
-- role: "project-iam-admin"
-  subject_kind: "User"
   subject_name: &iac_subject_name "gdch-infra-operator-fop-iac001@opscenter.local"
 - role: "project-bucket-admin"
   subject_kind: "User"
@@ -163,7 +160,7 @@ global:
         subject_name: *admin_subject_name
       billing:
         account_ref: *shared_infra_project_name
-lux-central1-b:
+us-east1-c:
   projects:
   - name: *shared_infra_project_name
     buckets:

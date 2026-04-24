@@ -14,24 +14,24 @@ D2 user
 
 python3 tools/helm_cli/helm_cli.py template \
     examples/multi-value-org/d4-shared.yaml \
-    --api global,lux-central1-b \
+    --api global,us-central1-a \
     --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
 python3 tools/helm_cli/helm_cli.py upgrade \
     examples/multi-value-org/d4-shared.yaml \
-    --api global,lux-central1-b \
+    --api global,us-central1-a \
     --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
 D4 shared
 
 python3 tools/helm_cli/helm_cli.py template \
     examples/multi-value-org/d4-shared.yaml \
-    --api global,lux-central1-b \
+    --api global,us-central1-a \
     --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
 python3 tools/helm_cli/helm_cli.py upgrade \
     examples/multi-value-org/d4-shared.yaml \
-    --api global,lux-central1-b \
+    --api global,us-central1-a \
     --api-kubeconfig global-api.kubeconfig,zone.kubeconfig -v
 
 """

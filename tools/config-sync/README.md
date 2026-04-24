@@ -103,15 +103,15 @@ cat <<'EOF' > /root/push_2harbor_images.sh
 #!/bin/bash
 
 export IN_DIR="/mnt/c/temp/offline_packages/docker_images/"
-export ORG_NAME="org-15357"
-export ZONE="lux-central1-b"
-export ROOT_ZONE="lux.clr"
+export ORG_NAME="org-1"
+export ZONE="us-east1-c"
+export ROOT_ZONE="gdc.test"
 export shared_infra_project_name="data-ets-mhs"
 export nb_project="data-ets-shared-infra"
 export mhs_project="data-ets-mhs"
 export HARBOR_PASSWORD="REDACTED"
 export ARTIFACT_REGISTRY=https://${shared_infra_project_name}-${nb_project}.${ORG_NAME}.${ZONE}.${ROOT_ZONE}
-export USER="gdch-infra-operator-sdobrica-sa@opscenter.local"
+export USER="gdch-infra-operator-sa@opscenter.local"
 
 echo "$HARBOR_PASSWORD" | docker login "$ARTIFACT_REGISTRY" -u "$USER" --password-stdin --tls-verify=false
 
@@ -163,17 +163,7 @@ chmod +x /root/push_2harbor_images.sh
 source /root/push_2harbor_images.sh
 
 
-New Images list:
 
-    -   data-ets-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-mhs/resource-group-controller:v1.22.2
-    -   data-ets-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-mhs/reconciler-manager:v1.22.2
-    -   docker pull data-ets-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-mhs/otelcontribcol:v0.119.0-gke.2
-    -   data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/helm-sync:v1.22.2
-    -   data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/oci-sync:v1.22.2
-    -   data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/gcenode-askpass-sidecar:v1.22.2
-    -   data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/git-sync:v4.4.2-gke.3__linux_amd64
-    -   data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/reconciler:v1.22.2
-    -   data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/hydration-controller:v1.22.2
 
 
 Allow access to Harbor from other projects:
