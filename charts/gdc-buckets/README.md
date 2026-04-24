@@ -28,7 +28,7 @@ helm install my-buckets ./gdc-buckets -f values.yaml
 ## Example Configuration (Optional)
 
 ```yaml
-location: "lux-central1-b"
+location: "us-east1-c"
 buckets:
   - name: "lambda-bucket-1"
     namespace: "lambda-prj"

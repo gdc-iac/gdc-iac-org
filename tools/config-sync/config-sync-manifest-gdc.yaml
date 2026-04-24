@@ -5731,7 +5731,7 @@ data:
           serviceAccountName: # this field will be assigned dynamically by the reconciler-manager
           containers:
           - name: hydration-controller
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/hydration-controller:v1.22.2
+            image: ${HARBOR_URL}/hydration-controller:v1.22.2
             command:
             - /hydration-controller
             args:
@@ -5759,7 +5759,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: reconciler
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/
+            image: ${HARBOR_URL}/
             command:
             - /reconciler
             args:
@@ -5799,7 +5799,7 @@ data:
                 - ALL
             imagePullPolicy: IfNotPresent
           - name: git-sync
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/
+            image: ${HARBOR_URL}/
             args: ["--root=/repo/source", "--link=rev", "--max-failures=30", "--error-file=error.json"]
             volumeMounts:
             - name: repo
@@ -5816,7 +5816,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: gcenode-askpass-sidecar
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/gcenode-askpass-sidecar:v1.22.2
+            image: ${HARBOR_URL}/gcenode-askpass-sidecar:v1.22.2
             args: ["--port=9102", "--logtostderr"]
             imagePullPolicy: IfNotPresent
             terminationMessagePolicy: File
@@ -5828,7 +5828,7 @@ data:
                 drop:
                 - ALL
           - name: oci-sync
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/oci-sync:v1.22.2
+            image: ${HARBOR_URL}/oci-sync:v1.22.2
             args: ["--root=/repo/source", "--dest=rev", "--max-sync-failures=30", "--error-file=error.json"]
             volumeMounts:
             - name: repo
@@ -5842,7 +5842,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: helm-sync
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/helm-sync:v1.22.2
+            image: ${HARBOR_URL}/helm-sync:v1.22.2
             args: ["--root=/repo/source", "--dest=rev", "--max-sync-failures=30", "--error-file=error.json"]
             volumeMounts:
             - name: repo
@@ -5859,7 +5859,7 @@ data:
                 - ALL
               runAsUser: 65533
           - name: otel-agent
-            image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
+            image: ${HARBOR_URL}/otelcontribcol:v0.119.0-gke.2
             command:
             - /otelcontribcol
             args:
@@ -6105,7 +6105,7 @@ spec:
         - --feature-gates=-pkg.translator.prometheus.NormalizeName
         command:
         - /otelcontribcol
-        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
+        image: ${HARBOR_URL}/otelcontribcol:v0.119.0-gke.2
         name: otel-collector
         ports:
         - containerPort: 55678
@@ -6185,7 +6185,7 @@ spec:
         - configMapRef:
             name: reconciler-manager
             optional: true
-        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/reconciler-manager:v1.22.2
+        image: ${HARBOR_URL}/reconciler-manager:v1.22.2
         name: reconciler-manager
         resources:
           requests:
@@ -6239,7 +6239,7 @@ spec:
               fieldPath: metadata.labels['configsync.gke.io/deployment-name']
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: k8s.pod.name=$(KUBE_POD_NAME),k8s.pod.namespace=$(KUBE_POD_NAMESPACE),k8s.pod.uid=$(KUBE_POD_UID),k8s.pod.ip=$(KUBE_POD_IP),k8s.node.name=$(KUBE_NODE_NAME),k8s.deployment.name=$(KUBE_DEPLOYMENT_NAME)
-        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
+        image: ${HARBOR_URL}/otelcontribcol:v0.119.0-gke.2
         name: otel-agent
         ports:
         - containerPort: 55678
@@ -6313,7 +6313,7 @@ spec:
         env:
         - name: OC_RESOURCE_LABELS
           value: k8s.container.name="manager"
-        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/resource-group-controller:v1.22.2
+        image: ${HARBOR_URL}/resource-group-controller:v1.22.2
         name: manager
         resources:
           requests:
@@ -6363,7 +6363,7 @@ spec:
               fieldPath: metadata.labels['configsync.gke.io/deployment-name']
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: k8s.pod.name=$(KUBE_POD_NAME),k8s.pod.namespace=$(KUBE_POD_NAMESPACE),k8s.pod.uid=$(KUBE_POD_UID),k8s.pod.ip=$(KUBE_POD_IP),k8s.node.name=$(KUBE_NODE_NAME),k8s.deployment.name=$(KUBE_DEPLOYMENT_NAME)
-        image: data-ets-shared-infra-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-001-001/otelcontribcol:v0.119.0-gke.2
+        image: ${HARBOR_URL}/otelcontribcol:v0.119.0-gke.2
         name: otel-agent
         ports:
         - containerPort: 55678

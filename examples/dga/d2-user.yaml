@@ -82,7 +82,7 @@ global:
       - role: "workbench-notebooks-admin"
         subject_kind: "User"
         subject_name: *service_account_name
-lux-central1-b:
+us-east1-c:
   projects:
   - name: *user_project_name
     notebooks:
@@ -91,7 +91,7 @@ lux-central1-b:
       user_cluster_name: "clstr-20260224"
       sidecars:
       - name: "s3-proxy"
-        image: "data-ets-mhs-data-ets-shared-infra.org-15357.lux-central1-b.lux.clr/data-ets-mhs/s3-proxy:2.0"
+        image: "${HARBOR_URL}/s3-proxy:2.0"
         volumeMounts:
         - mountPath: /proxy/conf
           name: s3-proxy-config
