@@ -8,7 +8,7 @@ gdcloud projects create $IAC_PROJECT
 
 # create service account for IAC
 gdcloud iam service-accounts create $IAC_SA --project=$IAC_PROJECT
-
+mkdir -p ${SECRETS_DIR:?}
 # generate key for service account if it doesn't exist
 [ -f "${SECRETS_DIR:?}/${IAC_SA:?}.json" ] || \
     gdcloud iam service-accounts keys create "${SECRETS_DIR:?}/${IAC_SA:?}.json" \
