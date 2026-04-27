@@ -5,40 +5,66 @@
 - [v.1.23.3](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.23.3/config-sync-manifest.yaml)
 - [v.1.24.0-rc.4](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.24.0-rc.4/config-sync-manifest.yaml)
 
-3. Create harbor instance in the `iac-root` project:
+3. Create harbor instance in the `iac-root` project and sign in to harbor (see [configure docker authentication](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform-application/pa-ao-operations/configure-docker-authentication))
 
 ```
 . ../bootstrap/config.sh
-gdcloud harbor instances create ${IAC_ROOT}-mhs \
-  --project=${IAC_ROOT:?}
-gdcloud harbor harbor-projects create ${IAC_ROOT} \
---project=${IAC_ROOT:?} \
---instance=${IAC_ROOT:?}-mhs
+export HARBOR_INSTANCE_NAME="${IAC_PROJECT:?}-mhs"
+gdcloud config set project ${IAC_PROJECT:?}
+gdcloud harbor instances create ${HARBOR_INSTANCE_NAME} \
+  --project=${IAC_PROJECT:?}
+gdcloud harbor harbor-projects create ${IAC_PROJECT:?} \
+--project=${IAC_PROJECT:?} \
+--instance=${HARBOR_INSTANCE_NAME:?}
+export HARBOR_REGISTRY=$(kubectl get harborinstance $HARBOR_INSTANCE_NAME -n $IAC_PROJECT -o jsonpath='{.status.url}' | sed s#https://##)
+echo $HARBOR_REGISTRY
+docker-credential-mhs configure-docker --registries=${HARBOR_REGISTRY}
 ```
+
+**Note:**
+If `docker-credential-mhs` is not installed, run the following command:
+```
+gdcloud components install docker-credential-mhs
+```
+
 4. Use `pull_images.py` script to pull the images from GCR to the local machine
 
 Example usage:
 
 ```bash
-python3 pull_images.py --manifest patched-config-sync-manifest-v.1.23.3.yaml --out-dir /tmp/config-sync-images
+python3 pull_images.py \
+    --manifest patched-config-sync-manifest-v.1.23.3.yaml \
+    --out-dir /tmp/config-sync-images
 ```
 
 5. Push the images to the harbor instance:
 
 ```bash
-python3 push_images.py --manifest patched-config-sync-manifest-v.1.23.3.yaml --img-dir /tmp/config-sync-images --harbor-registry <HARBOR_REGISTRY>
+python3 push_images.py \
+  --manifest patched-config-sync-manifest-v.1.23.3.yaml \
+  --img-dir /tmp/config-sync-images \
+  --harbor-registry ${HARBOR_REGISTRY:?} --project ${IAC_PROJECT:?}
 ```
 
 
-3. Apply the patch to the manifest file:
+6. Apply the patch to the manifest file:
 
 ```bash
-# Run the script to apply the patch and create patched-config-sync-manifest.yaml
-./apply_patch.sh v.1.23.3.patch config-sync-manifest-v.1.23.3.yaml
+export PATCH="v.1.23.3.patch"
+export MANIFEST="config-sync-manifest-v.1.23.3.yaml"
+export PATCHED_MANIFEST="patched-${MANIFEST}"
+./apply_patch.sh $PATCH $MANIFEST
+sed -i 's/namespace: config-management-system/namespace: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/namespace: config-management-monitoring/namespace: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/namespace: resource-group-system/namespace: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/name: config-management-system/name: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/name: config-management-monitoring/names: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/name: resource-group-system/name: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/otel-collector.config-management-monitoring/otel-collector.iac-root/g' $PATCHED_MANIFEST
 ```
 
-5. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). 
-Use  manifest file: [config-sync-manifest-gdc.yaml](config-sync-manifest-gdc.yaml)
+7. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). 
+Use patched manifest file: [patched-config-sync-manifest-v.1.23.3.yaml](patched-config-sync-manifest-v.1.23.3.yaml)
     ```
     kubectl apply -f config-sync-manifest-gdc.yaml
     ```

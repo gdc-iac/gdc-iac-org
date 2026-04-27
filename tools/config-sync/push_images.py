@@ -48,20 +48,16 @@ def main():
     parser.add_argument(
         "--harbor-registry",
         required=True,
-        help="Harbor registry URL (e.g., registry.example.com)."
+        help="Harbor registry URL/host (e.g., registry.example.com)."
     )
     parser.add_argument(
         "--project",
-        required=True,
-        help="Harbor project name."
+        default="data-ets-mhs",
+        help="Harbor project name (default: data-ets-mhs)."
     )
     
     args = parser.parse_args()
-    
-    # Credentials from environment
-    user = os.environ.get("USER", "gdch-infra-operator-sdobrica-sa@opscenter.local")
-    password = os.environ.get("HARBOR_PASSWORD", "REDACTED")
-    
+        
     print(f"Loading manifest: {args.manifest}")
     extracted_images = extract_images_from_manifest(args.manifest)
     
@@ -79,15 +75,6 @@ def main():
         print("Please ensure Docker is running and accessible.")
         sys.exit(1)
         
-    # Login to Harbor
-    print(f"Logging in to {args.harbor_registry}...")
-    try:
-        client.login(username=user, password=password, registry=args.harbor_registry)
-        print("Login successful.")
-    except Exception as e:
-        print(f"Login failed: {e}")
-        print("Continuing anyway, pushing might fail if not already authenticated.")
-        
     for img in extracted_images:
         safe_filename = img.replace(':', '_')
         tar_path = os.path.join(args.img_dir, f"{safe_filename}.tar.gz")
@@ -103,7 +90,6 @@ def main():
         print(f" -> Loading from: {tar_path}")
         try:
             with gzip.open(tar_path, 'rb') as f:
-                # client.images.load takes bytes or generator
                 loaded_images = client.images.load(f.read())
                 if not loaded_images:
                     print(f"Warning: No images loaded from {tar_path}")
@@ -128,7 +114,12 @@ def main():
         # Push image
         print(f" -> Pushing to Harbor...")
         try:
-            for line in client.images.push(target_image, stream=True, decode=True):
+            auth_config = None
+            if password:
+                print("    Using credentials from environment to authenticate (bypassing helper).")
+                auth_config = {'username': user, 'password': password}
+                
+            for line in client.images.push(target_image, stream=True, decode=True, auth_config=auth_config):
                 if 'status' in line:
                     print(f"    {line['status']}")
         except Exception as e:
