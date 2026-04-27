@@ -1,33 +1,48 @@
 # Config Sync Setup
 1. Go through the [bootstrap process](../../tools/bootstrap/README.md). 
-2. Make sure the required images are accessible from the cluster where you want to deploy config sync, e.g. from your local host for testing purposes. 
+2. [Optional] Download latest `config-sync-manifest.yaml` for your setup from [Config Sync releases](https://github.com/GoogleContainerTools/kpt-config-sync/releases).
 
-    Following config sync images are required:
-    -   gcr.io/config-management-release/hydration-controller:v1.22.2
-    -   gcr.io/config-management-release/reconciler:v1.22.2
-    -   gcr.io/config-management-release/git-sync:v4.4.2-gke.3__linux_amd64
-    -   gcr.io/config-management-release/gcenode-askpass-sidecar:v1.22.2
-    -   gcr.io/config-management-release/oci-sync:v1.22.2
-    -   gcr.io/config-management-release/helm-sync:v1.22.2
-    -   gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2
-    -   gcr.io/config-management-release/reconciler-manager:v1.22.2
-    -   gcr.io/config-management-release/resource-group-controller:v1.22.2
+- [v.1.23.3](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.23.3/config-sync-manifest.yaml)
+- [v.1.24.0-rc.4](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.24.0-rc.4/config-sync-manifest.yaml)
 
-    
-2. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). Use  manifest file: [config-sync-manifest-gdc.yaml](config-sync-manifest-gdc.yaml)
+3. Create harbor instance in the `iac-root` project:
+
+```
+. ../bootstrap/config.sh
+gdcloud harbor instances create ${IAC_ROOT}-mhs \
+  --project=${IAC_ROOT:?}
+gdcloud harbor harbor-projects create ${IAC_ROOT} \
+--project=${IAC_ROOT:?} \
+--instance=${IAC_ROOT:?}-mhs
+```
+4. Use `pull_images.py` script to pull the images from GCR to the local machine
+
+Example usage:
+
+```bash
+python3 pull_images.py --manifest patched-config-sync-manifest-v.1.23.3.yaml --out-dir /tmp/config-sync-images
+```
+
+5. Push the images to the harbor instance:
+
+```bash
+python3 push_images.py --manifest patched-config-sync-manifest-v.1.23.3.yaml --img-dir /tmp/config-sync-images --harbor-registry <HARBOR_REGISTRY>
+```
+
+
+3. Apply the patch to the manifest file:
+
+```bash
+# Run the script to apply the patch and create patched-config-sync-manifest.yaml
+./apply_patch.sh v.1.23.3.patch config-sync-manifest-v.1.23.3.yaml
+```
+
+5. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). 
+Use  manifest file: [config-sync-manifest-gdc.yaml](config-sync-manifest-gdc.yaml)
     ```
     kubectl apply -f config-sync-manifest-gdc.yaml
     ```
  
-
-gdcloud harbor instances create ${shared_infra_project_name:?}-mhs \
-  --project=${shared_infra_project_name:?}
-gdcloud harbor harbor-projects create ${nb_project:?} \
---project=${shared_infra_project_name:?} \
---instance=${shared_infra_project_name:?}-mhs
-
-Create scripts to migrate the images to the harbor instance and project.
-
 3. Create RepoSync CRD on substrate cluster and target clusters using manifest [reposync-crd.yaml](reposync-crd.yaml)
 
     - Global API

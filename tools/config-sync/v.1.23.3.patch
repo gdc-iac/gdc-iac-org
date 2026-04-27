@@ -1,0 +1,120 @@
+--- config-sync-manifest-v.1.23.3.yaml	2026-03-27 00:17:55.000000000 +0000
++++ patched-config-sync-manifest-v.1.23.3.yaml	2026-04-27 07:26:01.391027145 +0000
+@@ -5334,7 +5334,7 @@
+     configmanagement.gke.io/arch: csmr
+     configmanagement.gke.io/system: "true"
+   name: reconciler-manager
+-  namespace: config-management-system
++  namespace: iac-root
+ ---
+ apiVersion: v1
+ kind: ServiceAccount
+@@ -5570,7 +5570,7 @@
+ subjects:
+ - kind: ServiceAccount
+   name: reconciler-manager
+-  namespace: config-management-system
++  namespace: iac-root
+ ---
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding
+@@ -5668,7 +5668,7 @@
+     configmanagement.gke.io/arch: csmr
+     configmanagement.gke.io/system: "true"
+   name: otel-agent
+-  namespace: config-management-system
++  namespace: iac-root
+ ---
+ apiVersion: v1
+ data:
+@@ -5730,7 +5730,7 @@
+     configmanagement.gke.io/arch: csmr
+     configmanagement.gke.io/system: "true"
+   name: otel-agent-reconciler
+-  namespace: config-management-system
++  namespace: iac-root
+ ---
+ apiVersion: v1
+ data:
+@@ -5739,7 +5739,7 @@
+     kind: Deployment
+     metadata:
+       name: # this field will be assigned dynamically by the reconciler-manager
+-      namespace: config-management-system
++      namespace: iac-root
+       labels:
+         app: reconciler
+         configmanagement.gke.io/system: "true"
+@@ -5806,14 +5806,26 @@
+             - "--hydrated-link=rev"
+             - "--reconciler-signals=/reconciler-signals"
+             env:
++            - name: KUBECONFIG_NAME
++              valueFrom:
++                fieldRef:
++                  apiVersion: v1
++                  fieldPath: metadata.labels['configsync.gke.io/sync-name']
++            - name: KUBECONFIG
++              value: "/.kube/config"
+             - name: KUBECACHEDIR
+               value: "/.kube/cache"
+             volumeMounts:
++            - name: certs
++              mountPath: /etc/ssl/certs
++            - name: kubeconfigs
++              mountPath: /.kube/config
++              subPathExpr: $(KUBECONFIG_NAME)
+             - name: repo
+               mountPath: /repo
+               readOnly: true
+-            - name: kube
+-              mountPath: /.kube
++            - name: kubecache
++              mountPath: /.kube/cache
+             - name: reconciler-signals
+               mountPath: /reconciler-signals
+             securityContext:
+@@ -5982,9 +5994,15 @@
+                 k8s.deployment.name=$(KUBE_DEPLOYMENT_NAME),\
+                 configsync.sync.generation=$(CONFIGSYNC_SYNC_GENERATION)"
+           volumes:
++          - name: certs
++            secret:
++              secretName: certs
++          - name: kubeconfigs
++            secret:
++              secretName: kubeconfigs
+           - name: repo
+             emptyDir: {}
+-          - name: kube
++          - name: kubecache
+             emptyDir: {}
+           - name: reconciler-signals
+             emptyDir: {}  # A shared volume that allows the reconciler to send signals to the hydration-controller
+@@ -6015,7 +6033,7 @@
+     configmanagement.gke.io/arch: csmr
+     configmanagement.gke.io/system: "true"
+   name: reconciler-manager-cm
+-  namespace: config-management-system
++  namespace: iac-root
+ ---
+ apiVersion: v1
+ data:
+@@ -6093,7 +6111,7 @@
+   labels:
+     configmanagement.gke.io/system: "true"
+   name: container-limits
+-  namespace: config-management-system
++  namespace: iac-root
+ spec:
+   limits:
+   - defaultRequest:
+@@ -6186,7 +6204,7 @@
+     configmanagement.gke.io/arch: csmr
+     configmanagement.gke.io/system: "true"
+   name: reconciler-manager
+-  namespace: config-management-system
++  namespace: iac-root
+ spec:
+   minReadySeconds: 10
+   replicas: 1
