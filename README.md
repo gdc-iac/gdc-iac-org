@@ -89,17 +89,17 @@ When provisioning GDCag standard clusters, it is highly recommended to logically
 
 The toolkit allows you to use different tools to template and synchronize these configurations based on your operational needs. The detailed setup workflows and prerequisites for each method are documented in their respective tool directories.
 
-### Method 1: Infrastructure Automation via Helmfile (Recommended)
-This method utilizes a **data-driven approach** linking `tenants.yaml` inputs through a logic engine (`helmfile.yaml`) to dynamically generate and sequence Helm releases based on the required dependency chain.
-👉 **[View Helmfile Documentation & Setup Guide](tools/helmfile/README.md)**
-
-### Method 2: Deployment via Custom Helm CLI wrapper
+### Method 1: Deployment via Custom Helm CLI wrapper (Recommended)
 A custom Python wrapper script (`helm_cli.py`) designed for local or CI/CD usage. It streamlines the parsing of YAML configurations and loops through the charts imperatively, substituting the correct contexts and environments automatically.
 👉 **[View Helm CLI Documentation & Setup Guide](tools/helm_cli/README.md)**
 
-### Method 3: Config Sync (GitOps)
+### Method 2: Config Sync (Preview)
 Continuous state synchronization using the Config Sync operator. It acts as an in-cluster reconciliation agent, applying changes made directly to this repository.
 👉 **[View Config Sync Documentation & Setup Guide](tools/config-sync/README.md)**
+
+### Method 3: Infrastructure Automation via Helmfile (Preview)
+This method utilizes a **data-driven approach** linking `tenants.yaml` inputs through a logic engine (`helmfile.yaml`) to dynamically generate and sequence Helm releases based on the required dependency chain.
+👉 **[View Helmfile Documentation & Setup Guide](tools/helmfile/README.md)**
 
 ---
 
