@@ -5,6 +5,11 @@ gdc_projects_sa_chart_path: "../../../charts/gdc-project-service-accounts"
 gdc_harbors_chart_path: "../../../charts/gdc-harbors"
 gdc_project_network_policies_chart_path: "../../../charts/gdc-project-network-policies"
 gdc_iam_rolebindings_chart_path: "../../../charts/gdc-iam-role-bindings"
+gdc_iam_roles_chart_path: "../../../charts/gdc-iam-roles"
+
+gdc_context_global: global-api-gdch_console-gdc1-us-east1-a-prestaging-gdclabs-com_global-api
+gdc_context_zone: gdc1-admin-us-east1-a-gdch_console-gdc1-us-east1-a-prestaging-gdclabs-com_gdc1-admin
+iac_sa: &iac_sa system:serviceaccount:iac-root:iac001-sa
 
 dev-env:
   gdc_tenants:
@@ -36,15 +41,36 @@ dev-env:
 
       projects:
         - name: "frontend-prj"
+          iamroles:
+            - name: "frontend-prj-tools-bucket-reader"
+              title: "frontend-prj-tools-bucket-reader"
+              description: "frontend-prj-tools-bucket-reader"
+              scope: project
+              roleNamespaces:
+              - frontend-prj
+              stage: "GA"
+              zonalRules: |
+                - apiGroups:
+                  - object.gdc.goog
+                  resources:
+                  - buckets
+                  resourceNames:
+                  - "team-15357-s3-tools"
+                  verbs:
+                  - list
+                  - read-object
           serviceaccounts:
             - "frontend-sa"
           iamrolebindings:
             - role: "project-editor"
               subject_kind: "Group"
               subject_name: "frontend-viewers@example.com"
+            - role: "frontend-prj-tools-bucket-reader"
+              subject_kind: "Group"
+              subject_name: "frontend-viewers@example.com"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
-              subject_name: "fop-iac@example.com"
+              subject_name: *iac_sa
           network_policies:
             - name: "allow-ingress-to-frontend"
               subject:
@@ -64,7 +90,7 @@ dev-env:
               subject_name: "applogic-viewers@example.com"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
-              subject_name: "fop-iac@example.com"
+              subject_name: *iac_sa
           network_policies:
             - name: "allow-ingress-from-frontend"
               subject:
@@ -78,15 +104,36 @@ dev-env:
                             - "frontend-prj"
 
         - name: "data-prj"
+          iamroles:
+            - name: "data-prj-data-sa-reader"
+              title: "data-prj-data-sa-reader"
+              description: "data-prj-data-sa-reader"
+              scope: project
+              roleNamespaces:
+              - data-prj
+              stage: "GA"
+              zonalRules: |
+                - apiGroups:
+                - object.gdc.goog
+                resources:
+                - buckets
+                resourceNames:
+                - "team-15357-s3-tools"
+                verbs:
+                - list
+                - read-object
           serviceaccounts:
             - "data-sa"
           iamrolebindings:
             - role: "project-editor"
               subject_kind: "Group"
               subject_name: "data-viewers@example.com"
+            - role: "data-prj-data-sa-reader"
+              subject_kind: "Group"
+              subject_name: "data-viewers@example.com"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
-              subject_name: "fop-iac@example.com"
+              subject_name: *iac_sa
           network_policies:
             - name: "allow-ingress-from-applogic"
               subject:
@@ -105,18 +152,18 @@ dev-env:
           iamrolebindings:
             - role: "project-editor"
               subject_kind: "User"
-              subject_name: "fop-iac@example.com"
-#            - role: "harbor-instance-admin"
-#              subject_kind: "User"
-#              subject_name: "fop-iac@example.com"
-#            - role: "harbor-project-creator"
-#              subject_kind: "User"
-#              subject_name: "fop-iac@example.com"
-#          harbors:
-#            - name: "main-registry"
-#              namespace: "golden-images-prj"
-#              projects:
-#                - name: "base-images"
-#                  autoscan: true
-#                  creatorkind: "ServiceAccount"
-#                  creatorname: "harbor-builder-sa"
+              subject_name: *iac_sa
+            - role: "harbor-instance-admin"
+              subject_kind: "User"
+              subject_name: *iac_sa
+            - role: "harbor-project-creator"
+              subject_kind: "User"
+              subject_name: *iac_sa
+          harbors:
+            - name: "main-registry"
+              namespace: "golden-images-prj"
+              projects:
+                - name: "base-images"
+                  autoscan: true
+                  creatorkind: "ServiceAccount"
+                  creatorname: "harbor-builder-sa"

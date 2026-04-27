@@ -15,7 +15,7 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_network_policies") }}
     - name: {{ $tenantName }}-org-netpols
       chart: {{ $vals.gdc_org_network_policies_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_global }}
       namespace: iac-root
       installed: true
       values:
@@ -25,7 +25,7 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_policies") }}
     - name: {{ $tenantName }}-org-policies
       chart: {{ $vals.gdc_org_policies_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_global }}
       namespace: iac-root
       installed: true
       values:
@@ -38,7 +38,7 @@ releases:
     # --- STAGE 1: DEPLOY GDC PROJECT ---
     - name: {{ $project.name }}
       chart: {{ $vals.gdc_projects_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_global }}
       namespace: iac-root
       installed: true
       labels:
@@ -50,15 +50,29 @@ releases:
               name: {{ $project.name }}
               namespace: platform
 
+    # --- STAGE 1.5: DEPLOY IAM ROLES  ---
+    {{- if hasKey $project "iamroles" }}
+    - name: {{ $project.name }}-iam-roles
+      chart: {{ $vals.gdc_iam_roles_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      needs:
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+      values:
+        - iamroles: {{ $project.iamroles | toJson }}
+          namespace: {{ $project.name }}
+    {{- end }}
+
     # --- STAGE 2: DEPLOY SERVICE ACCOUNTS ---
     {{- if hasKey $project "serviceaccounts" }}
     - name: {{ $project.name }}-sa
       chart: {{ $vals.gdc_projects_sa_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_global }}
       namespace: iac-root
       installed: true
       needs:
-        - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
       values:
         - projectserviceaccounts:
             {{- range $sa := $project.serviceaccounts }}
@@ -71,11 +85,11 @@ releases:
     {{- if hasKey $project "iamrolebindings" }}
     - name: {{ $project.name }}-iam-bindings
       chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_global }}
       namespace: iac-root
       installed: true
       needs:
-        - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
       values:
         - iamrolebindings: {{ $project.iamrolebindings | toJson }}
           namespace: {{ $project.name }}
@@ -85,12 +99,12 @@ releases:
     {{- if hasKey $project "harbors" }}
     - name: {{ $project.name }}-harbor
       chart: {{ $vals.gdc_harbors_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_zone }}
       namespace: iac-root
       installed: true
       needs:
-        - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}
-        - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}-iam-bindings
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}-iam-bindings
       values:
         - harbors: {{ $project.harbors | toJson }}
     {{- end }}
@@ -99,12 +113,12 @@ releases:
     {{- if hasKey $project "network_policies" }}
     - name: {{ $project.name }}-netpols
       chart: {{ $vals.gdc_project_network_policies_chart_path }}
-      kubeContext: global-api-gdch_console-org-1-zone1-google-gdch-test_global-api
+      kubeContext: {{ $vals.gdc_context_global }}
       namespace: iac-root
       installed: true
       needs:
-        - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}
-        - global-api-gdch_console-org-1-zone1-google-gdch-test_global-api/iac-root/{{ $project.name }}-iam-bindings
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}-iam-bindings
       values:
         - projectnetworkpolicies: {{ $project.network_policies | toJson }}
           namespace: {{ $project.name }}
