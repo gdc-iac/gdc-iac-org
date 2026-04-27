@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 export SCRIPTS_DIR=$( readlink -e $(dirname $0))
 source ${SCRIPTS_DIR:?}/config.sh
 
@@ -6,12 +7,12 @@ source ${SCRIPTS_DIR:?}/config.sh
 gdcloud projects create $IAC_PROJECT
 
 # create service account for IAC
-gdcloud iam service-accounts create $IAC_SA --display-name="IAC Service Account" --project=$IAC_PROJECT
+gdcloud iam service-accounts create $IAC_SA --project=$IAC_PROJECT
 
 # generate key for service account if it doesn't exist
 [ -f "${SECRETS_DIR:?}/${IAC_SA:?}.json" ] || \
     gdcloud iam service-accounts keys create "${SECRETS_DIR:?}/${IAC_SA:?}.json" \
-    --iam-account="${IAC_SA:?}@${IAC_PROJECT:?}.iam.gserviceaccount.com" \
+    --iam-account="${IAC_SA:?}" \
     --project=$IAC_PROJECT
 
 # set organization IAM policy binding for IAC SA
@@ -39,6 +40,8 @@ for role in \
   project-networkpolicy-admin \
   project-bucket-admin \
   project-bucket-object-admin \
+  harbor-instance-admin \
+  harbor-project-creator \
 ; do \
   gdcloud projects add-iam-policy-binding $IAC_PROJECT \
   --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
