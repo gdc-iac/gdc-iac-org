@@ -27,38 +27,7 @@ To use this framework successfully, you'll need the following tools installed an
 - `kubectl` and `helm`
 - Access to the target GDCag organization and project
 
-You will also need elevated permissions to bootstrap the initial organization roles. Run the following script syntax to grant your `IAC_USER` the necessary IAM policies:
-
-```bash
-# Grant IAC_USER required Org roles:
-for role in \
-  organization-iam-admin \
-  organization-billing-account-admin \
-  organization-billing-manager \
-  project-creator \
-  project-editor \
-  user-cluster-admin \
-  dr-backup-admin \
-  organization-backup-admin \
-  organization-cluster-backup-admin \
-  system-cluster-backup-repository-admin \
-  user-cluster-backup-admin; do
-  
-  gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
-    --member="user:$IAC_USER" \
-    --role="$role"
-done
-
-# Grant IAC_USER required IAM permissions on IAC_PROJECT:
-for role in \
-  secret-admin \
-  backup-creator; do
-
-  gdcloud projects add-iam-policy-binding "$IAC_PROJECT" \
-    --member="user:$IAC_USER" \
-    --role="$role"
-done
-```
+You will also need elevated permissions to bootstrap the initial organization roles. To do that follow [tools/bootstrap/README.md](tools/bootstrap/README.md).
 
 ---
 
