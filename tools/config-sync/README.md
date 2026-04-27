@@ -1,196 +1,48 @@
 # Config Sync Setup
-1. Go through the [bootstrap process](../../README.md)
-1. Obtain credentials for the substrate cluster where you will run Config Sync. For a simple test you can use microk8s. 
-2. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). Use  manifest file: [config-sync-manifest-gdc.yaml](config-sync-manifest-gdc.yaml)
+1. Go through the [bootstrap process](../../tools/bootstrap/README.md). 
+2. [Optional] Download latest `config-sync-manifest.yaml` for your setup from [Config Sync releases](https://github.com/GoogleContainerTools/kpt-config-sync/releases).
+
+- [v.1.23.3](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.23.3/config-sync-manifest.yaml)
+- [v.1.24.0-rc.4](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.24.0-rc.4/config-sync-manifest.yaml)
+
+3. Create harbor instance in the `iac-root` project:
+
+```
+. ../bootstrap/config.sh
+gdcloud harbor instances create ${IAC_ROOT}-mhs \
+  --project=${IAC_ROOT:?}
+gdcloud harbor harbor-projects create ${IAC_ROOT} \
+--project=${IAC_ROOT:?} \
+--instance=${IAC_ROOT:?}-mhs
+```
+4. Use `pull_images.py` script to pull the images from GCR to the local machine
+
+Example usage:
+
+```bash
+python3 pull_images.py --manifest patched-config-sync-manifest-v.1.23.3.yaml --out-dir /tmp/config-sync-images
+```
+
+5. Push the images to the harbor instance:
+
+```bash
+python3 push_images.py --manifest patched-config-sync-manifest-v.1.23.3.yaml --img-dir /tmp/config-sync-images --harbor-registry <HARBOR_REGISTRY>
+```
+
+
+3. Apply the patch to the manifest file:
+
+```bash
+# Run the script to apply the patch and create patched-config-sync-manifest.yaml
+./apply_patch.sh v.1.23.3.patch config-sync-manifest-v.1.23.3.yaml
+```
+
+5. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). 
+Use  manifest file: [config-sync-manifest-gdc.yaml](config-sync-manifest-gdc.yaml)
     ```
     kubectl apply -f config-sync-manifest-gdc.yaml
     ```
-    **Note:**
-
-    In order to deploy this manifest, following images are required:
-    -   gcr.io/config-management-release/hydration-controller:v1.22.2
-    -   gcr.io/config-management-release/reconciler:v1.22.2
-    -   gcr.io/config-management-release/git-sync:v4.4.2-gke.3__linux_amd64
-    -   gcr.io/config-management-release/gcenode-askpass-sidecar:v1.22.2
-    -   gcr.io/config-management-release/oci-sync:v1.22.2
-    -   gcr.io/config-management-release/helm-sync:v1.22.2
-    -   gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2
-    -   gcr.io/config-management-release/reconciler-manager:v1.22.2
-    -   gcr.io/config-management-release/resource-group-controller:v1.22.2
-
-
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
-export shared_infra_project_name=data-ets-shared-infra
-export nb_project=data-ets-001-001
-export config_man_prj=config-management-system
-
-for role in \
- harbor-instance-admin \
- harbor-project-creator \
- project-grafana-viewer \
- project-iam-admin \
- project-bucket-admin \
- project-bucket-object-admin \
- workload-viewer \
- backup-creator \
- project-networkpolicy-admin \
- project-vm-admin \
- project-vm-image-admin \
- custom-role-project-admin \
-; do \
- gdcloud projects add-iam-policy-binding ${shared_infra_project_name:?} \
- --member="user:${IAC_USER:?}" \
- --role="$role";\
-done
-
-gdcloud harbor instances create ${shared_infra_project_name:?}-mhs \
-  --project=${shared_infra_project_name:?}
-gdcloud harbor harbor-projects create ${nb_project:?} \
---project=${shared_infra_project_name:?} \
---instance=${shared_infra_project_name:?}-mhs
-
-Create scripts to migrate the images to the harbor instance and project.
-
-cat <<'EOF' > /root/pull_save_images.sh
-#!/bin/bash
-
-export OUT_DIR="/mnt/c/temp/offline_packages/docker_images/"
-
-mkdir -p "${OUT_DIR}"
-
-images=(
-    "gcr.io/config-management-release/hydration-controller:v1.22.2"
-    "gcr.io/config-management-release/reconciler:v1.22.2"
-    "gcr.io/config-management-release/git-sync:v4.4.2-gke.3__linux_amd64"
-    "gcr.io/config-management-release/gcenode-askpass-sidecar:v1.22.2"
-    "gcr.io/config-management-release/oci-sync:v1.22.2"
-    "gcr.io/config-management-release/helm-sync:v1.22.2"
-    "gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2"
-    "gcr.io/config-management-release/reconciler-manager:v1.22.2"
-    "gcr.io/config-management-release/resource-group-controller:v1.22.2"
-)
-
-for image in "${images[@]}"; do
-    
-    # Extract just the filename and format it safely
-    file_base="${image##*/}"
-    safe_filename="${file_base/:/_}"
-    
-    # Print a status message so you know what the script is currently doing
-    echo "Processing: ${image}"
-    echo " -> Saving to: ${OUT_DIR}${safe_filename}.tar.gz"
-
-    # Pull the image
-    docker image pull "${image}"
-    
-    # Save and compress the image
-    docker save "${image}" | gzip > "${OUT_DIR}${safe_filename}.tar.gz"
-    
-    echo " -> Done."
-    echo "----------------------------------------"
-
-done
-
-echo "All images have been downloaded and saved successfully!"
-EOF
-
-chmod +x /root/pull_save_images.sh
-source /root/pull_save_images.sh
-
-
-cat <<'EOF' > /root/push_2harbor_images.sh
-#!/bin/bash
-
-export IN_DIR="/mnt/c/temp/offline_packages/docker_images/"
-export ORG_NAME="org-1"
-export ZONE="us-east1-c"
-export ROOT_ZONE="gdc.test"
-export shared_infra_project_name="data-ets-mhs"
-export nb_project="data-ets-shared-infra"
-export mhs_project="data-ets-mhs"
-export HARBOR_PASSWORD="REDACTED"
-export ARTIFACT_REGISTRY=https://${shared_infra_project_name}-${nb_project}.${ORG_NAME}.${ZONE}.${ROOT_ZONE}
-export USER="gdch-infra-operator-sa@opscenter.local"
-
-echo "$HARBOR_PASSWORD" | docker login "$ARTIFACT_REGISTRY" -u "$USER" --password-stdin --tls-verify=false
-
-export TARGET_HOST="${shared_infra_project_name}-${nb_project}.${ORG_NAME}.${ZONE}.${ROOT_ZONE}"
-
-images=(
-    "gcr.io/config-management-release/hydration-controller:v1.22.2"
-    "gcr.io/config-management-release/reconciler:v1.22.2"
-    "gcr.io/config-management-release/git-sync:v4.4.2-gke.3__linux_amd64"
-    "gcr.io/config-management-release/gcenode-askpass-sidecar:v1.22.2"
-    "gcr.io/config-management-release/oci-sync:v1.22.2"
-    "gcr.io/config-management-release/helm-sync:v1.22.2"
-    "gcr.io/config-management-release/otelcontribcol:v0.119.0-gke.2"
-    "gcr.io/config-management-release/reconciler-manager:v1.22.2"
-    "gcr.io/config-management-release/resource-group-controller:v1.22.2"
-)
-
-for image in "${images[@]}"; do
-    
-    # Extract the filename variables
-    file_base="${image##*/}"
-    safe_filename="${file_base/:/_}"
-    
-    # Assemble the final destination path
-    TARGET_IMAGE="${TARGET_HOST}/${mhs_project}/${file_base}"
-
-    echo "========================================"
-    echo "Processing: ${file_base}"
-    
-    # Load the tarball into the local daemon
-    echo " -> Loading from: ${IN_DIR}${safe_filename}.tar.gz"
-    gunzip < "${IN_DIR}${safe_filename}.tar.gz" | docker load
-    
-    # Tag the image for Harbor
-    echo " -> Tagging as: ${TARGET_IMAGE}"
-    docker tag "${image}" "${TARGET_IMAGE}"
-    
-    # Push to Harbor (Again, --tls-verify=false is a Podman-specific flag)
-    echo " -> Pushing to Harbor..."
-    docker push "${TARGET_IMAGE}" --tls-verify=false
-    
-done
-
-echo "========================================"
-echo "All images successfully loaded, tagged, and pushed to Harbor!"
-EOF
-
-chmod +x /root/push_2harbor_images.sh
-source /root/push_2harbor_images.sh
-
-
-
-
-
-Allow access to Harbor from other projects:
-
-gdcloud config set core/zone ""
-gdcloud clusters get-credentials global-api
-kubectl apply -f - <<EOF
-apiVersion: networking.global.gdc.goog/v1
-kind: ProjectNetworkPolicy
-metadata:
-  namespace: ${shared_infra_project_name:?}
-  name: allow-inbound-traffic-from-${nb_project:?}-to-mhs-service
-spec:
-  subject:
-    subjectType: ManagedService
-    managedServices:
-      matchTypes:
-      - 'mhs'
-  ingress:
-  - from:
-    - projectSelector:
-        projects:
-          matchNames:
-          - ${nb_project:?}
-EOF
-
-
+ 
 3. Create RepoSync CRD on substrate cluster and target clusters using manifest [reposync-crd.yaml](reposync-crd.yaml)
 
     - Global API

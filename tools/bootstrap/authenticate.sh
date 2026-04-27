@@ -11,7 +11,7 @@ rm -f ${GLOBAL_API_KUBECONFIG}
 export KUBECONFIG=${GLOBAL_API_KUBECONFIG}
 gdcloud config set core/zone ""
 gdcloud clusters get-credentials global-api
-IAC_TOKEN=$(gdcloud auth print-identity-token --audiences=https://global-api.${ORG_NAME:?}.${GDCH_ZONE:?}.${GDCH_DOMAIN:?})
+IAC_TOKEN=$(gdcloud auth print-identity-token --zone ${GDCH_ZONE:?} --audiences=https://global-api.${ORG_NAME:?}.${GDCH_ZONE:?}.${GDCH_DOMAIN:?})
 kubectl config set-credentials "${IAC_SA}" --token="${IAC_TOKEN}"
 kubectl auth whoami || { echo "Failed to authenticate with global-api"; exit 1; }
 
