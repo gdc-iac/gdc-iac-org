@@ -4,6 +4,7 @@ import gzip
 import sys
 import argparse
 import re
+import subprocess
 
 try:
     import docker
@@ -57,7 +58,7 @@ def main():
     )
     
     args = parser.parse_args()
-        
+    
     print(f"Loading manifest: {args.manifest}")
     extracted_images = extract_images_from_manifest(args.manifest)
     
@@ -86,7 +87,7 @@ def main():
         print("=" * 40)
         print(f"Processing: {img}")
         
-        # Load image
+        # Load image using docker library (this worked)
         print(f" -> Loading from: {tar_path}")
         try:
             with gzip.open(tar_path, 'rb') as f:
@@ -99,7 +100,7 @@ def main():
             print(f"Error loading image {img}: {e}")
             continue
             
-        # Tag image
+        # Tag image using docker library (this worked)
         source_image_name = f"gcr.io/config-management-release/{img}"
         target_image = f"{args.harbor_registry}/{args.project}/{img}"
         
@@ -111,18 +112,15 @@ def main():
             print(f"Error tagging image {img}: {e}")
             continue
             
-        # Push image
+        # Push image using subprocess (fallback because helper fails in Python)
         print(f" -> Pushing to Harbor...")
         try:
-            auth_config = None
-            if password:
-                print("    Using credentials from environment to authenticate (bypassing helper).")
-                auth_config = {'username': user, 'password': password}
-                
-            for line in client.images.push(target_image, stream=True, decode=True, auth_config=auth_config):
-                if 'status' in line:
-                    print(f"    {line['status']}")
-        except Exception as e:
+            # We use subprocess here because the Python library's interaction with
+            # the custom credential helper 'docker-credential-mhs' fails with
+            # an error about missing audience annotations, whereas the CLI works.
+            subprocess.run(["docker", "push", target_image], check=True)
+            print("    Pushed successfully.")
+        except subprocess.CalledProcessError as e:
             print(f"Error pushing image {target_image}: {e}")
             continue
             

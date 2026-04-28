@@ -1,3 +1,16 @@
+# Config Sync 
+
+Config sync allows to deploy and manage cluster-level resources as code from a git repository. It is a GitOps solution that allows to deploy and manage cluster-level resources as code from a git repository. 
+
+In order to use ConfigSync on the clusters, it needs to be installed on them and configured to sync with a git repository. Proposed setup consists of:
+- ConfigSync installed and running on a user cluster
+- Git repository containing Helm Charts for Global API cluster, Management API clusters and user clusters. 
+- RepoSync CRDs created on Global API cluster, Management API clusters and user clusters. The CRDs need to be created once by IO in the first place.
+- IAM and RBAC roles created on Global API cluster, Management API clusters and user clusters. The roles need to be created once by IO in the first place.
+- Kubeconfig secrets created on user cluster
+
+You can find examples of configuration in [examples/config-sync](../../examples/config-sync). 
+
 # Config Sync Setup
 1. Go through the [bootstrap process](../../tools/bootstrap/README.md). 
 2. [Optional] Download latest `config-sync-manifest.yaml` for your setup from [Config Sync releases](https://github.com/GoogleContainerTools/kpt-config-sync/releases).
