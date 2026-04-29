@@ -11,16 +11,13 @@ In order to use ConfigSync on the clusters, it needs to be installed on them and
 
 You can find examples of configuration in [examples/config-sync](../../examples/config-sync). 
 
-# Config Sync Setup
-1. Go through the [bootstrap process](../../tools/bootstrap/README.md). 
-2. [Optional] Download latest `config-sync-manifest.yaml` for your setup from [Config Sync releases](https://github.com/GoogleContainerTools/kpt-config-sync/releases).
+## Prerequisites
 
-- [v.1.23.3](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.23.3/config-sync-manifest.yaml)
-- [v.1.24.0-rc.4](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.24.0-rc.4/config-sync-manifest.yaml)
+1. Go through the [bootstrap process](../../tools/bootstrap/README.md).
 
-3. Create harbor instance in the `iac-root` project and sign in to harbor (see [configure docker authentication](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform-application/pa-ao-operations/configure-docker-authentication))
+2. Create harbor instance in the `iac-root` project and sign in to harbor (see [configure docker authentication](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform-application/pa-ao-operations/configure-docker-authentication))
 
-```
+```bash
 . ../bootstrap/config.sh
 export HARBOR_INSTANCE_NAME="${IAC_PROJECT:?}-mhs"
 gdcloud config set project ${IAC_PROJECT:?}
@@ -40,7 +37,76 @@ If `docker-credential-mhs` is not installed, run the following command:
 gdcloud components install docker-credential-mhs
 ```
 
-4. Use `pull_images.py` script to pull the images from GCR to the local machine
+## IO prerequisites
+These actions require Infrastructure Operator (IO) privileges.
+
+
+1. Use IaC to create IAM and RBAC roles that allow managing RepoSync objects using provided manifests [sync-admin-iam-role.yaml](sync-admin-iam-role.yaml) and [sync-admin-iam.yaml](sync-admin-iam.yaml):
+
+![iac-global.png](images/iac-global.png)
+
+- Global API
+  └─ iac/infrastructure/global/orgs/${ORG_NAME}/
+    ├─ sync-admin-iam-role.yaml
+    ├─ sync-admin-role.yaml
+    └─ ... update kustomization.yaml to apply it
+
+- Each Zone Management API
+  └─ iac/infrastructure/zonal/zones/${GDCH_ZONE:?}/gdchservices-admin-management
+    ├─ sync-admin-role.yaml
+    └─ ... update kustomization.yaml to apply it
+    
+
+2. Create RepoSync CRD using manifest [reposync-crd.yaml](reposync-crd.yaml).
+**Note**: 
+Config Sync reconciler does not allow creating resources in `configsync.gke.io` API group. Thus the CRDs need to be created by IO in the cluster directly.
+
+```bash
+# apply to Global API
+export KUBECONFIG=... # global api admin kubeconfig
+kubectl apply -f reposync-crd.yaml
+
+# apply to each Zone Management API
+export KUBECONFIG=... # management api admin kubeconfig
+kubectl apply -f reposync-crd.yaml
+
+# apply to each user cluster
+export KUBECONFIG=... # user cluster iodebug kubeconfig
+kubectl apply -f reposync-crd.yaml
+```
+
+In order to create RepoSync CRD in user cluster and apply roles you need to obtain user cluster io-debug kubeconfig.
+```bash
+export KUBECONFIG=... # org admin kubeconfig
+kubectl get secrets io-debug-kubeconfig \
+ -n ${CLUSTER_NAME:?}-cluster\
+ --template {{.data.value}} | base64 -d > ../bootstrap/generated/kubeconfig/${CLUSTER_NAME:?}-io-debug.kubeconfig
+```
+
+```bash
+export KUBECONFIG=../bootstrap/generated/kubeconfig/${CLUSTER_NAME:?}-io-debug.kubeconfig
+kubectl apply -f reposync-crd.yaml
+kubectl apply -f sync-admin-role.yaml
+```
+
+## Config Sync Setup
+1. Verify that sync-admin role exists in the `iac-root` project:
+![sync-admin-role.png](images/sync-admin-role.png)
+
+2. Assign `sync-admin` role to the ${IAC_SA} user:
+```bash
+. ../bootstrap/config.sh
+gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+  --member="serviceAccount:${IAC_PROJECT:?}:${IAC_SA:?}" \
+  --role="sync-admin"
+```
+
+1. [Optional] Download latest `config-sync-manifest.yaml` for your setup from [Config Sync releases](https://github.com/GoogleContainerTools/kpt-config-sync/releases).
+
+- [v.1.23.3](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.23.3/config-sync-manifest.yaml)
+- [v.1.24.0-rc.4](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.24.0-rc.4/config-sync-manifest.yaml)
+
+2. Use `pull_images.py` script to pull the images from GCR to the local machine
 
 Example usage:
 
@@ -50,7 +116,7 @@ python3 pull_images.py \
     --out-dir /tmp/config-sync-images
 ```
 
-5. Push the images to the harbor instance:
+3. Push the images to the harbor instance:
 
 ```bash
 python3 push_images.py \
@@ -59,8 +125,7 @@ python3 push_images.py \
   --harbor-registry ${HARBOR_REGISTRY:?} --project ${IAC_PROJECT:?}
 ```
 
-
-6. Apply the patch to the manifest file:
+4. Apply the patch to the manifest file:
 
 ```bash
 export PATCH="v.1.23.3.patch"
@@ -71,57 +136,36 @@ sed -i 's/namespace: config-management-system/namespace: iac-root/g' $PATCHED_MA
 sed -i 's/namespace: config-management-monitoring/namespace: iac-root/g' $PATCHED_MANIFEST
 sed -i 's/namespace: resource-group-system/namespace: iac-root/g' $PATCHED_MANIFEST
 sed -i 's/name: config-management-system/name: iac-root/g' $PATCHED_MANIFEST
-sed -i 's/name: config-management-monitoring/names: iac-root/g' $PATCHED_MANIFEST
+sed -i 's/name: config-management-monitoring/name: iac-root/g' $PATCHED_MANIFEST
 sed -i 's/name: resource-group-system/name: iac-root/g' $PATCHED_MANIFEST
 sed -i 's/otel-collector.config-management-monitoring/otel-collector.iac-root/g' $PATCHED_MANIFEST
+sed -i "s|image: gcr.io/config-management-release|image: ${HARBOR_REGISTRY}/${IAC_PROJECT}|g" $PATCHED_MANIFEST
 ```
 
-7. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). 
-Use patched manifest file: [patched-config-sync-manifest-v.1.23.3.yaml](patched-config-sync-manifest-v.1.23.3.yaml)
+5. Deploy Config Sync using kubectl, following the [documentation](https://docs.cloud.google.com/kubernetes-engine/config-sync/docs/how-to/installing-kubectl). Use patched manifest file: [patched-config-sync-manifest-v.1.23.3.yaml](patched-config-sync-manifest-v.1.23.3.yaml)
+
+- **Option 1**: Vanilla kubernetes
+    ```bash
+    export KUBECONFIG=... # use admin kubeconfig
+    kubectl apply -f ${PATCHED_MANIFEST:?}
     ```
-    kubectl apply -f config-sync-manifest-gdc.yaml
+- **Option 2**: GDC-hosted cluster
+
+    In order to deploy Config Sync to GDC hosted user cluster you need to obtain cluster administrator kubeconfig from the **Infrastructure Operator** or ask the IO team to deploy Config Sync for you.
+    ```bash
+    export KUBECONFIG=... # org admin kubeconfig
+    kubectl get secrets io-debug-kubeconfig \
+    -n ${CLUSTER_NAME:?}-cluster\
+    --template {{.data.value}} | base64 -d > ../bootstrap/generated/kubeconfig/${CLUSTER_NAME:?}-io-debug.kubeconfig
+    ```
+
+    ```bash
+    export KUBECONFIG=../bootstrap/generated/kubeconfig/${CLUSTER_NAME:?}-io-debug.kubeconfig
+    kubectl apply -f ${PATCHED_MANIFEST:?}
     ```
  
-8. Create RepoSync CRD on substrate cluster and target clusters using manifest [reposync-crd.yaml](reposync-crd.yaml)
-
-    - Global API
-    ```
-    kubectl apply -f reposync-crd.yaml
-    ```
-    - Each Zone Management API
-    ```
-    kubectl apply -f reposync-crd.yaml
-    ```
-    - Each Tenant User Cluster
-    ```
-    kubectl apply -f reposync-crd.yaml
-    ```
-
-    **Note:**
-
-    This one time action requires IO privileges to create CRD on global API cluster and management API clusters. IO should use IaC to create this resources and ensure it's persistence.  
-
-9. Create IAM and RBAC roles that allow managing RepoSync objects. Use the provided manifests [sync-admin-iam-role.yaml](sync-admin-iam-role.yaml) and [sync-admin-iam.yaml](sync-admin-role.yaml):
-
-    - Global API IAMRole
-    ```
-    kubectl apply -f sync-admin-iam-role.yaml
-    ```
-    - Each Zone Management API RBAC
-    ```
-    kubectl apply -f sync-admin-role.yaml
-    ```
-    - Each Tenant User Cluster RBAC
-    ```
-    kubectl apply -f sync-admin-role.yaml
-    ```
-    **Note:**
-
-    This action requires IO privileges. IO should use IaC to create these resources and ensure their persistence. 
-
-
-10. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md) in the user cluster (where config-sync is running):
-    ```
+6. Configure access secrets to store [kubeconfig created during the bootstrap](../../README.md) in the user cluster (where config-sync is running):
+    ```bash
     export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
     kubectl -n iac-root create secret generic kubeconfigs \
     --from-file=global=${CA_CERT_PATH}${IAC_PROJECT}_${IAC_SA}-global-api.kubeconfig \
@@ -129,18 +173,18 @@ Use patched manifest file: [patched-config-sync-manifest-v.1.23.3.yaml](patched-
     --from-file=${CLUSTER_NAME}=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
     ```
 
-11. Configure GDC CA certificate
+7. Configure GDC CA certificate
 
-    ```
+    ```bash
     curl -k  https://${GDCH_CONSOLE}/.well-known/certificate-authority -o ${CA_CERT_PATH:?}cachain.crt
     export KUBECONFIG=${CA_CERT_PATH:?}${IAC_PROJECT:?}_${IAC_SA:?}-${ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
     kubectl -n iac-root create secret generic certs \
     --from-file=${CA_CERT_PATH:?}cachain.crt
     ```
 
-12. Create objects for synchronisation state tracking:
+8. Create objects for synchronisation state tracking:
     - Global API
-    ```
+    ```bash
     export GIT_REPO=...
 
     kubectl apply -f - << EOF
@@ -159,7 +203,7 @@ Use patched manifest file: [patched-config-sync-manifest-v.1.23.3.yaml](patched-
     EOF
     ```
     - Each Zone Management API
-    ```
+    ```bash
     export GIT_REPO=...
 
     kubectl apply -f - << EOF
@@ -178,9 +222,9 @@ Use patched manifest file: [patched-config-sync-manifest-v.1.23.3.yaml](patched-
         auth: none
     EOF
     ```
-13. Enable synchronisation - create RepoSyncs on the cluster where Config Sync is running:
+9. Enable synchronisation - create RepoSyncs on the cluster where Config Sync is running:
     - Global API
-    ```
+    ```bash
     export GIT_REPO=...
 
     kubectl apply -f - << EOF

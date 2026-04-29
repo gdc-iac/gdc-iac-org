@@ -9,7 +9,6 @@ metadata:
     user-roles.system.private.gdc.goog/binding-type: rolebinding
     user-roles.system.private.gdc.goog/ui-display-name: Sync Admin
     user-roles.system.private.gdc.goog/ui-role-description: Manages Config Repo Syncs
-      for projects
   labels:
     user-roles.system.private.gdc.goog/hierarchy-level: global-project
     user-roles.system.private.gdc.goog/persona: app-operator
