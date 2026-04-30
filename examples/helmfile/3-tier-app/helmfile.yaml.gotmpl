@@ -1,0 +1,128 @@
+# helmfile.yaml.gotmpl
+# Load tenants.yaml directly
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $envData := index $vals "dev-env" }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+
+releases:
+  # LOOP 1: Iterate over Tenants
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+
+    # --- ORG LEVEL POLICIES ---
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_network_policies") }}
+    - name: {{ $tenantName }}-org-netpols
+      chart: {{ $vals.gdc_org_network_policies_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      values:
+        - orgnetworkpolicies: {{ $tenantConfig.global.org_network_policies | toJson }}
+    {{- end }}
+
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_policies") }}
+    - name: {{ $tenantName }}-org-policies
+      chart: {{ $vals.gdc_org_policies_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      values:
+        - orgpolicies: {{ $tenantConfig.global.org_policies | toJson }}
+    {{- end }}
+
+    # LOOP 2: Iterate over Projects
+    {{- range $project := $tenantConfig.projects }}
+
+    # --- STAGE 1: DEPLOY GDC PROJECT ---
+    - name: {{ $project.name }}
+      chart: {{ $vals.gdc_projects_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      labels:
+        tier: project
+        tenant: {{ $tenantName }}
+      values:
+        - projects:
+            {{ $tenantName }}:
+              name: {{ $project.name }}
+              namespace: platform
+
+    # --- STAGE 1.5: DEPLOY IAM ROLES  ---
+    {{- if hasKey $project "iamroles" }}
+    - name: {{ $project.name }}-iam-roles
+      chart: {{ $vals.gdc_iam_roles_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      needs:
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+      values:
+        - iamroles: {{ $project.iamroles | toJson }}
+          namespace: {{ $project.name }}
+    {{- end }}
+
+    # --- STAGE 2: DEPLOY SERVICE ACCOUNTS ---
+    {{- if hasKey $project "serviceaccounts" }}
+    - name: {{ $project.name }}-sa
+      chart: {{ $vals.gdc_projects_sa_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      needs:
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+      values:
+        - projectserviceaccounts:
+            {{- range $sa := $project.serviceaccounts }}
+            - name: {{ $sa }}
+              namespace: {{ $project.name }}
+            {{- end }}
+    {{- end }}
+    
+    # --- STAGE 2.5: DEPLOY IAM ROLE BINDINGS ---
+    {{- if hasKey $project "iamrolebindings" }}
+    - name: {{ $project.name }}-iam-bindings
+      chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      needs:
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+      values:
+        - iamrolebindings: {{ $project.iamrolebindings | toJson }}
+          namespace: {{ $project.name }}
+    {{- end }}
+
+    # --- STAGE 3: DEPLOY HARBOR (if defined) ---
+    {{- if hasKey $project "harbors" }}
+    - name: {{ $project.name }}-harbor
+      chart: {{ $vals.gdc_harbors_chart_path }}
+      kubeContext: {{ $vals.gdc_context_zone }}
+      namespace: iac-root
+      installed: true
+      needs:
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}-iam-bindings
+      values:
+        - harbors: {{ $project.harbors | toJson }}
+    {{- end }}
+
+    # --- STAGE 4: DEPLOY PROJECT NETWORK POLICIES ---
+    {{- if hasKey $project "network_policies" }}
+    - name: {{ $project.name }}-netpols
+      chart: {{ $vals.gdc_project_network_policies_chart_path }}
+      kubeContext: {{ $vals.gdc_context_global }}
+      namespace: iac-root
+      installed: true
+      needs:
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}
+        - {{ $vals.gdc_context_global }}/iac-root/{{ $project.name }}-iam-bindings
+      values:
+        - projectnetworkpolicies: {{ $project.network_policies | toJson }}
+          namespace: {{ $project.name }}
+    {{- end }}
+
+    {{- end }} # End Project Loop
+  {{- end }} # End Tenant Loop
