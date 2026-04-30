@@ -59,7 +59,7 @@ When provisioning GDCag standard clusters, it is highly recommended to logically
 
 The toolkit allows you to use different tools to template and synchronize these configurations based on your operational needs. The detailed setup workflows and prerequisites for each method are documented in their respective tool directories.
 
-### Method 1: Deployment via Custom Helm CLI wrapper (Recommended)
+### Method 1: Deployment via Custom Helm CLI wrapper (Preview)
 A custom Python wrapper script (`helm_cli.py`) designed for local or CI/CD usage. It streamlines the parsing of YAML configurations and loops through the charts imperatively, substituting the correct contexts and environments automatically.
 👉 **[View Helm CLI Documentation & Setup Guide](tools/helm_cli/README.md)**
 
