@@ -13,7 +13,8 @@ This repository provides a flexible toolkit for managing infrastructure as code 
   - `helm_cli/`: Custom python wrapper script for processing configurations and deploying.
   - `config-sync/`: Examples for operators using GitOps.
   - `kpt/`: Package management integration using kpt.
-- `examples/`: Sample configuration files organized by organization or use case (e.g., `sample-org`, `atl167`) representing desired state layouts.
+  - `argocd/`: GitOps deployment configurations using ArgoCD.
+- `examples/`: Sample configuration files organized by organization or use case (e.g., `sample-org`, `dga`, `dga-factory`, `helmfile`) representing desired state layouts.
 - `scripts/`: Helper utilities for testing charts and updating documentation.
 - `policy/`: OPA/Rego policies for security and configuration validation.
 
@@ -70,6 +71,10 @@ Continuous state synchronization using the Config Sync operator. It acts as an i
 This method utilizes a **data-driven approach** linking `tenants.yaml` inputs through a logic engine (`helmfile.yaml`) to dynamically generate and sequence Helm releases based on the required dependency chain.
 👉 **[View Helmfile Documentation & Setup Guide](tools/helmfile/README.md)**
 
+### Method 4: GitOps via ArgoCD (Preview)
+Continuous deployment and automated state synchronization using ArgoCD.
+👉 **[View ArgoCD Documentation & Setup Guide](tools/argocd/README.md)**
+
 ---
 
 ## Quick Start & Forking Guide
@@ -77,7 +82,7 @@ This method utilizes a **data-driven approach** linking `tenants.yaml` inputs th
 If you are planning to fork this repository as a starting template for your GDCag air-gapped deployments:
 
 1. **Review Example Layouts**:
-   Browse the `examples/` directory to see sample structures (`sample-org`, `atl167`, `dga`) demonstrating how to define your desired infrastructure state using values.
+   Browse the `examples/` directory to see sample structures (`sample-org`, `dga`, `dga-factory`, `helmfile`) demonstrating how to define your desired infrastructure state using values.
 2. **Define Your State**:
    Adapt one of these examples or create your own directory with your specific `org.yaml` and `tenants.yaml` configuration parameters. These files drive your Helm deployments.
 3. **Authenticate Iterative Deployment Tools**:
@@ -111,6 +116,7 @@ All charts and configurations submitted to this repository should be validated a
 
 - **Chart Testing**: Scripts to template and validate charts are located in `scripts/test-charts.sh`.
 - **Security Policies**: OPA/Gatekeeper validations (like `policy/security.rego`) exist to ensure that deployments adhere to the organization's security defaults.
+- **Helper Scripts**: Additional utilities for schema generation (`scripts/generate_schemas.py`), documentation (`scripts/helm-docs.sh`), and README updates (`scripts/update_readmes.py`).
 
 ---
 
