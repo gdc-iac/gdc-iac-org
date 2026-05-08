@@ -11,6 +11,9 @@ IAC_USER_EMAIL="fop-iac@example.com"
 GLOBAL_CONTEXT=${GLOBAL_API_CONTEXT:-"global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"}
 
 CONSOLE_HOST="console.org-1.zone1.google.gdch.test"
+AIS_HOST="ais-core.org-1.zone1.google.gdch.test"
+KMS_HOST="kms.org-1.zone1.google.gdch.test"
+
 CERT_DIR="./.certs"
 mkdir -p "$CERT_DIR"
 
@@ -19,8 +22,18 @@ echo "🔐 001-AO-VM-CREATE: Unified Platform Setup"
 echo "================================================="
 
 # 1. Certificate Management
-echo "📡 Fetching GDC Certificates..."
-openssl s_client -showcerts -connect ${CONSOLE_HOST}:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > "${CERT_DIR}/gdc-console.crt"
+echo "Fetching Console Certificate..."
+openssl s_client -showcerts -connect ${CONSOLE_HOST}:443 </dev/null | openssl x509 -outform PEM > "${CERT_DIR}/gdc-console.crt"
+
+echo "Fetching AIS Certificate..."
+openssl s_client -showcerts -connect ${AIS_HOST}:443 </dev/null | openssl x509 -outform PEM >  "${CERT_DIR}/ais-core.crt"
+
+echo "Fetching KMS certificate..."
+openssl s_client -showcerts -connect ${KMS_HOST}:443 </dev/null | openssl x509 -outform PEM > "${CERT_DIR}/gdc-kms.crt"
+
+echo "Adding KMS & AIS certs to trust store (requires sudo)..."
+sudo cp ${CERT_DIR}/* /usr/local/share/ca-certificates/
+sudo update-ca-certificates
 
 # 2. Platform Admin Login
 echo ""
@@ -40,16 +53,25 @@ fi
 
 # 4. Grant HIGH-LEVEL Organization Roles
 echo ""
-echo "🔑 Granting 'platform-admin' to $IAC_USER_EMAIL..."
+echo "🔑 Granting bootstrap roles to $IAC_USER_EMAIL..."
 # platform-admin includes the 'bind' privilege for standard project roles
 gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
     --member="user:$IAC_USER_EMAIL" \
-    --role="platform-admin" >/dev/null 2>&1 || echo "⚠️ Role might already be bound."
+    --role="platform-admin" >/dev/null 2>&1 || echo "⚠️ Role platform-admin might already be bound."
 
 # Also ensure project-creator is there (redundant but safe)
 gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
     --member="user:$IAC_USER_EMAIL" \
-    --role="project-creator" >/dev/null 2>&1 || echo "⚠️ Role might already be bound."
+    --role="project-creator" >/dev/null 2>&1 || echo "⚠️ Role project-creator might already be bound."
+
+# Grant Org-level roles required to provision projects, rolebindings, and cluster bindings
+echo "🔑 Granting global admin roles to $IAC_USER_EMAIL..."
+for role in organization-iam-admin project-editor user-cluster-admin; do
+    echo "...granting $role"
+    gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+        --member="user:$IAC_USER_EMAIL" \
+        --role="$role" >/dev/null 2>&1 || echo "⚠️ Role $role might already be bound."
+done
 
 # 5. Grant Project Roles on iac-root (Required for Helm state)
 echo ""

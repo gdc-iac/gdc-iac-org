@@ -93,10 +93,48 @@ For manual verification and audit evidence (screenshots):
    ```
    *Note: If the session is not authenticated, the screenshot will capture the login screen. Manual steps are currently required to select the OIDC provider and the user from the dropdown menu. Scripting of this authentication flow is deferred for future automation.*
 
+## GDC Physical Environments (Gonzo, Bunsen)
+
+In physical environments, authentication typically integrates with **Active Directory (AD)**, and automated test execution is driven via **Kubernetes ServiceAccounts** rather than interactive user credentials.
+
+To reduce blast-radius and verify the setup with production-grade isolation, this folder includes a declarative Kubernetes bootstrap configuration to execute the test case using scoped service accounts.
+
+### The Service Account Execution Model
+
+1. **`platform-bootstrap-sa`**: Simulates the platform/organization administrator. It is granted the organization-level roles needed to provision the GDC project, cluster bindings, and role bindings.
+2. **`test-runner-sa`**: Simulates the IaC automation runner (e.g., `fop-iac@example.com`). It is granted scoped namespace permissions on `iac-root` to run the `helmfile sync` and manage resources.
+
+### Execution Steps
+
+1. **Bootstrap Service Accounts & Bindings:**
+   Run the setup script as a Cluster Admin to deploy the declarative SA manifests and generate isolated context tokens:
+   ```bash
+   chmod +x setup-physical-prereqs.sh
+   ./setup-physical-prereqs.sh
+   ```
+   *This applies [physical-bootstrap.yaml](file:///usr/local/google/home/stefancross/gdc-iac-org/examples/platform-test/001-AO-VM-CREATE/physical-bootstrap.yaml) and outputs a local `.kubeconfig-sa` file.*
+
+2. **Run the Helmfile Sync using the Runner SA context:**
+   Execute the sync entirely under the restricted `test-runner-sa` context:
+   ```bash
+   KUBECONFIG=./.kubeconfig-sa helmfile --kube-context runner-context sync
+   ```
+
+3. **Verify isolated resource creation:**
+   Confirm that the resources were successfully created in the `ioc-test-project-001` namespace under the service account:
+   ```bash
+   kubectl --kubeconfig=./.kubeconfig-sa --context=runner-context get virtualmachine ioc-test-vm -n ioc-test-project-001
+   ```
+
 ## Teardown
 To remove all resources created for this test case:
 ```bash
-helmfile destroy
+# Teardown under the runner context
+KUBECONFIG=./.kubeconfig-sa helmfile --kube-context runner-context destroy
+
+# Delete the bootstrap service accounts and bindings
+kubectl --context "$GLOBAL_API_CONTEXT" delete -f physical-bootstrap.yaml
+rm -f .kubeconfig-sa
 ```
 
 ## Mapping to 001-AO-VM-CREATE Test Spec
