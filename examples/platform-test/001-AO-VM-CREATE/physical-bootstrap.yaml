@@ -1,5 +1,5 @@
 # physical-bootstrap.yaml
-# Declarative Kubernetes manifests for physical GDC environments (Gonzo, Bunsen, etc.)
+# Declarative Kubernetes manifests for physical GDC target physcial test environments
 # Creates ServiceAccounts, Token Secrets, and GDC-native IAMRoleBindings.
 
 apiVersion: v1
@@ -144,3 +144,37 @@ spec:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
     name: system:serviceaccount:iac-root:test-runner-sa
+
+# ==============================================================================
+# 3. PLATFORM BOOTSTRAP SA - PROJECT-LEVEL BINDINGS ON iac-root (Helm State)
+# ==============================================================================
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--project-editor
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--secret-admin
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: secret-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
