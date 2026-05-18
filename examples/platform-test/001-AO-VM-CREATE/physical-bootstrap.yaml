@@ -1,0 +1,180 @@
+# physical-bootstrap.yaml
+# Declarative Kubernetes manifests for physical GDC target physcial test environments
+# Creates ServiceAccounts, Token Secrets, and GDC-native IAMRoleBindings.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: platform-bootstrap-sa
+  namespace: iac-root
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-runner-sa
+  namespace: iac-root
+---
+# Service Account Token Secrets (persists token generation in newer K8s clusters)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: platform-bootstrap-sa-token
+  namespace: iac-root
+  annotations:
+    kubernetes.io/service-account.name: platform-bootstrap-sa
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-runner-sa-token
+  namespace: iac-root
+  annotations:
+    kubernetes.io/service-account.name: test-runner-sa
+type: kubernetes.io/service-account-token
+---
+# ==============================================================================
+# 1. PLATFORM BOOTSTRAP SA - ORGANIZATION LEVEL BINDINGS
+# ==============================================================================
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--platform-admin
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: platform-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--project-creator
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-creator
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--organization-iam-admin
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: organization-iam-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--project-editor
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--user-cluster-admin
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: user-cluster-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+
+# ==============================================================================
+# 2. TEST RUNNER SA - PROJECT-LEVEL BINDINGS ON iac-root
+# ==============================================================================
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-runner-sa--project-editor
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:test-runner-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-runner-sa--secret-admin
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: secret-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:test-runner-sa
+
+# ==============================================================================
+# 3. PLATFORM BOOTSTRAP SA - PROJECT-LEVEL BINDINGS ON iac-root (Helm State)
+# ==============================================================================
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--project-editor
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: platform-bootstrap-sa--secret-admin
+  namespace: iac-root
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: secret-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:iac-root:platform-bootstrap-sa

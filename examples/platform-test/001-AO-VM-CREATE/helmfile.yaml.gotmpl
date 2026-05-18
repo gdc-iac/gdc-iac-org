@@ -58,7 +58,7 @@ releases:
     # --- STAGE 1b: DEPLOY PROJECT CLUSTER BINDINGS ---
     {{- if $project.cluster_bindings }}
     - name: {{ $projectName }}-cluster-bindings
-      chart: "../../charts/gdc-project-bindings"
+      chart: "../../../charts/gdc-project-bindings"
       kubeContext: {{ $adminContext }}
       namespace: iac-root
       installed: true

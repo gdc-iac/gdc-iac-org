@@ -6,6 +6,7 @@ apiVersion: networking.gdc.goog/v1
 kind: ProjectNetworkPolicy
 metadata:
   name: {{ required "A valid VM name is required" $vm.name }}-ingress
+  namespace: {{ required "A valid namespace is required" $vm.namespace }}
 spec:
   policyType: Ingress
   subject:
