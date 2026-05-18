@@ -1,0 +1,44 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  notebook-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_notebooks" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "notebooks") }}
+      {{- range $notebook := $tenantConfig.global.notebooks }}
+      - name: {{ $notebook.name }}
+        chart: {{ $vals | get "gdc_notebooks_chart_path" "../../charts/gdc-notebooks" }}
+        kubeContext: {{ $tenantZonalContext | quote }}
+        labels:
+          stage: 4-notebooks
+          tenant: {{ $tenantName | quote }}
+          project: {{ $notebook.project | quote }}
+          type: "notebooks"
+        inherit:
+          - template: notebook-template
+        values:
+          - notebooks:
+              - {{ merge (dict "namespace" $notebook.project) $notebook | toJson }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+

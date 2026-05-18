@@ -1,0 +1,47 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global" "") }}
+  {{- if not $tenantGlobalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  rbac-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: true
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
+
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "rbacrolebindings") }}
+      {{- $tenantAdmin := $tenantConfig.global | get "admin_subject_name" "" }}
+      {{- $rbacrolebindings := list }}
+      {{- range $binding := $tenantConfig.global.rbacrolebindings }}
+        {{- $resolved := dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User") }}
+        {{- if hasKey $binding "subject_namespace" }}
+          {{- $_ := set $resolved "subject_namespace" $binding.subject_namespace }}
+        {{- end }}
+        {{- $rbacrolebindings = append $rbacrolebindings $resolved }}
+      {{- end }}
+    - name: {{ $tenantName }}-rbac-rolebindings
+      chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../charts/gdc-rbac-role-bindings" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
+      labels:
+        stage: 0-org-setup
+      inherit:
+        - template: rbac-template
+      values:
+        - rbacrolebindings: {{ $rbacrolebindings | toJson }}
+        - namespace: {{ $envData | get "iac.global.namespace" "platform" | quote }}
+    {{- end }}
+  {{- end }}

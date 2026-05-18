@@ -1,0 +1,17 @@
+{{- range $record := .Values.records }}
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: ResourceRecordSet
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" $.Values.namespace | quote }}
+  name: {{ printf "%s-%s" $.Values.zone.name (regexReplaceAll "\\W+" $record.name "-") | quote }}
+spec:
+  name: {{ required "A valid record name (FQDN) is required" $record.name | quote }}
+  type: {{ required "A valid record type is required" $record.type | quote }}
+  ttlSeconds: {{ $record.ttlSeconds | default 300 }}
+  rrData:
+    {{- range $data := required "At least one rrData entry is required" $record.rrData }}
+    - {{ $data | quote }}
+    {{- end }}
+  dnsZone: {{ required "A valid zone name is required (.Values.zone.name)" $.Values.zone.name | quote }}
+{{- end }}

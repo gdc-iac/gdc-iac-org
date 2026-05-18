@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=values.schema.json
+
+# roleBindings specify RoleBinding resources to apply to specific namespaces
+roleBindings: []
+#  - name: developer-binding
+#    namespace: app-namespace
+#    roleName: developer-role
+#    roleKind: Role
+#    subjects:
+#      - kind: User
+#        name: fop-alice@example.com
+#        apiGroup: rbac.authorization.k8s.io
+
+# clusterRoleBindings specify ClusterRoleBinding resources to apply globally within the cluster
+clusterRoleBindings: []
+#  - name: cluster-viewer-binding
+#    roleName: view
+#    subjects:
+#      - kind: Group
+#        name: auditors@example.com
+#        apiGroup: rbac.authorization.k8s.io

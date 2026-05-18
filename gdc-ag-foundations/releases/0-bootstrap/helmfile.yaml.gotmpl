@@ -1,0 +1,15 @@
+---
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+
+helmfiles:
+  - path: customroles.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: iam-rolebindings.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: rbacrolebindings.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}

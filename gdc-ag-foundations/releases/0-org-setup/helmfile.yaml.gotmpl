@@ -1,0 +1,25 @@
+---
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+
+helmfiles:
+  - path: org-policies.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: org-network-plocies.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: billing.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: customroles.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: iam-rolebindings.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: rbac-role-bindings.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+

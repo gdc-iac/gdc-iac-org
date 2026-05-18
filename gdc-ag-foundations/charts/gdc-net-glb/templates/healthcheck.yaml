@@ -1,0 +1,14 @@
+{{- if .Values.healthCheck.enabled }}
+apiVersion: networking.global.gdc.goog/v1
+kind: HealthCheck
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ printf "%s-healthcheck" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+spec:
+  tcpHealthCheck:
+    port: {{ required "A valid healthcheck port is required (.Values.healthCheck.port)" .Values.healthCheck.port }}
+  timeoutSec: {{ .Values.healthCheck.timeoutSec }}
+  checkIntervalSec: {{ .Values.healthCheck.checkIntervalSec }}
+  healthyThreshold: {{ .Values.healthCheck.healthyThreshold }}
+  unhealthyThreshold: {{ .Values.healthCheck.unhealthyThreshold }}
+{{- end }}

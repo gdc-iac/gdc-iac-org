@@ -1,0 +1,27 @@
+---
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+
+helmfiles:
+  - path: vm.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: buckets.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: dbs.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: habor.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: backup-repositories.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: backups.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}
+  - path: dashboards.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}

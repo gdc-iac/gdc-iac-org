@@ -1,0 +1,20 @@
+# Default values for gdc-custom-roles.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# list of CustomRoles to deploy.
+# Supports standard IAM CustomRole specifications (apiVersion: iam.gdc.goog/v1).
+customroles: []
+  # - name: "test-2"
+  #   namespace: "platform"
+  #   title: "test-2"
+  #   description: "A custom role example"
+  #   stage: "GA"
+  #   scope: "organization"
+  #   roleNamespaces:
+  #     - "platform"
+  #   globalRules:
+  #     - apiGroups: [""]
+  #       resources: ["secrets"]
+  #       verbs: ["list", "get", "patch", "create", "delete", "update"]
+  #   zonalRules: []

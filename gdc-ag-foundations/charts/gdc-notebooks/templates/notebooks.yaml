@@ -1,0 +1,96 @@
+{{- if .Values.notebooks }}
+{{- range $notebook := .Values.notebooks }}
+---
+apiVersion: aiplatform.gdc.goog/v1
+kind: Notebook
+metadata:
+  annotations:
+  {{- if $notebook.stopped }}
+    kubeflow-resource-stopped: "1970-01-01T00:00:00Z"
+  {{- end }}
+  finalizers:
+  - notebooks.aiplatform.gdc.goog/notebook-controller-finalizer
+  labels:
+    app: {{ required "A valid name is required" $notebook.name }}
+  name: {{ $notebook.name }}
+  namespace: {{ required "A valid namespace is required" $notebook.namespace | quote }}
+spec:
+  template:
+    spec:
+      {{- if $notebook.serviceAccountName }}
+      serviceAccountName: {{ $notebook.serviceAccountName }}
+      {{- end }}
+      {{- if $notebook.nodeSelector }}
+      nodeSelector:
+        {{- toYaml $notebook.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if $notebook.tolerations }}
+      tolerations:
+        {{- toYaml $notebook.tolerations | nindent 8 }}
+      {{- end }}
+      containers:
+      - args:
+        - jupyter labextension disable beatrix_jupyterlab dataproc_jupyter_plugin;
+          jupyter lab --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''
+          --NotebookApp.ip='0.0.0.0' --NotebookApp.base_url='$(NB_PREFIX)'
+        command:
+        - bash
+        - -c
+        image: {{ required "A valid nb_jupyter_image is required" $notebook.nb_jupyter_image }}
+        imagePullPolicy: IfNotPresent
+        name: {{ $notebook.name }}
+        {{- if $notebook.env }}
+        env:
+          {{- toYaml $notebook.env | nindent 8 }}
+        {{- end }}
+        resources:
+          limits:
+            cpu: {{ default "1" $notebook.cpu_limit | quote }}
+            memory: {{ default "2Gi" $notebook.memory_limit }}
+            {{- if $notebook.gpu_limit }}
+            nvidia.com/gpu: {{ $notebook.gpu_limit | quote }}
+            {{- end }}
+          requests:
+            cpu: {{ default "1" $notebook.cpu_request | quote }}
+            memory: {{ default "2Gi" $notebook.memory_request }}
+            {{- if $notebook.gpu_request }}
+            nvidia.com/gpu: {{ $notebook.gpu_request | quote }}
+            {{- end }}
+        volumeMounts:
+        - mountPath: /home/jovyan
+          name: {{ $notebook.name }}
+        - mountPath: /dev/shm
+          name: dshm
+        {{- if $notebook.volumeMounts }}
+        {{- toYaml $notebook.volumeMounts | nindent 8 }}
+        {{- end }}
+      {{- if $notebook.sidecars }}
+      {{- range $sidecar := $notebook.sidecars }}
+      - name: {{ required "A sidecar name is required" $sidecar.name | quote }}
+        image: {{ required "A sidecar image is required" $sidecar.image | quote }}
+        {{- if $sidecar.volumeMounts }}
+        volumeMounts:
+{{ toYaml $sidecar.volumeMounts | indent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+      volumes:
+      - name: {{ $notebook.name }}
+        persistentVolumeClaim:
+          claimName: {{ $notebook.name }}
+      - emptyDir:
+          medium: Memory
+        name: dshm
+      {{- if $notebook.sidecars }}
+      {{- range $sidecar := $notebook.sidecars }}
+      {{- if $sidecar.volumes }}
+{{ toYaml $sidecar.volumes | indent 6 }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- if $notebook.volumes }}
+      {{- toYaml $notebook.volumes | nindent 6 }}
+      {{- end }}
+    userCluster: {{ required "A valid user_cluster_name is required" $notebook.user_cluster_name }}
+{{- end }}
+{{- end }}

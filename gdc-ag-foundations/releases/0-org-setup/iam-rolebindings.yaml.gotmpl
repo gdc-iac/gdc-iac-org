@@ -1,0 +1,56 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global" "") }}
+  {{- if not $tenantGlobalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  iamrolebindings-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: true
+    createNamespace: false
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
+
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "iamrolebindings") }}
+      {{- $customRolesList := list }}
+      {{- range $cr := $tenantConfig.global | get "iamroles" list }}
+        {{- $customRolesList = append $customRolesList $cr.name }}
+      {{- end }}
+
+      {{- $tenantAdmin := $tenantConfig.global | get "admin_subject_name" "" }}
+      {{- $predefinedBindings := list }}
+      {{- $customBindings := list }}
+      {{- range $binding := $tenantConfig.global.iamrolebindings }}
+        {{- $resolvedBinding := dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User") }}
+        {{- if has $binding.role $customRolesList }}
+          {{- $customBindings = append $customBindings $resolvedBinding }}
+        {{- else }}
+          {{- $predefinedBindings = append $predefinedBindings $resolvedBinding }}
+        {{- end }}
+      {{- end }}
+
+    - name: {{ $tenantName }}-iam-rolebindings
+      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../charts/gdc-iam-role-bindings" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
+      labels:
+        stage: 0-org-setup
+      inherit:
+        - template: iamrolebindings-template
+      values:
+        - namespace: {{ $envData | get "iac.global.namespace" "platform" | quote }}
+        - iamrolebindings: {{ $predefinedBindings | toJson }}
+          customiamrolebindings: {{ $customBindings | toJson }}
+    {{- end }}
+  {{- end }}

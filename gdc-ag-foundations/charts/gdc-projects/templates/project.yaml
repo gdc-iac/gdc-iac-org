@@ -1,0 +1,10 @@
+{{- if .Values.projects }}
+{{- range $key, $value := .Values.projects }}
+---
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: Project
+metadata:
+  name: {{ required "A valid .name is required for each project" $value.name | quote }}
+  namespace: "platform"
+{{- end }}
+{{- end }}

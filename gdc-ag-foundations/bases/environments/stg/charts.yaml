@@ -1,0 +1,9 @@
+---
+# Staging charts paths parameters definitions
+gdc_clusters_chart_path: "../../charts/gdc-clusters"
+gdc_iam_roles_chart_path: "../../charts/gdc-iam-roles"
+gdc_custom_roles_chart_path: "../../charts/gdc-custom-roles"
+gdc_backup_repositories_chart_path: "../../charts/gdc-backup-repositories"
+
+
+

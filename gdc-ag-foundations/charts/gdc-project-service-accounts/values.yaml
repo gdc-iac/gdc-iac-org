@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=values.schema.json
+
+# GDC Projects ServiceAccounts Configuration
+# Create a list of project level serviceaccounts. The vairable name defines the project where service accounts are to be created.
+# name: {}
+# projectserviceaccounts: {}
+  # - "lambda-frontend-sa"
+  # - "lambda-backend-sa"
+  # - "lambda-db-admin-sa"

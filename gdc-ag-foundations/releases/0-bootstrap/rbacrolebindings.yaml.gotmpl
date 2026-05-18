@@ -1,0 +1,67 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+  kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+
+templates:
+  rbacrolebindings-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: {{ $vals | get "install_bootstrap" true }}
+
+{{- if and $envData (hasKey $envData "iac") }}
+{{- $projectBindingsRaw := $envData | get "iac.project.rbacrolebindings" list | default list }}
+{{- $projectBindings := list }}
+{{- range $binding := $projectBindingsRaw }}
+  {{- $resolved := dict "role" $binding.role "subject_name" ($binding | get "subject_name" ($vals | get "iac_sa" "fop-iac@example.com")) "subject_kind" ($binding | get "subject_kind" "serviceAccount") }}
+  {{- if hasKey $binding "subject_namespace" }}
+    {{- $_ := set $resolved "subject_namespace" $binding.subject_namespace }}
+  {{- end }}
+  {{- $projectBindings = append $projectBindings $resolved }}
+{{- end }}
+
+{{- $globalBindingsRaw := $envData | get "iac.global.rbacrolebindings" list | default list }}
+{{- $globalBindings := list }}
+{{- range $binding := $globalBindingsRaw }}
+  {{- $resolved := dict "role" $binding.role "subject_name" ($binding | get "subject_name" ($vals | get "iac_sa" "fop-iac@example.com")) "subject_kind" ($binding | get "subject_kind" "serviceAccount") }}
+  {{- if hasKey $binding "subject_namespace" }}
+    {{- $_ := set $resolved "subject_namespace" $binding.subject_namespace }}
+  {{- end }}
+  {{- $globalBindings = append $globalBindings $resolved }}
+{{- end }}
+
+releases:
+  {{- if gt (len $projectBindings) 0 }}
+  - name: iac-rbacrolebindings-project
+    chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../charts/gdc-rbac-role-bindings" }}
+    labels:
+      stage: 0-bootstrap
+    inherit:
+      - template: rbacrolebindings-template
+    values:
+      - namespace: {{ $envData | get "iac.project.namespace" "iac-root" | quote }}
+      - rbacrolebindings: {{ $projectBindings | toJson }}
+  {{- end }}
+
+  {{- if gt (len $globalBindings) 0 }}
+  - name: iac-rbacrolebindings-global
+    chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../charts/gdc-rbac-role-bindings" }}
+    labels:
+      stage: 0-bootstrap
+    inherit:
+      - template: rbacrolebindings-template
+    values:
+      - namespace: {{ $envData | get "iac.global.namespace" "platform" | quote }}
+      - rbacrolebindings: {{ $globalBindings | toJson }}
+  {{- end }}
+
+{{- else }}
+releases: []
+{{- end }}

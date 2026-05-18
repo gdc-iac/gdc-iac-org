@@ -1,0 +1,14 @@
+{{- range $i, $dashboard := .Values.dashboards }}
+---
+apiVersion: observability.gdc.goog/v1
+kind: Dashboard
+metadata:
+  namespace: {{ $.Values.namespace | default $dashboard.namespace | required "A valid namespace is required" }}
+  name: {{ required "A valid dashboard name is required" $dashboard.name }}
+spec:
+  configMapRef:
+    name: {{ $dashboard.name }}-configmap
+    namespace: {{ $.Values.namespace | default $dashboard.namespace }}
+    key: {{ $dashboard.name }}.json
+  foldername: {{ $dashboard.foldername | default "Default" }}
+{{- end }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gdc-net-glb
+description: A unified Helm chart to provision GDC Hosted Global Internal and External Load Balancers using networking.global.gdc.goog/v1 APIs.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

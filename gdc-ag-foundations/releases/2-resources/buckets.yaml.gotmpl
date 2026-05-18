@@ -1,0 +1,51 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  bucket-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_buckets" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- if and $project.resources (hasKey $project.resources "buckets") }}
+        {{- range $bucket := $project.resources.buckets }}
+        - name: {{ $bucket.name }}
+          chart: {{ $vals | get "gdc_buckets_chart_path" "../../charts/gdc-buckets" }}
+          kubeContext: {{ $tenantZonalContext | quote }}
+          labels:
+            stage: 2-resources
+            tenant: {{ $tenantName | quote }}
+            project: {{ $project.name | quote }}
+            type: "buckets"
+          inherit:
+            - template: bucket-template
+          values:
+            - buckets:
+                {{ $tenantName }}:
+                  name: {{ $bucket.name }}
+                  namespace: {{ $project.name }}
+                  description: {{ $bucket.description }}
+                  storageClass: {{ $bucket.storage_class }}
+                  location: {{ $bucket.location }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+

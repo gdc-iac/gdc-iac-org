@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gdc-custom-roles
+description: A standalone Helm chart for managing Google Distributed Cloud CustomRoles with apiVersion iam.gdc.goog/v1
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

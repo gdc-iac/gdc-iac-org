@@ -1,0 +1,6 @@
+---
+gdc_context_global: "global-api-gdch-sandbox-global"
+gdc_context_zone: "zonal-api-gdch-sandbox-zonal"
+# iac_sa: &iac_sa system:serviceaccount:iac-root:iac001-sa
+gdc_release_namespace: "iac-root"
+

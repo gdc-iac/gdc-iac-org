@@ -1,0 +1,48 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global" "") }}
+  {{- if not $tenantGlobalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  iam-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: true
+    wait: true
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
+
+    {{- $tenantAdmin := $tenantConfig.global | get "admin_subject_name" "" }}
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- $iamrolebindings := list }}
+      {{- range $binding := $project.iamrolebindings }}
+        {{- $iamrolebindings = append $iamrolebindings (dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User")) }}
+      {{- end }}
+    - name: {{ $project.name }}-iam-rolebindings
+      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../charts/gdc-iam-role-bindings" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
+      labels:
+        stage: 1-project-factory
+        tenant: {{ $tenantName | quote }}
+        project: {{ $project.name | quote }}
+        type: "iam"
+      inherit:
+        - template: iam-template
+      values:
+        - iamrolebindings: {{ $iamrolebindings | toJson }}
+          namespace: {{ $project.name }}
+    {{- end }}
+  {{- end }}
+

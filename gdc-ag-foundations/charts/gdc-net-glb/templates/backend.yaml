@@ -1,0 +1,12 @@
+apiVersion: networking.global.gdc.goog/v1
+kind: Backend
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ printf "%s-backend" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+spec:
+  {{- if .Values.backend.clusterName }}
+  clusterName: {{ .Values.backend.clusterName | quote }}
+  {{- end }}
+  endpointsLabels:
+    matchLabels:
+      app: {{ required "A valid backend app matchLabel selector is required (.Values.backend.matchLabels.app)" .Values.backend.matchLabels.app | quote }}

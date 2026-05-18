@@ -1,0 +1,118 @@
+{{- if .Values.projectnetworkpolicies }}
+{{- range $policy := .Values.projectnetworkpolicies }}
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  namespace: {{ required "A valid namespace is required" $.Values.namespace }}
+  {{- if $policy.name }}
+  name: {{ regexReplaceAll "\\W+" $policy.name "-" }}
+  {{- else if and $policy.ingress (and $policy.subject $policy.subject.managed_services) }}
+  {{- $firstIngress := index $policy.ingress 0 }}
+  {{- $serviceName := index $policy.subject.managed_services.match_types 0 }}
+  {{- if and $firstIngress $firstIngress.from (index $firstIngress.from 0).project_selector }}
+  {{- $projectName := index (index $firstIngress.from 0).project_selector.projects.match_names 0 }}
+  name: allow-inbound-traffic-from-{{ regexReplaceAll "\\W+" $projectName "-" }}-to-{{ regexReplaceAll "\\W+" $serviceName "-" }}-service
+  {{- else }}
+  name: allow-inbound-traffic-to-{{ regexReplaceAll "\\W+" $serviceName "-" }}-service
+  {{- end }}
+  {{- else }}
+  name: project-network-policy-{{ randAlphaNum 5 | lower }}
+  {{- end }}
+spec:
+  {{- with $policy.subject }}
+  subject:
+    {{- if .subject_type }}
+    subjectType: {{ .subject_type }}
+    {{- end }}
+    {{- with .managed_services }}
+    managedServices:
+      {{- if .match_types }}
+      matchTypes:
+        {{- toYaml .match_types | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if .match_labels }}
+    userWorkloadSelector:
+      labelSelector:
+        workloads:
+          matchLabels:
+            {{- toYaml .match_labels | nindent 12 }}
+    {{- end }}
+  {{- end }}
+  {{- with $policy.ingress }}
+  ingress:
+    {{- range . }}
+    {{- if .from }}
+    - from:
+      {{- range .from }}
+      {{- if .project_selector }}
+      - projectSelector:
+          {{- if .project_selector.projects }}
+          projects:
+            matchNames:
+              {{- toYaml .project_selector.projects.match_names | nindent 14 }}
+          {{- end }}
+          {{- if .project_selector.match_labels }}
+          workloadSelector:
+            labelSelector:
+              workloads:
+                matchLabels:
+                  {{- toYaml .project_selector.match_labels | nindent 18 }}
+          {{- end }}
+      {{- else if .ip_block }}
+      - ipBlock:
+          cidr: {{ .ip_block.cidr }}
+      {{- end }}
+      {{- end }}
+    {{- else }}
+    - {}
+    {{- end }}
+    {{- if .ports }}
+      ports:
+        {{- range .ports }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with $policy.egress }}
+  egress:
+    {{- range . }}
+    {{- if .to }}
+    - to:
+      {{- range .to }}
+      {{- if .project_selector }}
+      - projectSelector:
+          {{- if .project_selector.projects }}
+          projects:
+            matchNames:
+              {{- toYaml .project_selector.projects.match_names | nindent 14 }}
+          {{- end }}
+          {{- if .project_selector.match_labels }}
+          workloadSelector:
+            labelSelector:
+              workloads:
+                matchLabels:
+                  {{- toYaml .project_selector.match_labels | nindent 18 }}
+          {{- end }}
+      {{- else if .ip_block }}
+      - ipBlock:
+          cidr: {{ .ip_block.cidr }}
+      {{- end }}
+      {{- end }}
+    {{- else }}
+    - {}
+    {{- end }}
+    {{- if .ports }}
+      ports:
+        {{- range .ports }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

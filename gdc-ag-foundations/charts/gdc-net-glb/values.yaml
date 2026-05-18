@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=values.schema.json
+
+# Target namespace for the load balancer resources
+namespace: ""
+
+# Unique name identifier for the load balancer (e.g., "my-service-lb")
+name: ""
+
+# Load balancing scheme: "INTERNAL" or "EXTERNAL"
+loadBalancingScheme: "INTERNAL"
+
+# Backend selection configurations (Pods or VMs)
+backend:
+  clusterName: ""
+  matchLabels:
+    app: ""
+
+# HealthCheck properties (Applicable only for VM backends)
+healthCheck:
+  enabled: false
+  port: 80
+  timeoutSec: 5
+  checkIntervalSec: 5
+  healthyThreshold: 2
+  unhealthyThreshold: 2
+
+# BackendService port translation configurations
+backendService:
+  zone: ""
+  port: 80
+  protocol: "TCP"
+  targetPort: 80
+
+# ForwardingRule configurations
+forwardingRule:
+  cidrName: "" # Optional
+  port: 80
+  protocol: "TCP"
+
+# ProjectNetworkPolicy firewall settings (Applicable only if loadBalancingScheme is "EXTERNAL")
+pnp:
+  enabled: true
+  allowedCidr: "0.0.0.0/0"

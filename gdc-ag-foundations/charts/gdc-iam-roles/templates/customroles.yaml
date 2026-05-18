@@ -1,0 +1,43 @@
+{{- if .Values.iamroles }}
+{{- range $_, $role := .Values.iamroles }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: CustomRole
+metadata:
+  name: {{ $role.name | quote }}
+  namespace: platform
+spec:
+  metadata:
+    id: {{ $role.name | quote }}
+    title: {{ $role.title | quote }}
+    description: {{ $role.description | quote }}
+    stage: {{ $role.stage | quote }}
+    scope: {{ default "organization" $role.scope | quote }}
+    {{- if $role.roleNamespaces }}
+    roleNamespaces:
+    {{- range $ns := $role.roleNamespaces }}
+      - {{ $ns | quote }}
+    {{- end }}
+    {{- end }}
+  {{- if $role.globalRules }}
+  globalRules:
+{{- if typeIs "string" $role.globalRules }}
+{{ $role.globalRules | indent 4 }}
+{{- else }}
+{{ $role.globalRules | toYaml | indent 4 }}
+{{- end }}
+  {{- end }}
+  {{- if $role.zonalRules }}
+  zonalRules:
+{{- if typeIs "string" $role.zonalRules }}
+{{ $role.zonalRules | indent 4 }}
+{{- else }}
+{{ $role.zonalRules | toYaml | indent 4 }}
+  {{- if $role.bucket_name }}
+      resourceNames:
+      - {{ $role.bucket_name }}
+  {{- end }}
+{{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

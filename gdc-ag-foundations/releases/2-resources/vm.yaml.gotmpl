@@ -1,0 +1,51 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  vm-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_vms" true }}
+  
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- if and $project.resources (hasKey $project.resources "vms") }}
+        {{- range $vm := $project.resources.vms }}
+        - name: {{ $vm.name }}
+          chart: {{ $vals | get "gdc_vm_chart_path" "../../charts/gdc-vm" }}
+          kubeContext: {{ $tenantZonalContext | quote }}
+          labels:
+            stage: 2-resources
+            tenant: {{ $tenantName | quote }}
+            project: {{ $project.name | quote }}
+            type: "vm"
+          inherit:
+            - template: vm-template
+          values:
+            - virtualMachines:
+                - name: {{ $vm.name }}
+                  namespace: {{ $project.name }}
+                  imageName: {{ $vm.image_name }}
+                  imageNamespace: {{ $vm.image_namespace }}
+                  bootDiskSize: {{ $vm.boot_disk_size }}
+                  machineType: {{ $vm.machine_type }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+

@@ -1,0 +1,218 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  dashboard-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: true
+
+releases:
+
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- $dashboards := list }}
+      {{- $hasExplicitDashboards := false }}
+      
+      {{- $cleanEnvName := $vals | get "environment_name" "dev" }}
+
+      {{- $envPath := $vals | get "gdc_dashboards_env_path" "" }}
+      {{- $examplesDir := $vals | get "gdc_dashboards_examples_path" "../../charts/gdc-dashboards/examples" }}
+      
+      {{- $envDashboardsDir := "" }}
+      {{- if ne $envPath "" }}
+        {{- if hasPrefix "../" $envPath }}
+          {{- $envDashboardsDir = $envPath }}
+        {{- else }}
+          {{- $envDashboardsDir = printf "../../bases/environments/%s/%s" $cleanEnvName $envPath }}
+        {{- end }}
+      {{- end }}
+
+      {{- if and $project.resources (hasKey $project.resources "dashboards") }}
+        {{- $hasExplicitDashboards = true }}
+        {{- $dashboards = $project.resources.dashboards }}
+      {{- else }}
+        {{- if ne $envDashboardsDir "" }}
+          {{- range $file := readDir $envDashboardsDir }}
+            {{- if hasSuffix ".json" $file }}
+              {{- $fileBasename := base $file }}
+              {{- $name := trimSuffix ".json" $fileBasename }}
+              {{- $dashboards = append $dashboards (dict "name" $name "json_model_env_file" $file) }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+
+        {{- if and (ne $examplesDir "") (eq (len $dashboards) 0) }}
+          {{- range $file := readDir $examplesDir }}
+            {{- if hasSuffix ".json" $file }}
+              {{- $fileBasename := base $file }}
+              {{- $name := trimSuffix ".json" $fileBasename }}
+              {{- $dashboards = append $dashboards (dict "name" $name "json_model_file" $file) }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if or $hasExplicitDashboards (gt (len $dashboards) 0) }}
+      - name: {{ $project.name }}-dashboards
+        chart: {{ $vals | get "gdc_dashboards_chart_path" "../../charts/gdc-dashboards" }}
+        kubeContext: {{ $tenantZonalContext | quote }}
+        labels:
+          stage: 2-resources
+          tenant: {{ $tenantName | quote }}
+          project: {{ $project.name | quote }}
+          type: "dashboards"
+        inherit:
+          - template: dashboard-template
+        values:
+
+          {{- $dashboardsList := list }}
+          {{- range $dashboard := $dashboards }}
+            {{- if hasKey $dashboard "json_model" }}
+              {{- $jsonModel := $dashboard.json_model }}
+              {{- $jsonParsed := fromJson $jsonModel }}
+              {{- if or (not $jsonParsed) (not (hasKey $jsonParsed "title")) }}
+                {{- fail (printf "Dashboard JSON payload provided for release %s is invalid or lacks title property" $dashboard.name) }}
+              {{- end }}
+              {{- $d := dict "name" $dashboard.name "json_model" $jsonModel }}
+              {{- if hasKey $dashboard "foldername" }}
+                {{- $_ := set $d "foldername" $dashboard.foldername }}
+              {{- end }}
+              {{- if hasKey $dashboard "namespace" }}
+                {{- $_ := set $d "namespace" $dashboard.namespace }}
+              {{- end }}
+              {{- $dashboardsList = append $dashboardsList $d }}
+            {{- else if hasKey $dashboard "json_model_file" }}
+              {{- $filePath := $dashboard.json_model_file }}
+              {{- if not (hasPrefix "../" $filePath) }}
+                {{- $filePath = printf "%s/%s" $examplesDir $filePath }}
+              {{- end }}
+              {{- $jsonModel := readFile $filePath }}
+              {{- $jsonParsed := fromJson $jsonModel }}
+              {{- if or (not $jsonParsed) (not (hasKey $jsonParsed "title")) }}
+                {{- fail (printf "Dashboard configuration file %s is invalid or lacks title property" $filePath) }}
+              {{- end }}
+              {{- $d := dict "name" $dashboard.name "json_model" $jsonModel }}
+              {{- if hasKey $dashboard "foldername" }}
+                {{- $_ := set $d "foldername" $dashboard.foldername }}
+              {{- end }}
+              {{- if hasKey $dashboard "namespace" }}
+                {{- $_ := set $d "namespace" $dashboard.namespace }}
+              {{- end }}
+              {{- $dashboardsList = append $dashboardsList $d }}
+            {{- else if hasKey $dashboard "json_model_dir" }}
+              {{- $dirPath := $dashboard.json_model_dir }}
+              {{- if not (hasPrefix "../" $dirPath) }}
+                {{- $dirPath = printf "../../bases/environments/%s/%s" $cleanEnvName $dirPath }}
+              {{- end }}
+              {{- range $file := readDir $dirPath }}
+                {{- if hasSuffix ".json" $file }}
+                  {{- $fileBasename := base $file }}
+                  {{- $name := trimSuffix ".json" $fileBasename }}
+                  {{- $jsonModel := readFile $file }}
+                  {{- $jsonParsed := fromJson $jsonModel }}
+                  {{- if or (not $jsonParsed) (not (hasKey $jsonParsed "title")) }}
+                    {{- fail (printf "Dashboard configuration file %s inside targets folder is invalid" $file) }}
+                  {{- end }}
+                  {{- $d := dict "name" $name "json_model" $jsonModel }}
+                  {{- if hasKey $dashboard "foldername" }}
+                    {{- $_ := set $d "foldername" $dashboard.foldername }}
+                  {{- end }}
+                  {{- if hasKey $dashboard "namespace" }}
+                    {{- $_ := set $d "namespace" $dashboard.namespace }}
+                  {{- end }}
+                  {{- $dashboardsList = append $dashboardsList $d }}
+                {{- end }}
+              {{- end }}
+            {{- else if hasKey $dashboard "json_model_env_file" }}
+              {{- $filePath := $dashboard.json_model_env_file }}
+              {{- if not (hasPrefix "../" $filePath) }}
+                {{- $filePath = printf "%s/%s" $envDashboardsDir $filePath }}
+              {{- end }}
+              {{- $jsonModel := readFile $filePath }}
+              {{- $jsonParsed := fromJson $jsonModel }}
+              {{- if or (not $jsonParsed) (not (hasKey $jsonParsed "title")) }}
+                {{- fail (printf "Dashboard environmental file %s lacks title property or contains parsing errors" $filePath) }}
+              {{- end }}
+              {{- $d := dict "name" $dashboard.name "json_model" $jsonModel }}
+              {{- if hasKey $dashboard "foldername" }}
+                {{- $_ := set $d "foldername" $dashboard.foldername }}
+              {{- end }}
+              {{- if hasKey $dashboard "namespace" }}
+                {{- $_ := set $d "namespace" $dashboard.namespace }}
+              {{- end }}
+              {{- $dashboardsList = append $dashboardsList $d }}
+            {{- else }}
+              {{- $fileName := printf "%s.json" $dashboard.name }}
+              {{- $fileFoundInEnv := false }}
+              {{- $envFilePath := "" }}
+              {{- $exampleFilePath := "" }}
+
+              {{- if ne $envDashboardsDir "" }}
+                {{- range $file := readDir $envDashboardsDir }}
+                  {{- if eq (base $file) $fileName }}
+                    {{- $fileFoundInEnv = true }}
+                    {{- $envFilePath = $file }}
+                  {{- end }}
+                {{- end }}
+              {{- end }}
+
+              {{- if $fileFoundInEnv }}
+                {{- $jsonModel := readFile $envFilePath }}
+                {{- $jsonParsed := fromJson $jsonModel }}
+                {{- if or (not $jsonParsed) (not (hasKey $jsonParsed "title")) }}
+                  {{- fail (printf "File %s referenced in release fails validation" $envFilePath) }}
+                {{- end }}
+                {{- $d := dict "name" $dashboard.name "json_model" $jsonModel }}
+                {{- if hasKey $dashboard "foldername" }}
+                  {{- $_ := set $d "foldername" $dashboard.foldername }}
+                {{- end }}
+                {{- if hasKey $dashboard "namespace" }}
+                  {{- $_ := set $d "namespace" $dashboard.namespace }}
+                {{- end }}
+                {{- $dashboardsList = append $dashboardsList $d }}
+              {{- else }}
+                {{- range $file := readDir $examplesDir }}
+                  {{- if eq (base $file) $fileName }}
+                    {{- $exampleFilePath = $file }}
+                  {{- end }}
+                {{- end }}
+                {{- if ne $exampleFilePath "" }}
+                  {{- $jsonModel := readFile $exampleFilePath }}
+                  {{- $jsonParsed := fromJson $jsonModel }}
+                  {{- if or (not $jsonParsed) (not (hasKey $jsonParsed "title")) }}
+                    {{- fail (printf "Referenced example file %s lacks valid format configurations" $exampleFilePath) }}
+                  {{- end }}
+                  {{- $d := dict "name" $dashboard.name "json_model" $jsonModel }}
+                  {{- if hasKey $dashboard "foldername" }}
+                    {{- $_ := set $d "foldername" $dashboard.foldername }}
+                  {{- end }}
+                  {{- if hasKey $dashboard "namespace" }}
+                    {{- $_ := set $d "namespace" $dashboard.namespace }}
+                  {{- end }}
+                  {{- $dashboardsList = append $dashboardsList $d }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          - dashboards: {{ $dashboardsList | toJson }}
+            namespace: {{ $project.name }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+
+
