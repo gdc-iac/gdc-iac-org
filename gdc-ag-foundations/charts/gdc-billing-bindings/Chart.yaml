@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gdc-billing-bindings
+description: A Helm chart for deploying GDC Billing Accounts and Bindings
+type: application
+version: 0.1.1
+appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

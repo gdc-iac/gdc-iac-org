@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gdc-dns
+description: A Helm chart to provision GDC Hosted Managed DNS Zones and Record Sets using networking.global.gdc.goog/v1 APIs.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

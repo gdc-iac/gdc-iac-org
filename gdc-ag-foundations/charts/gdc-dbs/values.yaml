@@ -1,0 +1,41 @@
+# Common settings
+namespace: my-db-project # Target project namespace
+
+# Base64 encoded administrator password.
+# Generate with: echo -n 'YourSecurePassword' | base64
+# IMPORTANT: Provide this value during helm install using --set, do not store plain secrets in values.yaml
+base64EncodedPassword: "" # Example: "WW91clNlY3VyZVBhc3N3b3Jk"
+
+# PostgreSQL settings
+postgresql:
+  enabled: false
+  clusterName: my-pg-cluster
+  version: "14"
+  cpu: 2
+  memory: 4Gi
+  dataDiskSize: 10Gi
+  # secretName: "" # Defaults to <clusterName>-secret
+
+# Oracle settings
+oracle:
+  enabled: false
+  clusterName: my-ora-cluster
+  version: "19"
+  cpu: 2
+  memory: 8Gi
+  dataDiskSize: 20Gi
+  logDiskSize: 20Gi
+  cdbName: MYORACDB
+  # secretName: "" # Defaults to <clusterName>-secret
+
+# AlloyOmni settings
+alloydbomni:
+  enabled: false
+  clusterName: my-alloydbomni-cluster
+  version: "19"
+  cpu: 2
+  memory: 8Gi
+  dataDiskSize: 20Gi
+  logDiskSize: 20Gi
+  cdbName: MYORACDB
+  # secretName: "" # Defaults to <clusterName>-secret

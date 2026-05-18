@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=values.schema.json
+
+# The target namespace for these network policies
+namespace: ""
+
+# GDC Project Network Policies Configuration
+projectnetworkpolicies: []
+#  - name: "allow-all-ingress-example"
+#    ingress:
+#      - {} # Empty object creates an allow-all rule
+#
+#  - name: "allow-external-ip-example"
+#    ingress:
+#      - from:
+#        - ip_block:
+#            cidr: "192.168.1.0/24"
+#
+#  - name: "allow-cross-project-to-managed-service"
+#    subject:
+#      subject_type: ManagedService
+#      managed_services:
+#        match_types:
+#        - 'mhs'
+#    ingress:
+#      - from:
+#        - project_selector:
+#            projects:
+#              match_names:
+#              - "d2-ets-user-1"

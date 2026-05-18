@@ -1,0 +1,20 @@
+{{- if .Values.rbacrolebindings }}
+{{- $ns := .Values.namespace }}
+{{- range $_, $rbacrolebinding := .Values.rbacrolebindings }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: {{ $ns | quote }}
+  name: {{ regexReplaceAll "\\W+" (required "A valid subject_name is required" $rbacrolebinding.subject_name) "-" }}--{{ regexReplaceAll "\\W+" (required "A valid role is required" $rbacrolebinding.role) "-" }}
+roleRef:
+  kind: Role
+  name: {{ $rbacrolebinding.role | quote }}
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: {{ $rbacrolebinding.subject_kind | quote }}
+  namespace: {{ $rbacrolebinding.subject_namespace | default $ns | quote }}
+  name: {{ $rbacrolebinding.subject_name | quote }}
+{{- end }}
+{{- end }}
+

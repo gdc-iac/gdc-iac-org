@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=values.schema.json
+
+# Target namespace for the Cloud NAT Gateway resource
+namespace: ""
+
+# Unique identifier name for the Cloud NAT Gateway
+name: ""
+
+# Workload selector defining which Pods/VMs route egress traffic through this gateway
+workloadSelector:
+  matchLabels:
+    app: ""
+
+# List of leaf subnets representing egress IPs allocated for NAT
+subnetRefs: []
+
+# Timeouts for the different connection types
+connectionOptions:
+  nonTCPTimeoutSeconds: 60
+  tcpTimeoutSeconds: 600
+  tcpTeardownTimeoutSeconds: 120
+  tcpEstablishmentTimeoutSeconds: 20

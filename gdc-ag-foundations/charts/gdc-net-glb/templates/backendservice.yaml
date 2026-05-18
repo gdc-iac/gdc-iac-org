@@ -1,0 +1,16 @@
+apiVersion: networking.global.gdc.goog/v1
+kind: BackendService
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ printf "%s-backendservice" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+spec:
+  backendRefs:
+  - name: {{ printf "%s-backend" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+    zone: {{ required "A valid backend zone is required (.Values.backendService.zone)" .Values.backendService.zone | quote }}
+  {{- if .Values.healthCheck.enabled }}
+  healthCheckName: {{ printf "%s-healthcheck" .Values.name | quote }}
+  {{- end }}
+  targetPorts:
+  - port: {{ required "A valid backendService port is required (.Values.backendService.port)" .Values.backendService.port }}
+    protocol: {{ required "A valid backendService protocol is required (.Values.backendService.protocol)" .Values.backendService.protocol | quote }}
+    targetPort: {{ required "A valid backendService targetPort is required (.Values.backendService.targetPort)" .Values.backendService.targetPort }}

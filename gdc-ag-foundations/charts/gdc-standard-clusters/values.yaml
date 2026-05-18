@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=values.schema.json
+
+# GDC Standard Clusters Configuration
+# Represents a standard cluster custom resource to run container workloads
+# standardClusters: {}
+  # Example cluster configuration:
+  # cluster1:
+  #   name: "smugabe-test-cluster"
+  #   namespace: "platform"
+  #   podCIDRSize: 21
+  #   serviceCIDRSize: 23
+  #   kubernetesVersion: "1.26.5-gke.2100"
+  #   nodePools:
+  #     - name: "pool-1"
+  #       machineTypeName: "n2-standard-4"
+  #       nodeCount: 3
+  #       taints: []
+  #       labels: {}
+  #       acceleratorOptions:
+  #         gpuPartitionScheme: "mixed-2"

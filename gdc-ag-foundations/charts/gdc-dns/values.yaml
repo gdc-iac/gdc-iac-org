@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=values.schema.json
+
+# Target namespace for the DNS resources
+namespace: ""
+
+# Managed DNS Zone configurations
+zone:
+  name: ""
+  dnsName: ""
+  description: ""
+  visibility: "private"
+
+# Optional array of resource record sets to map inside the zone
+records: []
+#  - name: "api.example.goog."
+#    type: "A"
+#    ttlSeconds: 300
+#    rrData:
+#      - "1.2.3.4"

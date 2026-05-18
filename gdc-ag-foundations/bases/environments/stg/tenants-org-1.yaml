@@ -1,0 +1,6 @@
+---
+stg:
+  iac:
+    namespace: "iac-root"
+  gdc_tenants: {}
+

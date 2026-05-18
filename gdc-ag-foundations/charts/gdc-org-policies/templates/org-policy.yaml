@@ -1,0 +1,13 @@
+{{- if .Values.orgpolicies }}
+{{- range .Values.orgpolicies }}
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: GDCHRestrictedService
+metadata:
+  name: {{ required "orgpolicy name is required" .name | quote }}
+{{- if .spec }}
+spec:
+{{ toYaml .spec | indent 2 }}
+{{- end }}
+{{- end }}
+{{- end }}

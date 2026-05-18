@@ -1,0 +1,32 @@
+---
+environments:
+  dev:
+    values:
+      - {{ env "PWD" }}/bases/environments/dev/globals.yaml
+      - {{ env "PWD" }}/bases/environments/dev/charts.yaml
+      - {{ env "PWD" }}/bases/environments/dev/iac.yaml
+      - {{ env "PWD" }}/bases/environments/dev/tenants-org-1.yaml
+      - {{ env "PWD" }}/bases/environments/dev/tenants-org-2.yaml
+      - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
+      - environment_name: "dev"
+  stg:
+    values:
+      - {{ env "PWD" }}/bases/environments/stg/globals.yaml
+      - {{ env "PWD" }}/bases/environments/stg/charts.yaml
+      - {{ env "PWD" }}/bases/environments/stg/iac.yaml
+      - {{ env "PWD" }}/bases/environments/stg/tenants-org-1.yaml
+      - {{ env "PWD" }}/bases/environments/stg/overrides.yaml
+      - environment_name: "stg"
+  prd:
+    values:
+      - {{ env "PWD" }}/bases/environments/prd/globals.yaml
+      - {{ env "PWD" }}/bases/environments/prd/charts.yaml
+      - {{ env "PWD" }}/bases/environments/prd/iac.yaml
+      - {{ env "PWD" }}/bases/environments/prd/tenants-org-1.yaml
+      - {{ env "PWD" }}/bases/environments/prd/overrides.yaml
+      - environment_name: "prd"
+
+
+
+
+

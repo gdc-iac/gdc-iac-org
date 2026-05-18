@@ -1,0 +1,41 @@
+---
+dev:
+  gdc_tenants:
+    org-2:
+      global:
+        kube_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
+        kube_context_zonal: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin"
+        admin_subject_name: &admin_subject_name "fop-iac@example.com"
+        iamrolebindings:
+          - role: "organization-iam-viewer"
+        # org_policies:
+        #   - name: "restrict-external-traffic"
+        #     spec: {}
+        projects:
+          - name: "bunny-prj"
+            iamrolebindings:
+              - role: "project-iam-admin"
+              - role: "project-bucket-admin"
+              - role: "project-grafana-viewer"
+              - role: "project-bucket-object-admin"
+              - role: "project-db-admin"
+              - role: "dashboard-editor"
+              - role: "secret-admin"
+            serviceaccounts:
+              - name: "bunny-app-sa"
+                namespace: "bunny-prj"
+            resources:
+              buckets:
+                - name: "bunny-bucket1"
+                  description: "bunny test store"
+                  storage_class: "Standard"
+                  location: "zone1"
+              dbs:
+                alloydbomni:
+                  enabled: true
+                  clusterName: lts-ado-cluster
+                  version: "15"
+                  cpu: 2
+                  memory: 4Gi
+                  dataDiskSize: 10Gi
+                  base64EncodedPassword: "WW91clNlY3VyZVBAc3N3MHJk"

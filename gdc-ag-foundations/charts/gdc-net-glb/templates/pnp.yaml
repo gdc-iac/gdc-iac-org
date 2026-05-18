@@ -1,0 +1,18 @@
+{{- if and (eq .Values.loadBalancingScheme "EXTERNAL") .Values.pnp.enabled }}
+apiVersion: networking.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ printf "allow-inbound-external-%s" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+spec:
+  policyType: Ingress
+  subject:
+    subjectType: UserWorkload
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: {{ required "A valid allowedCidr is required (.Values.pnp.allowedCidr)" .Values.pnp.allowedCidr | quote }}
+    ports:
+    - protocol: {{ required "A valid backendService protocol is required (.Values.backendService.protocol)" .Values.backendService.protocol | quote }}
+      port: {{ required "A valid backendService targetPort is required (.Values.backendService.targetPort)" .Values.backendService.targetPort }}
+{{- end }}

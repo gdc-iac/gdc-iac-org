@@ -1,0 +1,19 @@
+{{- range $vm := .Values.virtualMachines }}
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachine
+metadata:
+  name: {{ required "A valid VM name is required" $vm.name }}
+  namespace: {{ required "A valid namespace is required" $vm.namespace }}
+spec:
+  compute:
+    virtualMachineType: {{ required "A valid machine type is required" $vm.machineType }}
+  disks:
+  - virtualMachineDiskRef:
+      name: {{ $vm.name }}-boot-disk
+    boot: true
+    autoDelete: {{ default true $vm.bootDiskAutoDelete }}
+  firmware:
+    enableSecureBoot: {{ default false $vm.enableSecureBoot }}
+    type: uefi
+---
+{{- end }}

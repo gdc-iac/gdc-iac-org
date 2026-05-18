@@ -1,0 +1,9 @@
+---
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+
+helmfiles:
+  - path: notebooks.yaml.gotmpl
+    values:
+      - {{ toYaml .Values | nindent 8 }}

@@ -1,0 +1,16 @@
+---
+bases:
+  - bases/helmDefaults.yaml.gotmpl
+  - bases/environments.yaml.gotmpl
+
+helmfiles:
+  - path: releases/0-bootstrap/helmfile.yaml.gotmpl
+  - path: releases/0-org-setup/helmfile.yaml.gotmpl
+  - path: releases/1-project-factory/helmfile.yaml.gotmpl
+  - path: releases/2-resources/helmfile.yaml.gotmpl
+  - path: releases/3-clusters/helmfile.yaml.gotmpl
+  - path: releases/4-notebooks/helmfile.yaml.gotmpl
+
+
+
+missingFileHandler: Error

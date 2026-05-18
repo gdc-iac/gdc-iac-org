@@ -1,0 +1,18 @@
+apiVersion: networking.gdc.goog/v1
+kind: CloudNATGateway
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ required "A valid name is required (.Values.name)" .Values.name | quote }}
+spec:
+  workloadSelector:
+    matchLabels:
+      app: {{ required "A valid app workload selector is required (.Values.workloadSelector.matchLabels.app)" .Values.workloadSelector.matchLabels.app | quote }}
+  subnetRefs:
+    {{- range $subnet := required "At least one leaf subnet reference is required (.Values.subnetRefs)" .Values.subnetRefs }}
+    - {{ $subnet | quote }}
+    {{- end }}
+  connectionOptions:
+    nonTCPTimeoutSeconds: {{ .Values.connectionOptions.nonTCPTimeoutSeconds }}
+    tcpTimeoutSeconds: {{ .Values.connectionOptions.tcpTimeoutSeconds }}
+    tcpTeardownTimeoutSeconds: {{ .Values.connectionOptions.tcpTeardownTimeoutSeconds }}
+    tcpEstablishmentTimeoutSeconds: {{ .Values.connectionOptions.tcpEstablishmentTimeoutSeconds }}

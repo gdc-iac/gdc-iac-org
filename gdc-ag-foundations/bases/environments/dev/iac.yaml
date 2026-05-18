@@ -1,0 +1,68 @@
+---
+dev:
+  iac:
+    global:
+      namespace: "platform"
+      customroles: # observed slowness deplying custom roles in sandbox env. Check if this the case in physical GDCag env. Use HELM_WAIT=false to mitigate for now?
+      # - name: "secret-lister"
+      #   title: "FOP IAC Platform Secret Lister"
+      #   description: "A viewer role for secret resources in platform namespace"
+      #   stage: "GA"
+      #   scope: "project"
+      #   roleNamespaces: ["*"]
+      #   zonalRules: |
+      #     - apiGroups: [""]
+      #       resources: ["secrets"]
+      #       verbs: [get, list]
+      # - name: "platform-secret-lister"
+      #   title: "FOP IAC Platform Secret Lister (Global)"
+      #   description: "A viewer role for secret resources in platform namespace (Global)"
+      #   stage: "GA"
+      #   scope: "organization"
+      #   roleNamespaces: ["platform"]
+      #   globalRules: |
+      #     - apiGroups: [""]
+      #       resources: ["secrets"]
+      #       verbs: [get, list]
+      # rbacrolebindings: 
+      # - role: "platform-secret-lister" 
+      iamrolebindings: # ref: https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform/pa-user/iam/predefined-role-permissions
+      - role: "bucket-admin"
+      - role: "bucket-object-admin"
+      - role: "organization-backup-admin"
+      - role: "dr-backup-admin"
+      - role: "gdchrestrictbyattributes-policy-admin"
+      - role: "gdchrestrictedservice-policy-admin"
+      - role: "organization-iam-admin"
+      - role: "project-creator"
+      - role: "project-editor"
+      - role: "organization-billing-account-admin"
+      - role: "organization-billing-account-user"
+      - role: "organization-billing-manager"
+      - role: "organization-cluster-backup-admin"
+      - role: "organization-db-admin"
+      - role: "user-cluster-admin"
+      - role: "org-network-policy-admin"
+      - role: "custom-role-org-admin"
+      - role: "volume-replication-admin"
+    project:
+      namespace: "iac-root"
+      iamrolebindings:
+      - role: "secret-admin"
+      - role: "project-iam-admin"
+      - role: "project-bucket-admin"
+      - role: "project-bucket-object-admin"
+      - role: "project-networkpolicy-admin"
+      - role: "namespace-admin"
+      - role: "workload-viewer"
+      - role: "backup-creator"
+      - role: "harbor-instance-admin"
+      - role: "harbor-project-creator"
+      - role: "dashboard-editor"
+      - role: "workbench-notebooks-admin" 
+      - role: "cluster-admin"
+      - role: "standard-cluster-admin"  
+      - role: "cluster-developer"
+      - role: "workload-viewer"
+      # rbacrolebindings: 
+      # - role: "secret-lister" 

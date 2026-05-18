@@ -1,0 +1,57 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+  kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+
+templates:
+  customroles-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: {{ $vals | get "install_bootstrap" true }}
+    values:
+      - namespace: {{ $envData | get "iac.global.namespace" "platform" | quote }}
+
+{{- if and $envData (hasKey $envData "iac") }}
+{{- $projectRoles := list }}
+{{- $orgRoles := list }}
+{{- range $role := $envData | get "iac.global.customroles" list }}
+  {{- if eq (default "organization" $role.scope) "project" }}
+    {{- $projectRoles = append $projectRoles $role }}
+  {{- else }}
+    {{- $orgRoles = append $orgRoles $role }}
+  {{- end }}
+{{- end }}
+
+releases:
+  {{- if gt (len $projectRoles) 0 }}
+  - name: iac-iam-roles-project
+    chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../charts/gdc-iam-roles" }}
+    labels:
+      stage: 0-bootstrap
+    inherit:
+      - template: customroles-template
+    values:
+      - iamroles: {{ $projectRoles | toJson }}
+  {{- end }}
+
+  {{- if gt (len $orgRoles) 0 }}
+  - name: iac-iam-roles
+    chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../charts/gdc-iam-roles" }}
+    labels:
+      stage: 0-bootstrap
+    inherit:
+      - template: customroles-template
+    values:
+      - iamroles: {{ $orgRoles | toJson }}
+  {{- end }}
+
+{{- else }}
+releases: []
+{{- end }}

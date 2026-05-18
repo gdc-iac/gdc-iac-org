@@ -1,0 +1,11 @@
+apiVersion: networking.global.gdc.goog/v1
+kind: ManagedDNSZone
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ required "A valid zone name is required (.Values.zone.name)" .Values.zone.name | quote }}
+spec:
+  dnsName: {{ required "A valid zone dnsName is required (.Values.zone.dnsName)" .Values.zone.dnsName | quote }}
+  {{- if .Values.zone.description }}
+  description: {{ .Values.zone.description | quote }}
+  {{- end }}
+  visibility: {{ required "A valid zone visibility is required (.Values.zone.visibility)" .Values.zone.visibility | quote }}

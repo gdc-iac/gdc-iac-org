@@ -1,0 +1,4 @@
+---
+# Development configuration options manual overrides hooks
+#install_backups: false
+# install_bootstrap: false

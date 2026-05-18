@@ -1,0 +1,20 @@
+{{- if .Values.customiamrolebindings }}
+{{- $ns := .Values.namespace }}
+{{- range $_, $iamrolebinding := .Values.customiamrolebindings }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ regexReplaceAll "\\W+" (required "A valid subject_name is required" $iamrolebinding.subject_name) "-" | lower }}--{{ regexReplaceAll "\\W+" (required "A valid role is required" $iamrolebinding.role) "-" }}
+  namespace: {{ default $.Release.Namespace $ns | quote }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: CustomRole
+    name: {{ $iamrolebinding.role | quote }}
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: {{ $iamrolebinding.subject_kind | quote }}
+    name: {{ $iamrolebinding.subject_name | quote }}
+{{- end }}
+{{- end }}

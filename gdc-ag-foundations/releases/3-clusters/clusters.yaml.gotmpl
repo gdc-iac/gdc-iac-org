@@ -1,0 +1,54 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  cluster-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_clusters" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "clusters") }}
+      {{- range $cluster := $tenantConfig.global.clusters }}
+      - name: {{ $cluster.name }}
+        chart: {{ $vals | get "gdc_clusters_chart_path" "../../charts/gdc-clusters" }}
+        kubeContext: {{ $tenantZonalContext | quote }}
+        labels:
+          stage: 3-clusters
+          tenant: {{ $tenantName | quote }}
+          type: "clusters"
+        inherit:
+          - template: cluster-template
+        values:
+          - clusters:
+              - name: {{ $cluster.name }}
+                namespace: {{ $cluster.namespace | default "platform" }}
+                {{- if $cluster.clusterNetwork }}
+                clusterNetwork: {{ $cluster.clusterNetwork | toJson }}
+                {{- end }}
+                {{- if $cluster.initialVersion }}
+                initialVersion: {{ $cluster.initialVersion | toJson }}
+                {{- end }}
+                {{- if $cluster.loadBalancer }}
+                loadBalancer: {{ $cluster.loadBalancer | toJson }}
+                {{- end }}
+                projectBindings: {{ $cluster.projectBindings | default list | toJson }}
+                nodePools: {{ $cluster.nodePools | toJson }}
+      {{- end }}
+    {{- end }}
+  {{- end }}

@@ -1,0 +1,200 @@
+---
+dev:
+  gdc_tenants:
+    org-1:
+      global:
+        kube_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
+        kube_context_zonal: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin"
+        admin_subject_name: &admin_subject_name "fop-iac@example.com"
+        shared_infra_project_names: &shared_infra_project_names ["mellons-prj"]
+        # customroles: # TODO: observed slowness deploying custom roles in sandbox env. Check if this the case in physical GDCag env. Use HELM_WAIT=false to mitigate for now?
+        #   - name: "project-viewer"
+        #     title: "Project Viewer"
+        #     description: "View projects"
+        #     stage: "GA"
+        #     scope: "project"
+        #     roleNamespaces: ["*"]
+        #     zonalRules: 
+        #     - apiGroups: ["resourcemanager.gdc.goog"]
+        #       resources: ["projects"]
+        #       verbs: ["get", "list", "watch"]
+        #   - name: &ro_bucket_role "ro-bucket-role"
+        #     title: *ro_bucket_role
+        #     description: *ro_bucket_role
+        #     stage: "GA"
+        #     scope: "project"
+        #     roleNamespaces: ["*"]
+        #     zonalRules:
+        #       - apiGroups: [object.gdc.goog]
+        #         resources: [buckets]
+        #         verbs: ["list", "read-object"]
+        #   - name: &rw_bucket_role "rw-bucket-role"
+        #     title: *rw_bucket_role
+        #     description: *rw_bucket_role
+        #     stage: "GA"
+        #     scope: "project"
+        #     roleNamespaces: ["*"]
+        #     zonalRules:
+        #       - apiGroups: [object.gdc.goog]
+        #         resources: [buckets]
+        #         verbs: ["list", "read-object"]
+        iamrolebindings:
+          - role: "user-cluster-node-viewer"
+          - role: "user-cluster-crd-viewer"
+        rbacrolebindings: []
+        #   - role: "custom-role-project-viewer"
+        org_policies: []
+        #   - name: "disable-marketplace-creation"
+        #     spec:
+        #       match:
+        #         kinds:
+        #           - apiGroups: ["marketplace.gdc.goog"]
+        #             kinds: ["MarketplaceService"]
+        #       parameters:
+        #         disabledOperations:
+        #           - "CREATE"
+        # 
+        org_network_policies: [] # TODO: Org network policies are not supported in GDCag Sandbox, test in actual GDCag env. (#kubectl api-resources | grep organizationnetworkpolicy)
+        #   - name: "allow-vertex-ai-access"
+        #     subject:
+        #       services:
+        #         match_types:
+        #           - "ai"
+        #     ingress:
+        #       - from:
+        #         - ip_block:
+        #             cidr: "10.0.0.0/8"
+        # billing:
+        #   accounts:
+        #     - name: "example-billing-account"
+        #       display_name: "Example Billing Account"
+        #       cloud_billing_config_account_id: "012345-6789AB-CDEF01"
+        projects:
+          - name: "mellons-prj"
+            iamrolebindings:
+              - role: "project-iam-admin"
+              - role: "secret-admin"
+              - role: "namespace-admin"
+              - role: "project-bucket-admin"
+              - role: "project-vm-admin"
+              - role: "project-networkpolicy-admin"
+              - role: "project-grafana-viewer"
+              - role: "project-bucket-object-admin"
+              - role: "project-bucket-object-viewer"
+              - role: "workload-viewer"
+              - role: "backup-creator"
+              - role: "harbor-instance-admin"
+              - role: "harbor-project-creator"
+              - role: "dashboard-editor"
+              - role: "workbench-notebooks-admin"
+            serviceaccounts:
+              - name: "mellons-frontend-sa"
+                namespace: "mellons-prj"
+            resources:
+              harbors:
+                - name: "example-harbor"
+                  autoscan: true
+                  creatorkind: "User"
+                  creatorname: *admin_subject_name
+              vms:
+                - name: "mellons-frontend-vm"
+                  image_name: "ubuntu-24.04-v20260224-gdch"
+                  image_namespace: "vm-system"
+                  boot_disk_size: "20Gi"
+                  machine_type: "n3-standard-2-gdc"
+                  ssh:
+                    uiAccessEnabled: true
+                    createProjectNetworkPolicy: true
+              buckets:
+                - name: "mellons-bucket"
+                  description: "test bucket"
+                  storage_class: "Standard"
+                  location: "zone1"
+                - name: "mellons-vm-repo"
+                  description: "bucket for vm repo"
+                  storage_class: "Standard"
+                  location: "zone1"
+
+              backup_repositories: # TODO: add secret creation
+                vm: []
+                #   - name: "mellons-vm-repo"
+                #     secretReference:
+                #       name: "s3-credentials"
+                #     endpoint: "https://objectstorage.gdc.goog"
+                #     s3Options:
+                #       bucket: "mellons-vm-bucket"
+                #       region: "zone1"
+              project_network_policies:
+                - name: "allow-internal-traffic"
+                  ingress:
+                  - from:
+                    - project_selector:
+                        projects:
+                          match_names:
+                          - "bunny-prj"
+              dashboards:
+                - name: "mellons-dashboard"
+                  json_model: '{"title": "mellons Dashboard Overview"}'
+                - name: "org-spend-dash"
+                  json_model_file: "org-spend-dash.json"
+                - json_model_dir: "mydashboards"
+              backup_plans: # TODO: uncomment once backup repositories are created
+                namespace: "mellons-prj"
+                vm: []
+                  # - name: "mellons-backup-plan"
+                  #   backupRepository: "mellons-vm-repo"
+                  #   volumeStrategy: "ProvisionerSpecific"
+                  #   cronSchedule: "0 0 * * *"
+        clusters:
+          - name: "mellons-cluster" # This is a standard cluster
+            namespace: "platform"
+            clusterNetwork:
+              podCIDRSize: 21
+              serviceCIDRSize: 23
+            initialVersion:
+              kubernetesVersion: "1.32.13-gke.100"
+            loadBalancer:
+              ingressServiceIPSize: 21
+            nodePools:
+              - name: "worker-node-pool"
+                machineTypeName: "n3-standard-4-gdc"
+                nodeCount: 3
+            projectBindings: *shared_infra_project_names
+          - name: "mellons-user-cluster" # This is a user cluster
+            namespace: "mellons-prj"
+            clusterNetwork:
+              podCIDRSize: 21
+              serviceCIDRSize: 23
+            initialVersion:
+              kubernetesVersion: "1.32.13-gke.100"
+            loadBalancer:
+              ingressServiceIPSize: 21
+            nodePools:
+              - name: "worker-node-pool"
+                machineTypeName: "n3-standard-4-gdc"
+                nodeCount: 3
+            projectBindings: []
+        notebooks:
+          - name: "mellons-notebook"
+            project: "mellons-prj"
+            nb_jupyter_image: "gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/pytorch-gpu:m125_ext"
+            user_cluster_name: "mellons-cluster"
+            cpu_limit: "2"
+            memory_limit: "4Gi"
+            gpu_limit: "1"
+            serviceAccountName: "mellons-frontend-sa"
+            env:
+              - name: "MODEL_PATH"
+                value: "/mnt/models"
+            nodeSelector:
+              cloud.google.com/gke-accelerator: "nvidia-tesla-t4"
+            tolerations:
+              - key: "nvidia.com/gpu"
+                operator: "Exists"
+                effect: "NoSchedule"
+            volumes:
+              - name: "model-storage"
+                emptyDir: {}
+            volumeMounts:
+              - name: "model-storage"
+                mountPath: "/mnt/models"

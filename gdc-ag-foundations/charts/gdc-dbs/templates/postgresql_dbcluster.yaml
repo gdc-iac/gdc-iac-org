@@ -1,0 +1,23 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: {{ .Values.postgresql.clusterName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gdch-dbs.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+spec:
+  primarySpec:
+    version: {{ .Values.postgresql.version | quote }}
+    adminUser:
+      passwordRef:
+        name: db-pw-{{ .Values.postgresql.clusterName }}
+    resources:
+      cpu: {{ .Values.postgresql.cpu }}
+      memory: {{ .Values.postgresql.memory }}
+      disks:
+      - name: DataDisk
+        size: {{ .Values.postgresql.dataDiskSize }}
+{{- end }}
+

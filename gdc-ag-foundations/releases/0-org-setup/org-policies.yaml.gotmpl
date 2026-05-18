@@ -1,0 +1,55 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global" "") }}
+  {{- if not $tenantGlobalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+
+templates:
+  policy-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: true
+ 
+releases:
+  # LOOP 1: Iterate over Tenants
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
+
+    # --- ORG LEVEL POLICIES ---
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_network_policies") }}
+    - name: {{ $tenantName }}-org-netpols
+      chart: {{ $vals | get "gdc_org_network_policies_chart_path" "../../charts/gdc-org-network-policies" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
+      labels:
+        stage: 0-org-setup
+      inherit:
+        - template: policy-template
+      values:
+        - orgnetworkpolicies: {{ $tenantConfig.global.org_network_policies | toJson }}
+    {{- end }}
+
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_policies") }}
+    - name: {{ $tenantName }}-org-policies
+      chart: {{ $vals | get "gdc_org_policies_chart_path" "../../charts/gdc-org-policies" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
+      labels:
+        stage: 0-org-setup
+      inherit:
+        - template: policy-template
+      values:
+        - orgpolicies: {{ $tenantConfig.global.org_policies | toJson }}
+    {{- end }}
+  {{- end }}

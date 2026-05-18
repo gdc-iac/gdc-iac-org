@@ -1,0 +1,43 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global" "") }}
+  {{- if not $tenantGlobalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  project-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: true
+    createNamespace: false
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
+
+    {{- range $project := $tenantConfig.global.projects }}
+    - name: {{ $project.name }}
+      chart: {{ $vals | get "gdc_projects_chart_path" "../../charts/gdc-projects" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
+      labels:
+        stage: 1-project-factory
+        tenant: {{ $tenantName | quote }}
+        project: {{ $project.name | quote }}
+        type: "project"
+      inherit:
+        - template: project-template
+      values:
+        - projects:
+            {{ $tenantName }}:
+              name: {{ $project.name }}
+    {{- end }}
+  {{- end }}
+

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gdc-clusters
+description: A Helm chart for Google Distributed Cloud organization management
+type: application
+version: 0.1.1
+appVersion: "1.14.6"
+maintainers:
+  - name: gdc-iac

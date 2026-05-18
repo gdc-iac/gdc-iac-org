@@ -1,0 +1,29 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+templates:
+  customroles-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: true
+    createNamespace: false
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "customroles") }}
+    - name: {{ $tenantName }}-custom-roles
+      chart: {{ $vals | get "gdc_custom_roles_chart_path" "../../charts/gdc-custom-roles" }}
+      kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+      installed: true
+      labels:
+        stage: 0-org-setup
+      inherit:
+        - template: customroles-template
+      values:
+        - customroles: {{ $tenantConfig.global.customroles | toJson }}
+    {{- end }}
+  {{- end }}

@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Values schema for gdc-notebooks",
+  "type": "object",
+  "required": ["notebooks"],
+  "properties": {
+    "notebooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "namespace", "nb_jupyter_image", "user_cluster_name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "nb_jupyter_image": {
+            "type": "string"
+          },
+          "user_cluster_name": {
+            "type": "string"
+          },
+          "cpu_limit": {
+            "type": "string"
+          },
+          "memory_limit": {
+            "type": "string"
+          },
+          "gpu_limit": {
+            "type": "string"
+          },
+          "cpu_request": {
+            "type": "string"
+          },
+          "memory_request": {
+            "type": "string"
+          },
+          "gpu_request": {
+            "type": "string"
+          },
+          "serviceAccountName": {
+            "type": "string"
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "value"],
+              "properties": {
+                "name": { "type": "string" },
+                "value": { "type": "string" }
+              }
+            }
+          },
+          "nodeSelector": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "tolerations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": { "type": "string" },
+                "operator": { "type": "string", "enum": ["Exists", "Equal"] },
+                "value": { "type": "string" },
+                "effect": { "type": "string", "enum": ["NoSchedule", "PreferNoSchedule", "NoExecute"] }
+              }
+            }
+          },
+          "volumes": {
+            "type": "array"
+          },
+          "volumeMounts": {
+            "type": "array"
+          }
+        }
+      }
+    }
+  }
+}

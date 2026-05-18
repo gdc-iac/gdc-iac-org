@@ -1,0 +1,26 @@
+{{- if .Values.oracle.enabled }}
+apiVersion: oracle.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: {{ .Values.oracle.clusterName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gdch-dbs.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+spec:
+  primarySpec:
+    version: {{ .Values.oracle.version | quote }}
+    adminUser:
+      passwordRef:
+        name: db-pw-{{ .Values.oracle.clusterName }}
+    resources:
+      cpu: {{ .Values.oracle.cpu }}
+      memory: {{ .Values.oracle.memory }}
+      disks:
+      - name: DataDisk
+        size: {{ .Values.oracle.dataDiskSize }}
+      - name: LogDisk
+        size: {{ .Values.oracle.logDiskSize }}
+    cdbName: {{ .Values.oracle.cdbName }}
+{{- end }}
+

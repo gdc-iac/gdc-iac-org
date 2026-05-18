@@ -1,0 +1,7 @@
+---
+helmDefaults:
+  atomic: {{ env "HELM_ATOMIC" | default (.Values | get "helm_atomic" true | toString) | eq "true" }}
+  cleanupOnFail: false
+  skipSchemaValidation: false
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
+  timeout: 5400

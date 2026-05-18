@@ -1,0 +1,27 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+  kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "billing") }}
+    - name: {{ $tenantName }}-billing
+      chart: {{ $vals | get "gdc_billing_chart_path" "../../charts/gdc-billing" }}
+      kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+      namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+      installed: true
+      labels:
+        stage: 0-org-setup
+      values:
+        - billing: {{ $tenantConfig.global.billing | toJson }}
+    {{- end }}
+  {{- end }}
+

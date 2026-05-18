@@ -1,0 +1,44 @@
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  backup-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_backup_plans" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- if and $project.resources (hasKey $project.resources "backup_plans") }}
+      - name: {{ $project.name }}-backup-plans
+        chart: {{ $vals | get "gdc_backup_plans_chart_path" "../../charts/gdc-backup-plans" }}
+        kubeContext: {{ $tenantZonalContext | quote }}
+        labels:
+          stage: 2-resources
+          tenant: {{ $tenantName | quote }}
+          project: {{ $project.name | quote }}
+          type: "backup-plans"
+        inherit:
+          - template: backup-template
+        values:
+          - backupplans: {{ $project.resources.backup_plans | toJson }}
+            namespace: {{ $project.name }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
