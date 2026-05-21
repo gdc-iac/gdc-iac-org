@@ -96,6 +96,17 @@ Designed for Production GDC-AG tenant environments and automated GitOps pipeline
    ./setup-tenant-sa.sh
    ```
 
+   > [!WARNING]
+   > **Role & Namespace Propagation Delay:**
+   > GDC's background identity propagation engines require around **15 to 20 seconds** to replicate namespaces, projects, and IAM role permissions down from the logical Global API to physical regional clusters. Running step 2 immediately may result in immediate authentication or authorization failures.
+   
+   * **Optional: Verify Role Propagation Status:**
+     Before proceeding, run the following access check to confirm the restricted runner credentials have propagated and are active in the target project namespace:
+     ```bash
+     kubectl --kubeconfig=./.kubeconfig-sa --context=runner-context auth can-i get virtualmachines -n ioc-test-project-001-v1
+     ```
+     *Do not proceed to step 2 until this command returns `yes`.*
+
 2. **Deploy the Project and VM Workloads:**
    Run the `helmfile sync` using the generated `.kubeconfig-sa` file to provision both the GDC logical project environment and the regional VM workloads:
    ```bash
