@@ -2,8 +2,6 @@
 # This file defines the desired state for the ioc-test project.
 
 # Global chart paths (relative to this folder)
-gdc_buckets_chart_path: "../../../charts/gdc-buckets"
-gdc_dbs_chart_path: "../../../charts/gdc-dbs"
 gdc_iam_roles_chart_path: "../../../charts/gdc-iam-roles"
 gdc_iam_rolebindings_chart_path: "../../../charts/gdc-iam-role-bindings"
 gdc_projects_chart_path: "../../../charts/gdc-projects"
