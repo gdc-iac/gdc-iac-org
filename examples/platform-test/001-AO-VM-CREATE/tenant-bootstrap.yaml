@@ -1,5 +1,5 @@
-# physical-bootstrap.yaml
-# Declarative Kubernetes manifests for physical GDC target physcial test environments
+# tenant-bootstrap.yaml
+# Declarative GDC-native logical manifests for Tenant-scoped bootstrapping.
 # Creates ServiceAccounts, Token Secrets, and GDC-native IAMRoleBindings.
 
 apiVersion: v1

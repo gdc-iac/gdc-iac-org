@@ -1,5 +1,5 @@
-# admin-bootstrap.yaml
-# Declarative Kubernetes manifests for GDC Admin Cluster bootstrapping.
+# operator-bootstrap.yaml
+# Declarative Kubernetes manifests for GDC Admin Cluster operator bootstrapping.
 # Creates ServiceAccounts, Secrets, and K8s-native ClusterRoleBindings.
 
 apiVersion: v1
@@ -46,15 +46,17 @@ subjects:
   name: platform-bootstrap-sa
   namespace: iac-root
 ---
-# Grant cluster-admin to test-runner-sa on Admin Cluster (required for VM provisioning/status checks)
+# Grant restricted admin access to test-runner-sa strictly within the iac-root namespace on Admin Cluster
+# (Required for managing Helm release state secrets; workload-level access is managed dynamically via GDC IAM)
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: test-runner-sa--cluster-admin
+  name: test-runner-sa--iac-root-admin
+  namespace: iac-root
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cluster-admin
+  name: admin
 subjects:
 - kind: ServiceAccount
   name: test-runner-sa
