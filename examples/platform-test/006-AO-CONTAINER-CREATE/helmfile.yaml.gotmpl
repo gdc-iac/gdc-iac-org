@@ -1,0 +1,136 @@
+# helmfile.yaml for 006-AO-CONTAINER-CREATE
+# Logic engine to dynamically generate Helm releases based on tenants.yaml
+
+# Load tenants.yaml directly
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+
+# Define a version suffix from environment (e.g. VERSION=-v2)
+{{- $version := env "VERSION" | default "" }}
+
+# Define Organization Name from environment (e.g. ORG_NAME=community)
+{{- $orgName := env "ORG_NAME" | default "org-1" }}
+
+# Define administrative logical project namespace (e.g. IAC_PROJECT=iac-staging)
+{{- $iacProjectNamespace := env "IAC_PROJECT" | default "iac-root" }}
+
+# Define Zone and Host Suffix parameters
+{{- $zoneName := env "ZONE_NAME" | default "east1" }}
+{{- $hostSuffix := env "HOST_SUFFIX" | default "google.gdch.test" }}
+{{- $domainSuffixContext := replace "." "-" $hostSuffix }}
+
+# Logical global API cluster context
+{{- $globalContext := env "GLOBAL_API_CONTEXT" | default (printf "global-api-gdch_console-%s-%s-%s_global-api" $orgName $zoneName $domainSuffixContext) }}
+
+# Admin cluster context (for ProjectBinding and hooks)
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default (printf "%s-admin-%s-gdch_console-%s-%s-%s_%s-admin" $orgName $zoneName $orgName $zoneName $domainSuffixContext $orgName) }}
+
+# User cluster context (for workloads)
+{{- $userClusterContext := env "USER_CLUSTER_CONTEXT" | default "user-cluster-context-placeholder" }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+
+releases:
+  # LOOP 1: Iterate over Tenants
+  {{- range $tenantName, $tenantConfig := $vals.gdc_tenants }}
+    
+    # LOOP 2: Iterate over Projects
+    {{- range $project := $tenantConfig.global.projects }}
+    {{- $projectName := printf "%s%s" $project.name $version }}
+
+    # --- STAGE 1: DEPLOY GDC PROJECT ---
+    - name: {{ $projectName }}
+      chart: {{ $vals.gdc_projects_chart_path }}
+      kubeContext: {{ $globalContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: project
+        tenant: {{ $tenantName }}
+      values:
+        - projects:
+            {{ $tenantName }}:
+              name: {{ $projectName }}
+              namespace: platform
+
+    # --- STAGE 1a: DEPLOY GDC PROJECT IAM ROLEBINDINGS ---
+    - name: {{ $projectName }}-iam-rolebindings
+      chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
+      kubeContext: {{ $globalContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: project-iam-rolebindings
+        tenant: {{ $tenantName }}
+      needs:
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+      values:
+        - iamrolebindings: {{ $project.iamrolebindings | toJson }}
+          namespace: {{ $projectName }}
+
+    # --- STAGE 1b: DEPLOY PROJECT CLUSTER BINDINGS ---
+    {{- if $project.cluster_bindings }}
+    - name: {{ $projectName }}-cluster-bindings
+      chart: {{ $vals.gdc_project_bindings_chart_path }}
+      kubeContext: {{ $adminContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: project-bindings
+        tenant: {{ $tenantName }}
+      needs:
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+      values:
+        - namespace: platform
+          projectBindings:
+            {{- range $cb := $project.cluster_bindings }}
+            - clusterName: {{ env "USER_CLUSTER_NAME" | default $cb.clusterName }}
+              projectName: {{ $projectName }}
+            {{- end }}
+    {{- end }}
+
+    # --- STAGE 2: WORKLOADS (User Cluster) ---
+    {{- if and $project.resources (hasKey $project.resources "workloads") }}
+    - name: {{ $projectName }}-workloads
+      chart: {{ $vals.gdc_workloads_chart_path }}
+      kubeContext: {{ $userClusterContext }}
+      namespace: {{ $projectName }}
+      installed: true
+      labels:
+        tier: workload
+        tenant: {{ $tenantName }}
+        project: {{ $projectName }}
+      needs:
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}-iam-rolebindings
+        {{- if $project.cluster_bindings }}
+        - {{ $adminContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}-cluster-bindings
+        {{- end }}
+      hooks:
+        - events: ["presync"]
+          showlogs: true
+          command: "sh"
+          args: 
+            - "-c"
+            - |
+              echo "Checking for namespace {{ $projectName }} on user cluster (context: {{ $userClusterContext }})..."
+              # Wait for namespace
+              until kubectl --context {{ $userClusterContext }} -n {{ $projectName }} get serviceaccount default >/dev/null 2>&1; do
+                echo "...still waiting for namespace {{ $projectName }} on user cluster (context: {{ $userClusterContext }})..."
+                sleep 10
+              done
+              # Wait for permissions
+              until kubectl --context {{ $userClusterContext }} auth can-i create deployments -n {{ $projectName }} >/dev/null 2>&1; do
+                echo "...still waiting for deployments permissions in {{ $projectName }} on user cluster (context: {{ $userClusterContext }})..."
+                sleep 10
+              done
+              echo "User cluster environment is ready!"
+      values:
+        - namespace: {{ $projectName }}
+          deployments: {{ $project.resources.workloads.deployments | toJson }}
+          services: {{ $project.resources.workloads.services | toJson }}
+    {{- end }}
+
+    {{- end }} # End Project Loop
+  {{- end }} # End Tenant Loop
