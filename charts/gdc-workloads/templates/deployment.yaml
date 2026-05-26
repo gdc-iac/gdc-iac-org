@@ -1,0 +1,30 @@
+{{- range $dep := .Values.deployments }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $dep.name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app: {{ $dep.name }}
+spec:
+  replicas: {{ default 1 $dep.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $dep.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $dep.name }}
+    spec:
+      containers:
+      - name: {{ $dep.name }}
+        image: {{ $dep.image }}
+        {{- if $dep.command }}
+        command: {{ $dep.command | toJson }}
+        {{- end }}
+        ports:
+        {{- range $port := $dep.ports }}
+        - containerPort: {{ $port }}
+        {{- end }}
+---
+{{- end }}

@@ -1,0 +1,18 @@
+{{- range $svc := .Values.services }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $.Values.namespace }}
+spec:
+  selector:
+    app: {{ $svc.deploymentName }}
+  ports:
+  {{- range $port := $svc.ports }}
+  - protocol: {{ default "TCP" $port.protocol }}
+    port: {{ $port.port }}
+    targetPort: {{ default $port.port $port.targetPort }}
+  {{- end }}
+  type: {{ default "ClusterIP" $svc.type }}
+---
+{{- end }}

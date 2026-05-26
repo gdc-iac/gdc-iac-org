@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gdc-workloads
+description: A Helm chart for standard Kubernetes workloads in GDC
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

@@ -13,9 +13,14 @@ spec:
     kind: IAMRole
     name: {{ $iamrolebinding.role | quote }}
   subjects:
-  - apiGroup: rbac.authorization.k8s.io
+  - {{- if ne $iamrolebinding.subject_kind "ServiceAccount" }}
+    apiGroup: rbac.authorization.k8s.io
+    {{- end }}
     kind: {{ $iamrolebinding.subject_kind | quote }}
     name: {{ $iamrolebinding.subject_name | quote }}
+    {{- if eq $iamrolebinding.subject_kind "ServiceAccount" }}
+    namespace: {{ required "subject_namespace is required for ServiceAccount kind" $iamrolebinding.subject_namespace | quote }}
+    {{- end }}
 {{- end }}
 {{- end }}
 
