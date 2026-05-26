@@ -7,11 +7,22 @@
 # Define a version suffix from environment (e.g. VERSION=-v2)
 {{- $version := env "VERSION" | default "" }}
 
+# Define Organization Name from environment (e.g. ORG_NAME=community)
+{{- $orgName := env "ORG_NAME" | default "org-1" }}
+
+# Define administrative logical project namespace (e.g. IAC_PROJECT=iac-staging)
+{{- $iacProjectNamespace := env "IAC_PROJECT" | default "iac-root" }}
+
+# Define Zone and Host Suffix parameters
+{{- $zoneName := env "ZONE_NAME" | default "east1" }}
+{{- $hostSuffix := env "HOST_SUFFIX" | default "google.gdch.test" }}
+{{- $domainSuffixContext := replace "." "-" $hostSuffix }}
+
 # Admin cluster context (for hooks)
-{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default (printf "%s-admin-%s-gdch_console-%s-%s-%s_%s-admin" $orgName $zoneName $orgName $zoneName $domainSuffixContext $orgName) }}
 
 # Global API context
-{{- $globalContext := env "GLOBAL_API_CONTEXT" | default "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api" }}
+{{- $globalContext := env "GLOBAL_API_CONTEXT" | default (printf "global-api-gdch_console-%s-%s-%s_global-api" $orgName $zoneName $domainSuffixContext) }}
 
 helmDefaults:
   createNamespace: false
@@ -29,7 +40,7 @@ releases:
     - name: {{ $projectName }}
       chart: {{ $vals.gdc_projects_chart_path }}
       kubeContext: {{ $globalContext }}
-      namespace: iac-root
+      namespace: {{ $iacProjectNamespace }}
       installed: true
       labels:
         tier: project
@@ -44,13 +55,13 @@ releases:
     - name: {{ $projectName }}-iam-rolebindings
       chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
       kubeContext: {{ $globalContext }}
-      namespace: iac-root
+      namespace: {{ $iacProjectNamespace }}
       installed: true
       labels:
         tier: project-iam-rolebindings
         tenant: {{ $tenantName }}
       needs:
-        - {{ $globalContext }}/iac-root/{{ $projectName }}
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
       values:
         - iamrolebindings: {{ $project.iamrolebindings | toJson }}
           namespace: {{ $projectName }}
@@ -60,13 +71,13 @@ releases:
     - name: {{ $projectName }}-cluster-bindings
       chart: "../../../charts/gdc-project-bindings"
       kubeContext: {{ $adminContext }}
-      namespace: iac-root
+      namespace: {{ $iacProjectNamespace }}
       installed: true
       labels:
         tier: project-bindings
         tenant: {{ $tenantName }}
       needs:
-        - {{ $globalContext }}/iac-root/{{ $projectName }}
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
       values:
         - namespace: platform
           projectBindings:
@@ -82,16 +93,16 @@ releases:
     - name: {{ $vm.name }}
       chart: {{ $vals.gdc_vm_chart_path }}
       kubeContext: {{ $adminContext }}
-      namespace: iac-root
+      namespace: {{ $iacProjectNamespace }}
       installed: true
       labels:
         tier: vm
         tenant: {{ $tenantName }}
         project: {{ $projectName }}
       needs:
-        - {{ $globalContext }}/iac-root/{{ $projectName }}
-        - {{ $globalContext }}/iac-root/{{ $projectName }}-iam-rolebindings
-        - {{ $adminContext }}/iac-root/{{ $projectName }}-cluster-bindings
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}-iam-rolebindings
+        - {{ $adminContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}-cluster-bindings
       hooks:
         - events: ["presync"]
           showlogs: true
