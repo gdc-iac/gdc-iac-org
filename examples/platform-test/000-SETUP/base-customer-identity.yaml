@@ -1,0 +1,183 @@
+# base-customer-identity.yaml
+# Parameterized GDC-native logical manifests for Customer-scoped setup.
+# Provisions ServiceAccounts, Secrets, and core GDC-native IAMRoleBindings.
+#
+# Placeholders:
+#   ${TEST_CASE_NO} - Scopes the runner Service Account to the specific test case (e.g., 001, 003).
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-setup-sa
+  namespace: ${IAC_PROJECT}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa
+  namespace: ${IAC_PROJECT}
+---
+# Service Account Token Secrets (persists token generation in K8s control planes)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-setup-sa-token
+  namespace: ${IAC_PROJECT}
+  annotations:
+    kubernetes.io/service-account.name: test-setup-sa
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa-token
+  namespace: ${IAC_PROJECT}
+  annotations:
+    kubernetes.io/service-account.name: test-runner-${TEST_CASE_NO}-sa
+type: kubernetes.io/service-account-token
+---
+# ==============================================================================
+# 1. TEST SETUP SA - ORGANIZATION LEVEL BINDINGS
+# ==============================================================================
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--platform-admin
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: platform-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--project-creator
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-creator
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--organization-iam-admin
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: organization-iam-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--project-editor
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--user-cluster-admin
+  namespace: platform
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: user-cluster-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
+
+# ==============================================================================
+# 2. TEST RUNNER SA - PROJECT-LEVEL BINDINGS ON ${IAC_PROJECT}
+# ==============================================================================
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa--project-editor
+  namespace: ${IAC_PROJECT}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-runner-${TEST_CASE_NO}-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa--secret-admin
+  namespace: ${IAC_PROJECT}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: secret-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-runner-${TEST_CASE_NO}-sa
+
+# ==============================================================================
+# 3. TEST SETUP SA - PROJECT-LEVEL BINDINGS ON ${IAC_PROJECT} (Helm State metadata)
+# ==============================================================================
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--project-editor
+  namespace: ${IAC_PROJECT}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-editor
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: test-setup-sa--secret-admin
+  namespace: ${IAC_PROJECT}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: secret-admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa

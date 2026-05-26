@@ -1,0 +1,66 @@
+# base-operator-identity.yaml
+# Parameterized Kubernetes manifests for GDC Admin Cluster operator bootstrapping.
+# Creates ServiceAccounts, Token Secrets, and K8s-native RoleBindings on Admin Clusters.
+#
+# Placeholders:
+#   ${TEST_CASE_NO} - Scopes the runner Service Account to the specific test case (e.g., 001, 003).
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-setup-sa
+  namespace: ${IAC_PROJECT}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa
+  namespace: ${IAC_PROJECT}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-setup-sa-token
+  namespace: ${IAC_PROJECT}
+  annotations:
+    kubernetes.io/service-account.name: test-setup-sa
+type: kubernetes.io/service-account-token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa-token
+  namespace: ${IAC_PROJECT}
+  annotations:
+    kubernetes.io/service-account.name: test-runner-${TEST_CASE_NO}-sa
+type: kubernetes.io/service-account-token
+---
+# Grant cluster-admin to test-setup-sa on Admin Cluster (required for ProjectBindings and resource creations)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: test-setup-sa--cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: test-setup-sa
+  namespace: ${IAC_PROJECT}
+---
+# Grant restricted admin access to test-runner-${TEST_CASE_NO}-sa strictly within the ${IAC_PROJECT} namespace on Admin Cluster
+# (Required for managing Helm release state secrets)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-runner-${TEST_CASE_NO}-sa--${IAC_PROJECT}-admin
+  namespace: ${IAC_PROJECT}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+- kind: ServiceAccount
+  name: test-runner-${TEST_CASE_NO}-sa
+  namespace: ${IAC_PROJECT}
