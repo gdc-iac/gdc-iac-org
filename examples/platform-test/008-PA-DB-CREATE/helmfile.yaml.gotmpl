@@ -1,0 +1,153 @@
+# helmfile.yaml for 008-PA-DB-CREATE
+# Logic engine to dynamically generate Helm releases based on tenants.yaml
+
+# Load tenants.yaml directly
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+
+# Define a version suffix from environment (e.g. VERSION=-v2)
+{{- $version := env "VERSION" | default "" }}
+
+# Define Organization Name from environment (e.g. ORG_NAME=community)
+{{- $orgName := env "ORG_NAME" | default "org-1" }}
+
+# Define administrative logical project namespace (e.g. IAC_PROJECT=iac-staging)
+{{- $iacProjectNamespace := env "IAC_PROJECT" | default "iac-root" }}
+
+# Define Zone and Host Suffix parameters
+{{- $zoneName := env "ZONE_NAME" | default "east1" }}
+{{- $hostSuffix := env "HOST_SUFFIX" | default "google.gdch.test" }}
+{{- $domainSuffixContext := replace "." "-" $hostSuffix }}
+
+# Admin cluster context (for hooks and database services)
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default (printf "%s-admin-%s-gdch_console-%s-%s-%s_%s-admin" $orgName $zoneName $orgName $zoneName $domainSuffixContext $orgName) }}
+
+# Logical global API cluster context
+{{- $globalContext := env "GLOBAL_API_CONTEXT" | default (printf "global-api-gdch_console-%s-%s-%s_global-api" $orgName $zoneName $domainSuffixContext) }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+
+releases:
+  # LOOP 1: Iterate over Tenants
+  {{- range $tenantName, $tenantConfig := $vals.gdc_tenants }}
+    
+    # LOOP 2: Iterate over Projects
+    {{- range $project := $tenantConfig.global.projects }}
+    {{- $projectName := printf "%s%s" $project.name $version }}
+
+    # --- STAGE 1: DEPLOY GDC PROJECT ---
+    - name: {{ $projectName }}
+      chart: {{ $vals.gdc_projects_chart_path }}
+      kubeContext: {{ $globalContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: project
+        tenant: {{ $tenantName }}
+      values:
+        - projects:
+            {{ $tenantName }}:
+              name: {{ $projectName }}
+              namespace: platform
+
+    # --- STAGE 1a: DEPLOY GDC PROJECT IAM ROLESBINDINGS ---
+    - name: {{ $projectName }}-iam-rolebindings
+      chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
+      kubeContext: {{ $globalContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: project-iam-rolebindings
+        tenant: {{ $tenantName }}
+      needs:
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+      values:
+        - iamrolebindings:
+            {{- range $irb := $project.iamrolebindings }}
+            - role: {{ $irb.role }}
+              subject_kind: {{ $irb.subject_kind }}
+              subject_name: {{ $irb.subject_name }}
+              {{- if eq $irb.subject_kind "ServiceAccount" }}
+              subject_namespace: {{ $iacProjectNamespace }}
+              {{- else if hasKey $irb "subject_namespace" }}
+              subject_namespace: {{ $irb.subject_namespace }}
+              {{- end }}
+            {{- end }}
+          namespace: {{ $projectName }}
+
+    # --- STAGE 1b: DEPLOY PROJECT CLUSTER BINDINGS ---
+    {{- if $project.cluster_bindings }}
+    - name: {{ $projectName }}-cluster-bindings
+      chart: {{ $vals.gdc_project_bindings_chart_path }}
+      kubeContext: {{ $adminContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: project-bindings
+        tenant: {{ $tenantName }}
+      needs:
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+      values:
+        - namespace: platform
+          projectBindings:
+            {{- range $cb := $project.cluster_bindings }}
+            - clusterName: {{ env "USER_CLUSTER_NAME" | default (printf "%s-admin" $orgName) }}
+              projectName: {{ $projectName }}
+            {{- end }}
+    {{- end }}
+
+    # --- STAGE 3: DATABASE CLUSTER ---
+    {{- if $project.resources.database }}
+    - name: {{ $projectName }}-db
+      chart: {{ $vals.gdc_dbs_chart_path }}
+      kubeContext: {{ $adminContext }}
+      namespace: {{ $iacProjectNamespace }}
+      installed: true
+      labels:
+        tier: database
+        tenant: {{ $tenantName }}
+        project: {{ $projectName }}
+      needs:
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}
+        - {{ $globalContext }}/{{ $iacProjectNamespace }}/{{ $projectName }}-iam-rolebindings
+      hooks:
+        - events: ["presync"]
+          showlogs: true
+          command: "sh"
+          args: 
+            - "-c"
+            - |
+              echo "Checking Prerequisites for {{ $projectName }}..."
+              
+              # Check for BackupRepository OR the proxy secret in ioc-test-infra
+              until kubectl --context {{ $adminContext }} get backuprepository dbs-backup-repository >/dev/null 2>&1 || \
+                    kubectl --context {{ $adminContext }} get secret s3-backup-secret -n ioc-test-infra >/dev/null 2>&1; do
+                echo "...still waiting for Platform Admin to provision dbs-backup-repository (PR-02)..."
+                sleep 15
+              done
+              echo "PR-02 Verified!"
+
+              # Initial grace period for IAM sync
+              sleep 30
+
+              # Check for Database permissions inside the newly provisioned project namespace
+              until kubectl --context {{ $adminContext }} auth can-i get dbclusters.postgresql.dbadmin.gdc.goog -n {{ $projectName }} >/dev/null 2>&1; do
+                echo "...still waiting for IAM permissions to sync..."
+                sleep 10
+              done
+              echo "Environment is ready!"
+      values:
+        - namespace: {{ $projectName }}
+          {{ $project.resources.database.engine }}:
+            enabled: true
+            clusterName: {{ $project.resources.database.clusterName }}
+            version: {{ $project.resources.database.version }}
+            base64EncodedPassword: {{ $project.resources.database.password }}
+            cpu: {{ $project.resources.database.cpu }}
+            memory: {{ $project.resources.database.memory }}
+            dataDiskSize: {{ $project.resources.database.dataDiskSize }}
+    {{- end }}
+
+    {{- end }} # End Project Loop
+  {{- end }} # End Tenant Loop

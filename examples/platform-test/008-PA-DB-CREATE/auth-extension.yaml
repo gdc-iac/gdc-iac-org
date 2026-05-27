@@ -1,0 +1,16 @@
+# auth-extension.yaml for 008-PA-DB-CREATE
+# Binds necessary project-level operator permissions to test-runner-008-sa
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-runner-008-infra-secret-viewer
+  namespace: ioc-test-infra
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: test-runner-008-sa
+    namespace: ${IAC_PROJECT}
