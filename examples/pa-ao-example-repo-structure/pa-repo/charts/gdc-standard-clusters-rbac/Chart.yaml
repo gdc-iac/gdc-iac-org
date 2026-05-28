@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gdc-standard-clusters-rbac
+description: A Helm chart for managing standard cluster RBAC inside GDCH
+type: application
+version: 0.1.1
+appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

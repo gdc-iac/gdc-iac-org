@@ -1,0 +1,22 @@
+{{- range $vm := .Values.virtualMachines }}
+{{- if and $vm.ssh $vm.ssh.uiAccessEnabled }}
+{{- if $vm.ssh.createProjectNetworkPolicy }}
+---
+apiVersion: networking.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: {{ required "A valid VM name is required" $vm.name }}-ingress
+spec:
+  policyType: Ingress
+  subject:
+    subjectType: UserWorkload
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - port: 22
+      protocol: TCP
+{{- end }}
+{{- end }}
+{{- end }}

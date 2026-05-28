@@ -1,0 +1,34 @@
+{{- $plans := ($.Values.backupplans | default dict).cluster | default dict }}
+{{- range $i, $plan := $plans }}
+---
+apiVersion: backup.gdc.goog/v1
+kind: ClusterBackupPlan
+metadata:
+  name: {{ required "A valid backup plan name is required" $plan.name }}
+  namespace: {{ $plan.namespace | default ($.Values.backupplans | default dict).namespace | required "A valid namespace is required" }}
+spec:
+  targetCluster:
+    targetClusterType: {{ required "targetClusterType is required" $plan.targetCluster.targetClusterType }}
+    targetClusterName:
+      kind: {{ $plan.targetCluster.targetClusterName.kind | default "Cluster" | quote }}
+      name: {{ required "targetClusterName sequence name is required" $plan.targetCluster.targetClusterName.name }}
+  backupSchedule:
+    cronSchedule: {{ required "cronSchedule is required" $plan.cronSchedule | quote }}
+    paused: {{ $plan.paused | default false }}
+  clusterBackupConfig:
+    backupScope:
+      {{- if $plan.backupScope }}
+      {{- toYaml $plan.backupScope | nindent 6 }}
+      {{- else }}
+      allNamespaces: true
+      {{- end }}
+    clusterBackupRepositoryName: {{ required "clusterBackupRepositoryName is required" $plan.clusterBackupRepositoryName }}
+  {{- if $plan.description }}
+  description: {{ $plan.description | quote }}
+  {{- end }}
+  {{- if $plan.retentionPolicy }}
+  retentionPolicy:
+    backupDeleteLockDays: {{ if hasKey $plan.retentionPolicy "backupDeleteLockDays" }}{{ $plan.retentionPolicy.backupDeleteLockDays }}{{ else }}0{{ end }}
+    backupRetainDays: {{ if hasKey $plan.retentionPolicy "backupRetainDays" }}{{ $plan.retentionPolicy.backupRetainDays }}{{ else }}0{{ end }}
+  {{- end }}
+{{- end }}

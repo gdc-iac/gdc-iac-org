@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gdc-standard-cluster-baseline-netpols
+description: A Helm chart for standard cluster baseline network policies (default deny, core egress) in Google Distributed Cloud (GDC)
+type: application
+version: 1.0.1
+appVersion: "1.0.0"
+maintainers:
+  - name: gdc-iac

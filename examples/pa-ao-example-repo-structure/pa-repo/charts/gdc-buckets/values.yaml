@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=values.schema.json
+
+# This corresponds to {{ $.Values.location }}
+# Optional: If omitted, the template defaults to "zone1"
+location: "us-east1-c"
+
+# This corresponds to {{ .Values.buckets }}
+# The template iterates over this list to create Bucket resources
+# buckets: {}
+#   - name: "lambda-bucket-1"
+#     namespace: "lambda-prj"
+#     description: "Primary storage for lambda app"
+#     storageClass: "Standard"
+#     enableCorsPolicy: "true"
+
+#   - name: "snowflake-bucket-archive"
+#     namespace: "snowflake-prj"
+#     description: "Cold storage archive"
+    # storageClass defaults to "Standard" if omitted
+    # enableCorsPolicy defaults to "false" if omitted

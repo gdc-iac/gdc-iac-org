@@ -1,0 +1,20 @@
+{{- if .Values.orgExternal.egress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-org-external-egress
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{ .Values.orgExternal.subjectLabelKey }}: {{ .Values.orgExternal.subjectLabelValue }}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - ipBlock:
+        cidr: {{ .Values.orgExternal.egress.toCidr }}
+    ports:
+    - protocol: TCP
+      port: {{ .Values.orgExternal.egress.port }}
+{{- end }}

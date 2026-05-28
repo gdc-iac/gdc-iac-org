@@ -1,0 +1,78 @@
+suite: project-network-policies template tests
+templates:
+  - project-network-policies.yaml
+tests:
+  - it: should not render any policies when projectnetworkpolicies is empty
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create a policy with custom name and empty ingress (allow-all)
+    set:
+      namespace: "test-namespace"
+      projectnetworkpolicies:
+        - name: "allow-all-ingress-example"
+          ingress:
+            - {}
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: kind
+          value: ProjectNetworkPolicy
+      - equal:
+          path: metadata.name
+          value: allow-all-ingress-example
+      - equal:
+          path: spec.ingress[0]
+          value: {}
+
+  - it: should create a policy allowing specific IP block
+    set:
+      namespace: "test-namespace"
+      projectnetworkpolicies:
+        - name: "allow-external-ip-example"
+          ingress:
+            - from:
+              - ip_block:
+                  cidr: "192.168.1.0/24"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: spec.ingress[0].from[0].ipBlock.cidr
+          value: "192.168.1.0/24"
+
+  - it: should handle complex logic for managed services and auto-generated names
+    set:
+      namespace: "my-namespace"
+      projectnetworkpolicies:
+        - subject:
+            subject_type: ManagedService
+            managed_services:
+              match_types:
+              - 'mhs'
+          ingress:
+            - from:
+              - project_selector:
+                  projects:
+                    match_names:
+                    - "d2-ets-user-1"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: allow-inbound-traffic-from-d2-ets-user-1-to-mhs-service
+      - equal:
+          path: metadata.namespace
+          value: my-namespace
+      - equal:
+          path: spec.subject.subjectType
+          value: ManagedService
+      - equal:
+          path: spec.subject.managedServices.matchTypes[0]
+          value: mhs
+      - equal:
+          path: spec.ingress[0].from[0].projectSelector.projects.matchNames[0]
+          value: d2-ets-user-1

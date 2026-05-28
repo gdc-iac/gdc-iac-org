@@ -1,0 +1,11 @@
+{{- range $i, $dashboard := .Values.dashboards }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: {{ $.Values.namespace | default $dashboard.namespace | required "A valid namespace is required" }}
+  name: {{ required "A valid dashboard name is required" $dashboard.name }}-configmap
+data:
+  {{ $dashboard.name }}.json: |
+{{ $dashboard.json_model | indent 4 }}
+{{- end }}

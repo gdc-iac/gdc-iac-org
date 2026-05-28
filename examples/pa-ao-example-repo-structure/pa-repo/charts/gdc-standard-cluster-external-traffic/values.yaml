@@ -1,0 +1,38 @@
+# Default values for gdc-standard-cluster-external-traffic.
+# This is a YAML-formatted file.
+
+# The namespace where these external traffic routing policies will be applied
+namespace: default
+
+# Load Balancer policies
+loadBalancer:
+  # The label criteria used to match workloads receiving LB traffic
+  subjectLabelKey: app
+  subjectLabelValue: ingress-controller
+
+  ingress:
+    enabled: true
+    # The external LB IP or internal network that the LB is routing from
+    fromCidr: "10.0.0.0/8"
+    port: 443
+
+  egress:
+    enabled: false
+    toCidr: "10.0.0.0/8"
+    port: 443
+
+# Organization External policies (Outbound/Inbound traffic boundary)
+orgExternal:
+  # The label criteria used to match workloads that are allowed to talk to external endpoints
+  subjectLabelKey: app
+  subjectLabelValue: external-gateway
+
+  ingress:
+    enabled: false
+    fromCidr: "192.168.1.0/24"
+    port: 8443
+
+  egress:
+    enabled: true
+    toCidr: "192.168.1.0/24"
+    port: 8443

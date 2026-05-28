@@ -1,0 +1,23 @@
+{{- if .Values.alloydbomni.enabled }}
+apiVersion: alloydbomni.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: {{ .Values.alloydbomni.clusterName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gdch-dbs.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+spec:
+  primarySpec:
+    version: {{ .Values.alloydbomni.version | quote }}
+    adminUser:
+      passwordRef:
+        name: db-pw-{{ .Values.alloydbomni.clusterName }}
+    resources:
+      cpu: {{ .Values.alloydbomni.cpu }}
+      memory: {{ .Values.alloydbomni.memory }}
+      disks:
+      - name: DataDisk
+        size: {{ .Values.alloydbomni.dataDiskSize }}
+{{- end }}
+

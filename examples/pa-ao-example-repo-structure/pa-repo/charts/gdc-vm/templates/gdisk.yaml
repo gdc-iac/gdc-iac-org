@@ -1,0 +1,14 @@
+{{- range $vm := .Values.virtualMachines }}
+apiVersion: virtualmachine.gdc.goog/v1
+kind: VirtualMachineDisk
+metadata:
+  name: {{ required "A valid VM name is required" $vm.name }}-boot-disk
+  namespace: {{ required "A valid namespace is required" $vm.namespace }}
+spec:
+  source:
+    image:
+      name: {{ required "A valid image name is required" $vm.imageName }}
+      namespace: {{ required "A valid image namespace is required" $vm.imageNamespace | default "vm-system" }}
+  size: {{ required "A valid boot disk size is required" $vm.bootDiskSize }}
+---
+{{- end }}
