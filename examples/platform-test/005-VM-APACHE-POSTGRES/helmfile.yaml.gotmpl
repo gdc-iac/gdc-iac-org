@@ -146,9 +146,9 @@ releases:
             - name: {{ $vm.name }}
               namespace: {{ $projectName }}
               imageName: {{ $vm.image_name }}
-              imageNamespace: {{ $vm.image_namespace | default "vm-system" }}
+              imageNamespace: {{ $vm.image_namespace }}
               bootDiskSize: {{ $vm.boot_disk_size }}
-              machineType: {{ $vm.machineType | default $vm.machine_type }}
+              machineType: {{ $vm.machine_type }}
               ssh: {{ $vm.ssh | toJson }}
             {{- end }}
     {{- end }}
