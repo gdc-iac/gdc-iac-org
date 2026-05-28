@@ -1,0 +1,121 @@
+# helmfile.yaml for 004-CONTAINER-APACHE-POSTGRES
+# Logic engine to dynamically generate Helm releases based on tenants.yaml
+
+# Load tenants.yaml directly
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+
+# Define a version suffix from environment (e.g. VERSION=-v2)
+{{- $version := env "VERSION" | default "" }}
+
+# Admin cluster context (for hooks)
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin" }}
+
+# Global API context
+{{- $globalContext := env "GLOBAL_API_CONTEXT" | default "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api" }}
+
+helmDefaults:
+  createNamespace: false
+  wait: true
+
+releases:
+  # LOOP 1: Iterate over Tenants
+  {{- range $tenantName, $tenantConfig := $vals.gdc_tenants }}
+    
+    # LOOP 2: Iterate over Projects
+    {{- range $project := $tenantConfig.global.projects }}
+    {{- $projectName := printf "%s%s" $project.name $version }}
+
+    # --- STAGE 1: DEPLOY GDC PROJECT ---
+    - name: {{ $projectName }}
+      chart: {{ $vals.gdc_projects_chart_path }}
+      kubeContext: {{ $globalContext }}
+      namespace: iac-root
+      installed: true
+      labels:
+        tier: project
+        tenant: {{ $tenantName }}
+      values:
+        - projects:
+            {{ $tenantName }}:
+              name: {{ $projectName }}
+              namespace: platform
+
+    # --- STAGE 1a: DEPLOY GDC PROJECT IAM ROLESBINDINGS ---
+    - name: {{ $projectName }}-iam-rolebindings
+      chart: {{ $vals.gdc_iam_rolebindings_chart_path }}
+      kubeContext: {{ $globalContext }}
+      namespace: iac-root
+      installed: true
+      labels:
+        tier: project-iam-rolebindings
+        tenant: {{ $tenantName }}
+      needs:
+        - {{ $globalContext }}/iac-root/{{ $projectName }}
+      values:
+        - iamrolebindings: {{ $project.iamrolebindings | toJson }}
+          namespace: {{ $projectName }}
+
+    # --- STAGE 1b: DEPLOY PROJECT CLUSTER BINDINGS ---
+    {{- if $project.cluster_bindings }}
+    - name: {{ $projectName }}-cluster-bindings
+      chart: "../../../charts/gdc-project-bindings"
+      kubeContext: {{ $adminContext }}
+      namespace: iac-root
+      installed: true
+      labels:
+        tier: project-bindings
+        tenant: {{ $tenantName }}
+      needs:
+        - {{ $globalContext }}/iac-root/{{ $projectName }}
+      values:
+        - namespace: platform
+          projectBindings:
+            {{- range $cb := $project.cluster_bindings }}
+            - clusterName: {{ env "USER_CLUSTER_NAME" | default $cb.clusterName }}
+              projectName: {{ $projectName }}
+            {{- end }}
+    {{- end }}
+
+    # --- STAGE 2: CONTAINER WEBSERVER & DB WORKLOADS ---
+    {{- if and $project.resources (hasKey $project.resources "apache_postgres") }}
+    {{- $ap := $project.resources.apache_postgres }}
+    - name: {{ $projectName }}-apache-postgres
+      chart: {{ $vals.gdc_apache_postgres_chart_path }}
+      kubeContext: {{ $adminContext }}
+      namespace: iac-root
+      installed: true
+      labels:
+        tier: apache-postgres
+        tenant: {{ $tenantName }}
+        project: {{ $projectName }}
+      needs:
+        - {{ $globalContext }}/iac-root/{{ $projectName }}
+        - {{ $globalContext }}/iac-root/{{ $projectName }}-iam-rolebindings
+        - {{ $adminContext }}/iac-root/{{ $projectName }}-cluster-bindings
+      hooks:
+        - events: ["presync"]
+          showlogs: true
+          command: "sh"
+          args: 
+            - "-c"
+            - |
+              echo "Waiting for GDC namespace creation and IAM role propagation..."
+              until kubectl --context {{ $adminContext }} auth can-i create deployments -n {{ $projectName }} >/dev/null 2>&1; do
+                echo "...still waiting for namespace and role propagation to sync..."
+                sleep 10
+              done
+              echo "Environment is ready for Web + DB container workloads!"
+      values:
+        - namespace: {{ $projectName }}
+          postgres:
+            name: {{ $ap.postgres_name }}
+          web:
+            name: {{ $ap.web_name }}
+          benchmark:
+            name: {{ $ap.benchmark_name }}
+            requestsCount: {{ $ap.requests }}
+            concurrency: {{ $ap.concurrency }}
+    {{- end }}
+
+    {{- end }} # End Project Loop
+  {{- end }} # End Tenant Loop
