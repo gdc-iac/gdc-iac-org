@@ -136,20 +136,38 @@ Because the virtual machines are assigned local virtual IP addresses inside GDC'
 
 1. **Retrieve the Internal IPs of both VMs:**
    ```bash
+   ## USING .kubeconfig-sa
    # Server VM IP
-   SERVER_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine iperf3-server-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.interfaces[0].ipAddress}')
+   SERVER_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine iperf3-server-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.network.interfaces[0].ipAddresses[0]}' | cut -d/ -f1)
    
    # Client VM IP
-   CLIENT_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine iperf3-client-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.interfaces[0].ipAddress}')
+   CLIENT_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine iperf3-client-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.network.interfaces[0].ipAddresses[0]}' | cut -d/ -f1)
+
+   ## USING existing contexts
+   # Server VM IP
+   SERVER_IP=$(kubectl --context=org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin get virtualmachine iperf3-server-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.network.interfaces[0].ipAddresses[0]}' | cut -d/ -f1)
+
+   # Client VM IP
+   CLIENT_IP=$(kubectl --context=org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin get virtualmachine iperf3-client-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.network.interfaces[0].ipAddresses[0]}' | cut -d/ -f1)
+
    ```
 
 2. **Retrieve SSH Ingress IPs (if external access is configured) or execute commands via GDC VM Console:**
    ```bash
+   ## USING .kubeconfig-sa
    # Get Server external ingress IP
    SERVER_EXT=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachineexternalaccess iperf3-server-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.ingressIP}')
    
    # Get Client external ingress IP
    CLIENT_EXT=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachineexternalaccess iperf3-client-vm -n ioc-test-project-003-v1 -o jsonpath='{.status.ingressIP}')
+
+   ## USING existing contexts
+   # Get Server external ingress IP
+   SERVER_EXT=$(kubectl --context=org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin get virtualmachineexternalaccess iperf3-server-vm -n ioc-test-project-003 -o jsonpath='{.status.ingressIP}')
+
+   # Get Client external ingress IP
+   CLIENT_EXT=$(kubectl --context=org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin get virtualmachineexternalaccess iperf3-client-vm -n ioc-test-project-003 -o jsonpath='{.status.ingressIP}')
+
    ```
 
 3. **Start iperf3 Server on `iperf3-server-vm`:**

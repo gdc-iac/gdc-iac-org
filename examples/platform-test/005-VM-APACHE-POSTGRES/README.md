@@ -134,10 +134,10 @@ Because virtual machines boot with a clean Ubuntu base image, you can SSH in and
 1. **Retrieve internal Virtual IPs:**
    ```bash
    # postgres-vm IP
-   DB_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine postgres-vm -n ioc-test-project-005-v1 -o jsonpath='{.status.interfaces[0].ipAddress}')
+   DB_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine postgres-vm -n ioc-test-project-005-v1 -o jsonpath='{.status.network.interfaces[0].ipAddresses[0]}' | cut -d/ -f1)
    
    # apache-vm IP
-   WEB_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine apache-vm -n ioc-test-project-005-v1 -o jsonpath='{.status.interfaces[0].ipAddress}')
+   WEB_IP=$(kubectl --kubeconfig=./.kubeconfig-sa --context=runner-admin-context get virtualmachine apache-vm -n ioc-test-project-005-v1 -o jsonpath='{.status.network.interfaces[0].ipAddresses[0]}' | cut -d/ -f1)
    ```
 
 2. **Retrieve SSH Ingress IPs (if external access is configured):**
