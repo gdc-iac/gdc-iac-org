@@ -11,10 +11,10 @@ if [ -z "${TEST_CASE_NO}" ] || [ -z "${VERIFY_RBAC}" ] || [ -z "${HELM_SELECTOR}
 fi
 
 # --- Configuration & Context Defaults ---
-ORG_NAME=${ORG_NAME:-"org-1"}
-IAC_PROJECT=${IAC_PROJECT:-"iac-root"}
-ZONE_NAME=${ZONE_NAME:-"east1"}
-HOST_SUFFIX=${HOST_SUFFIX:-"google.gdch.test"}
+export ORG_NAME=${ORG_NAME:-"org-1"}
+export IAC_PROJECT=${IAC_PROJECT:-"iac-root"}
+export ZONE_NAME=${ZONE_NAME:-"east1"}
+export HOST_SUFFIX=${HOST_SUFFIX:-"google.gdch.test"}
 
 # Derive context-safe domain representation (dots to dashes)
 DOMAIN_SUFFIX_CONTEXT=$(echo "${HOST_SUFFIX}" | tr '.' '-')
@@ -37,7 +37,7 @@ echo "======================================================="
 # ==============================================================================
 # [STEP 1] OPTIONAL LOCAL CERTIFICATE TRUST STORE SETUP
 # ==============================================================================
-if [ "${UPDATE_CERTS}" = "true" ] || [ ! -f "${CERT_DIR}/gdc-console.crt" ]; then
+if [ "${UPDATE_CERTS}" = "true" ] || [ ! -f "${CERT_DIR}/gdc-root-ca.crt" ]; then
     echo "🔒 [STEP 1] Fetching and updating certificates for local trust store..."
     ../000-SETUP/update-certs.sh
 fi
@@ -54,12 +54,11 @@ if [ "$CAN_CREATE_SA" != "yes" ] || [ "$CAN_CREATE_RB" != "yes" ]; then
     echo "👤 Requesting Platform Admin authentication..."
     echo "-------------------------------------------------------"
     
-    if [ ! -f "${CERT_DIR}/gdc-console.crt" ]; then
-        echo "📥 Fetching console certificate for authentication..."
-        ../000-SETUP/update-certs.sh
-    fi
+    # Unconditionally update certificates to ensure system trust prior to OIDC handshake
+    echo "📥 Ensuring GDC CA certificates are updated and trusted..."
+    ../000-SETUP/update-certs.sh
     
-    gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-console.crt"
+    gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-root-ca.crt"
     
     CAN_CREATE_SA_AFTER=$(kubectl --context "$GLOBAL_CONTEXT" auth can-i create serviceaccounts -n "$IAC_PROJECT" 2>/dev/null || echo "no")
     CAN_CREATE_RB_AFTER=$(kubectl --context "$GLOBAL_CONTEXT" auth can-i create iamrolebindings.iam.global.gdc.goog -n platform 2>/dev/null || echo "no")
@@ -71,6 +70,13 @@ if [ "$CAN_CREATE_SA" != "yes" ] || [ "$CAN_CREATE_RB" != "yes" ]; then
     echo "✅ Authenticated successfully as Platform Admin!"
 else
     echo "✅ Active context has sufficient Platform Admin and delegation privileges. Skipping OIDC login."
+fi
+
+# Check for and execute local post-login extension hook (modular dependency wiring)
+if [ -f "./post-login-hook.sh" ]; then
+    echo "🔌 [HOOK] Executing local post-login-hook.sh..."
+    source ./post-login-hook.sh
+    echo "🔌 [HOOK] Hook execution completed."
 fi
 
 # ==============================================================================

@@ -27,10 +27,10 @@ if [ "$VERIFY_RESOURCE" = "deployments" ] && [ -z "${USER_CLUSTER_CONTEXT}" ]; t
 fi
 
 # --- Configuration ---
-ORG_NAME=${ORG_NAME:-"org-1"}
-IAC_PROJECT=${IAC_PROJECT:-"iac-root"}
-ZONE_NAME=${ZONE_NAME:-"zone1"}
-HOST_SUFFIX=${HOST_SUFFIX:-"google.gdch.test"}
+export ORG_NAME=${ORG_NAME:-"org-1"}
+export IAC_PROJECT=${IAC_PROJECT:-"iac-root"}
+export ZONE_NAME=${ZONE_NAME:-"zone1"}
+export HOST_SUFFIX=${HOST_SUFFIX:-"google.gdch.test"}
 IAC_USER_EMAIL="fop-iac@example.com"
 
 # Derive context-safe domain representation (dots to dashes)
@@ -50,16 +50,15 @@ echo "🔐 GDC Interactive Adhoc Setup Driver"
 echo "📋 Case: ${TEST_CASE_NO} | Resource: ${VERIFY_RESOURCE}"
 echo "=========================================================="
 
-# 1. Certificate Management
-if [ "${UPDATE_CERTS}" = "true" ] || [ ! -f "${CERT_DIR}/gdc-console.crt" ]; then
-    ../000-SETUP/update-certs.sh
-fi
+# 1. Certificate Management & Trust Store Setup
+echo "📥 Ensuring GDC CA certificates are updated and trusted..."
+../000-SETUP/update-certs.sh
 
 # 2. Platform Admin Login
 echo ""
 echo "👤 STEP 1: Please log in as a PLATFORM ADMIN (Cluster Admin)"
 echo "--------------------------------------------------------"
-gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-console.crt"
+gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-root-ca.crt"
 
 # 3. Create iac-root Project (This creates the namespace)
 echo ""
@@ -114,11 +113,18 @@ echo ""
 echo "⏳ Waiting for IAM propagation (30s)..."
 sleep 30
 
+# Check for and execute local post-login extension hook (modular dependency wiring)
+if [ -f "./post-login-hook.sh" ]; then
+    echo "🔌 [HOOK] Executing local post-login-hook.sh..."
+    source ./post-login-hook.sh
+    echo "🔌 [HOOK] Hook execution completed."
+fi
+
 # 6. IAC User Login
 echo ""
 echo "👤 STEP 2: Switching back to IAC USER ($IAC_USER_EMAIL)"
 echo "--------------------------------------------------------"
-gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-console.crt"
+gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-root-ca.crt"
 
 # 6b. Auto-configure Kubeconfig TLS Verification for Sandbox Clusters
 echo ""

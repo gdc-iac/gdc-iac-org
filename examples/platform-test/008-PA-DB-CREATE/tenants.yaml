@@ -23,6 +23,17 @@ gdc_tenants:
             - role: "project-viewer"
               subject_kind: "ServiceAccount"
               subject_name: "test-runner-008-sa"
+            # Grant OIDC User database-admin permissions (Required for OIDC terminal helm runs!)
+            - role: "project-db-admin"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            - role: "project-viewer"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            # Grant OIDC User secret-admin permissions to manage project secrets
+            - role: "secret-admin"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
           
           resources:
             # Database Specifications
