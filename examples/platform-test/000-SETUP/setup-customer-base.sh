@@ -4,6 +4,7 @@
 # Sourced by case-scoped setup-customer-sa.sh scripts.
 
 set -e
+SETUP_DIR=$(dirname "${BASH_SOURCE[0]}")
 
 if [ -z "${TEST_CASE_NO}" ] || [ -z "${VERIFY_RBAC}" ]; then
     echo "❌ Error: TEST_CASE_NO and VERIFY_RBAC must be defined before sourcing setup-customer-base.sh"
@@ -11,7 +12,7 @@ if [ -z "${TEST_CASE_NO}" ] || [ -z "${VERIFY_RBAC}" ]; then
 fi
 
 # --- Configuration & Context Defaults ---
-export ORG_NAME=${ORG_NAME:-"community"}
+export ORG_NAME=${ORG_NAME:-"org-1"}
 export IAC_PROJECT=${IAC_PROJECT:-"iac-root"}
 export ZONE_NAME=${ZONE_NAME:-"east1"}
 export HOST_SUFFIX=${HOST_SUFFIX:-"google.gdch.test"}
@@ -38,7 +39,7 @@ echo "======================================================="
 # ==============================================================================
 if [ "${UPDATE_CERTS}" = "true" ] || [ ! -f "${CERT_DIR}/gdc-root-ca.crt" ]; then
     echo "🔒 [STEP 1] Fetching and updating certificates for local trust store..."
-    ../000-SETUP/update-certs.sh
+    ${SETUP_DIR}/update-certs.sh
 fi
 
 # ==============================================================================
@@ -55,7 +56,7 @@ if [ "$CAN_CREATE_SA" != "yes" ] || [ "$CAN_CREATE_RB" != "yes" ]; then
     
     # Unconditionally update certificates to ensure system trust prior to OIDC handshake
     echo "📥 Ensuring GDC CA certificates are updated and trusted..."
-    ../000-SETUP/update-certs.sh
+    ${SETUP_DIR}/update-certs.sh
     
     gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-root-ca.crt"
     
@@ -86,8 +87,10 @@ echo "📦 [STEP 3] Applying GDC-Native ServiceAccounts & IAMRoleBindings to Glo
 # Substitute placeholders in base-customer-identity.yaml and apply
 sed -e "s/\${TEST_CASE_NO}/${TEST_CASE_NO}/g" \
     -e "s/\${IAC_PROJECT}/${IAC_PROJECT}/g" \
-    ../000-SETUP/base-customer-identity.yaml | kubectl --context "$GLOBAL_CONTEXT" apply -f -
-kubectl --context "$GLOBAL_CONTEXT" apply -f ./auth-extension.yaml
+    ${SETUP_DIR}/base-customer-identity.yaml | kubectl --context "$GLOBAL_CONTEXT" apply -f -
+if [ -f "./auth-extension.yaml" ]; then
+    kubectl --context "$GLOBAL_CONTEXT" apply -f ./auth-extension.yaml
+fi
 
 echo "⏳ Waiting for GDC secrets and roles to propagate (15s)..."
 sleep 15
@@ -96,7 +99,7 @@ sleep 15
 # [STEP 4] EXTRACT GDC SERVICE ACCOUNT JWT TOKENS & GENERATE KUBECONFIG
 # ==============================================================================
 echo "💾 [STEP 4] Compiling customer-scoped Kubeconfig at '$KUBECONFIG_SA'..."
-../000-SETUP/generate-kubeconfig.sh --type customer
+${SETUP_DIR}/generate-kubeconfig.sh --type customer
 
 # ==============================================================================
 # [STEP 5] VERIFY PRIVILEGES & PROPAGATION

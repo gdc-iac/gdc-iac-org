@@ -2,17 +2,17 @@
 # This file defines the desired state for the ioc-test-iperf3 project.
 
 # Global chart paths (relative to this folder)
-gdc_iam_roles_chart_path: "../../../../charts/gdc-iam-roles"
-gdc_iam_rolebindings_chart_path: "../../../../charts/gdc-iam-role-bindings"
-gdc_projects_chart_path: "../../../../charts/gdc-projects"
-gdc_projects_sa_chart_path: "../../../../charts/gdc-project-service-accounts"
-gdc_iperf3_chart_path: "../../../../charts/gdc-iperf3"
+gdc_iam_roles_chart_path: "../../../charts/gdc-iam-roles"
+gdc_iam_rolebindings_chart_path: "../../../charts/gdc-iam-role-bindings"
+gdc_projects_chart_path: "../../../charts/gdc-projects"
+gdc_projects_sa_chart_path: "../../../charts/gdc-project-service-accounts"
+gdc_iperf3_chart_path: "../../../charts/gdc-iperf3"
 
 gdc_tenants:
   ioc-test-tenant:
     global:
       projects:
-        - name: "ioc-test-project-002"
+        - name: "load-test-project-002"
           # Ensure the project propagates to the user cluster
           cluster_bindings:
             - clusterName: "user-vm-1" # Match your user cluster name
