@@ -52,7 +52,8 @@ echo "=========================================================="
 
 # 1. Certificate Management & Trust Store Setup
 echo "📥 Ensuring GDC CA certificates are updated and trusted..."
-../000-SETUP/update-certs.sh
+UPDATE_SYSTEM_TRUST=false ../000-SETUP/update-certs.sh
+
 
 # 2. Platform Admin Login
 echo ""

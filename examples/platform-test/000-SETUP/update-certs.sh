@@ -30,11 +30,14 @@ if [ ! -s "${CERT_DIR}/gdc-root-ca.crt" ] || ! grep -q "BEGIN CERTIFICATE" "${CE
     echo "❌ Error: Failed to extract a valid GDC Root CA certificate."
     exit 1
 fi
+UPDATE_SYSTEM_TRUST=${UPDATE_SYSTEM_TRUST:-"false"}
 
-echo "🛡️  Adding GDC Root CA to local system trust store (requires sudo)..."
-sudo cp "${CERT_DIR}/gdc-root-ca.crt" /usr/local/share/ca-certificates/gdc-root-ca.crt
-sudo update-ca-certificates
-echo "✅ System trust store updated successfully!"
+if [ "$UPDATE_SYSTEM_TRUST" = "true" ]; then
+    echo "🛡️  Adding GDC Root CA to local system trust store (requires sudo)..."
+    sudo cp "${CERT_DIR}/gdc-root-ca.crt" /usr/local/share/ca-certificates/gdc-root-ca.crt
+    sudo update-ca-certificates
+    echo "✅ System trust store updated successfully!"
+fi
 
 # 4. local browser trust database auto-injection (NSS / Chrome)
 echo ""

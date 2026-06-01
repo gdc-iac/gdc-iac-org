@@ -111,7 +111,13 @@ releases:
             - "-c"
             - |
               echo "Waiting for GDC namespace creation and IAM role propagation..."
+              START_TIME=$(date +%s)
+              TIMEOUT=3600
               until kubectl --context {{ $adminContext }} auth can-i get virtualmachines -n {{ $projectName }} >/dev/null 2>&1; do
+                if [ $(( $(date +%s) - START_TIME )) -ge "$TIMEOUT" ]; then
+                  echo "❌ Timeout: Namespace and role propagation failed to sync within 1 hour."
+                  exit 1
+                fi
                 echo "...still waiting for namespace and role propagation to sync..."
                 sleep 10
               done
