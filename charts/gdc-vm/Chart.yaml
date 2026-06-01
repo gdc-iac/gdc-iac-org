@@ -1,7 +1,7 @@
 apiVersion: v2
 name: gdc-vm
 description: A Helm chart for managing Virtual Machines on GDC version 1.11+
-version: 0.1.4
+version: 0.1.5
 keywords:
   - gdc
   - virtual-machine

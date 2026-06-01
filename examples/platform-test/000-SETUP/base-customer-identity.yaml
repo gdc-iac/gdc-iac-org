@@ -1,45 +1,48 @@
-# tenant-bootstrap.yaml
-# Declarative GDC-native logical manifests for Tenant-scoped bootstrapping.
-# Creates ServiceAccounts, Token Secrets, and GDC-native IAMRoleBindings.
+# base-customer-identity.yaml
+# Parameterized GDC-native logical manifests for Customer-scoped setup.
+# Provisions ServiceAccounts, Secrets, and core GDC-native IAMRoleBindings.
+#
+# Placeholders:
+#   ${TEST_CASE_NO} - Scopes the runner Service Account to the specific test case (e.g., 001, 003).
 
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: platform-bootstrap-sa
-  namespace: iac-root
+  name: test-setup-sa
+  namespace: ${IAC_PROJECT}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: test-runner-sa
-  namespace: iac-root
+  name: test-runner-${TEST_CASE_NO}-sa
+  namespace: ${IAC_PROJECT}
 ---
-# Service Account Token Secrets (persists token generation in newer K8s clusters)
+# Service Account Token Secrets (persists token generation in K8s control planes)
 apiVersion: v1
 kind: Secret
 metadata:
-  name: platform-bootstrap-sa-token
-  namespace: iac-root
+  name: test-setup-sa-token
+  namespace: ${IAC_PROJECT}
   annotations:
-    kubernetes.io/service-account.name: platform-bootstrap-sa
+    kubernetes.io/service-account.name: test-setup-sa
 type: kubernetes.io/service-account-token
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: test-runner-sa-token
-  namespace: iac-root
+  name: test-runner-${TEST_CASE_NO}-sa-token
+  namespace: ${IAC_PROJECT}
   annotations:
-    kubernetes.io/service-account.name: test-runner-sa
+    kubernetes.io/service-account.name: test-runner-${TEST_CASE_NO}-sa
 type: kubernetes.io/service-account-token
 ---
 # ==============================================================================
-# 1. PLATFORM BOOTSTRAP SA - ORGANIZATION LEVEL BINDINGS
+# 1. TEST SETUP SA - ORGANIZATION LEVEL BINDINGS
 # ==============================================================================
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--platform-admin
+  name: test-setup-sa--platform-admin
   namespace: platform
 spec:
   roleRef:
@@ -49,12 +52,12 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--project-creator
+  name: test-setup-sa--project-creator
   namespace: platform
 spec:
   roleRef:
@@ -64,12 +67,12 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--organization-iam-admin
+  name: test-setup-sa--organization-iam-admin
   namespace: platform
 spec:
   roleRef:
@@ -79,12 +82,12 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--project-editor
+  name: test-setup-sa--project-editor
   namespace: platform
 spec:
   roleRef:
@@ -94,12 +97,12 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--user-cluster-admin
+  name: test-setup-sa--user-cluster-admin
   namespace: platform
 spec:
   roleRef:
@@ -109,17 +112,17 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
 
 # ==============================================================================
-# 2. TEST RUNNER SA - PROJECT-LEVEL BINDINGS ON iac-root
+# 2. TEST RUNNER SA - PROJECT-LEVEL BINDINGS ON ${IAC_PROJECT}
 # ==============================================================================
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: test-runner-sa--project-editor
-  namespace: iac-root
+  name: test-runner-${TEST_CASE_NO}-sa--project-editor
+  namespace: ${IAC_PROJECT}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
@@ -128,13 +131,13 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:test-runner-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-runner-${TEST_CASE_NO}-sa
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: test-runner-sa--secret-admin
-  namespace: iac-root
+  name: test-runner-${TEST_CASE_NO}-sa--secret-admin
+  namespace: ${IAC_PROJECT}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
@@ -143,17 +146,17 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:test-runner-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-runner-${TEST_CASE_NO}-sa
 
 # ==============================================================================
-# 3. PLATFORM BOOTSTRAP SA - PROJECT-LEVEL BINDINGS ON iac-root (Helm State)
+# 3. TEST SETUP SA - PROJECT-LEVEL BINDINGS ON ${IAC_PROJECT} (Helm State metadata)
 # ==============================================================================
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--project-editor
-  namespace: iac-root
+  name: test-setup-sa--project-editor
+  namespace: ${IAC_PROJECT}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
@@ -162,13 +165,13 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
 metadata:
-  name: platform-bootstrap-sa--secret-admin
-  namespace: iac-root
+  name: test-setup-sa--secret-admin
+  namespace: ${IAC_PROJECT}
 spec:
   roleRef:
     apiGroup: iam.global.gdc.goog/v1
@@ -177,4 +180,4 @@ spec:
   subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
-    name: system:serviceaccount:iac-root:platform-bootstrap-sa
+    name: system:serviceaccount:${IAC_PROJECT}:test-setup-sa

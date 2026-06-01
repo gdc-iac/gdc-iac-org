@@ -23,19 +23,19 @@ gdc_tenants:
               subject_name: "fop-iac@example.com"
             - role: "project-vm-admin"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-001-sa"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
               subject_name: "fop-iac@example.com"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-001-sa"
             - role: "project-viewer"
               subject_kind: "User"
               subject_name: "fop-iac@example.com"
             - role: "project-viewer"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-001-sa"
           resources:
             vms:
               # Step 2-5: Specify VM name, image, and resources

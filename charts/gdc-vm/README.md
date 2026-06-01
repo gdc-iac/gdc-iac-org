@@ -116,11 +116,11 @@ virtualMachines:
 
 ## Generated Resources
 
-The chart will generate the following resources based on your configuration:
+The chart will generate the following resources based on your configuration. **All generated workload resources are provisioned inside the VM's own target namespace** (as defined by `virtualMachines[].namespace`) rather than the Helm release namespace, ensuring correct RBAC scope and network isolation:
 
-**ProjectNetworkPolicy:** Created when UI SSH access is enabled and `createProjectNetworkPolicy` is true.
-**VirtualMachineExternalAccess:** Created when UI SSH access is enabled.
-**VirtualMachineAccessRequest:** Created when external SSH access is enabled _and_ a public key is provided.
+*   **ProjectNetworkPolicy:** Created when UI SSH access is enabled and `createProjectNetworkPolicy` is true.
+*   **VirtualMachineExternalAccess:** Created when UI SSH access is enabled.
+*   **VirtualMachineAccessRequest:** Created when external SSH access is enabled _and_ a public key is provided.
 
 ## SSH Access
 

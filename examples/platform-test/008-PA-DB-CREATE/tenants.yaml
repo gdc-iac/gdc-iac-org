@@ -1,0 +1,47 @@
+# tenants.yaml for 008-PA-DB-CREATE Database Provisioning
+# Defines the desired logical state of the database provisioning test case.
+
+# Global chart paths (relative to this folder)
+gdc_projects_chart_path: "../../../charts/gdc-projects"
+gdc_iam_rolebindings_chart_path: "../../../charts/gdc-iam-role-bindings"
+gdc_project_bindings_chart_path: "../../../charts/gdc-project-bindings"
+gdc_dbs_chart_path: "../../../charts/gdc-dbs"
+
+gdc_tenants:
+  ioc-test-tenant-008:
+    global:
+      projects:
+        - name: "ioc-test-project-008"
+          # Bind logical project namespace to admin cluster context
+          cluster_bindings:
+            - clusterName: "org-1-admin"
+          iamrolebindings:
+            # PR-01: Workload runner has the database-admin role
+            - role: "project-db-admin"
+              subject_kind: "ServiceAccount"
+              subject_name: "test-runner-008-sa"
+            - role: "project-viewer"
+              subject_kind: "ServiceAccount"
+              subject_name: "test-runner-008-sa"
+            # Grant OIDC User database-admin permissions (Required for OIDC terminal helm runs!)
+            - role: "project-db-admin"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            - role: "project-viewer"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            # Grant OIDC User secret-admin permissions to manage project secrets
+            - role: "secret-admin"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+          
+          resources:
+            # Database Specifications
+            database:
+              engine: "postgresql"
+              clusterName: "ioc-test-db"
+              version: "15"
+              password: "dGVzdHBhc3N3b3Jk" # "testpassword" in base64
+              cpu: "2"
+              memory: "4Gi"
+              dataDiskSize: "20Gi"

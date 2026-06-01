@@ -1,0 +1,5 @@
+namespace: "platform"
+projectBindings: []
+# Example entry:
+# - clusterName: "my-user-cluster"
+#   projectName: "my-project"

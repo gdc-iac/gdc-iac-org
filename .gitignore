@@ -55,3 +55,6 @@ coverage_report.txt
 .vscode/
 
 examples/dga-factory - org-15357
+examples/platform-test/001-AO-VM-CREATE/.certs/ais-core.crt
+examples/platform-test/001-AO-VM-CREATE/.certs/gdc-console.crt
+examples/platform-test/001-AO-VM-CREATE/.certs/gdc-kms.crt
