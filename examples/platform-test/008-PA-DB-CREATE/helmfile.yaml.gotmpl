@@ -121,8 +121,14 @@ releases:
               echo "Checking Prerequisites for {{ $projectName }}..."
               
               # Check for BackupRepository OR the proxy secret in ioc-test-infra
+              START_TIME=$(date +%s)
+              TIMEOUT=3600
               until kubectl --context {{ $adminContext }} get backuprepository dbs-backup-repository >/dev/null 2>&1 || \
                     kubectl --context {{ $adminContext }} get secret s3-backup-secret -n ioc-test-infra >/dev/null 2>&1; do
+                if [ $(( $(date +%s) - START_TIME )) -ge "$TIMEOUT" ]; then
+                  echo "❌ Timeout: Platform Admin failed to provision dbs-backup-repository (PR-02) within 1 hour."
+                  exit 1
+                fi
                 echo "...still waiting for Platform Admin to provision dbs-backup-repository (PR-02)..."
                 sleep 15
               done
@@ -132,7 +138,12 @@ releases:
               sleep 30
 
               # Check for Database permissions inside the newly provisioned project namespace
+              START_TIME=$(date +%s)
               until kubectl --context {{ $adminContext }} auth can-i get dbclusters.postgresql.dbadmin.gdc.goog -n {{ $projectName }} >/dev/null 2>&1; do
+                if [ $(( $(date +%s) - START_TIME )) -ge "$TIMEOUT" ]; then
+                  echo "❌ Timeout: Database IAM permissions failed to sync within 1 hour."
+                  exit 1
+                fi
                 echo "...still waiting for IAM permissions to sync..."
                 sleep 10
               done

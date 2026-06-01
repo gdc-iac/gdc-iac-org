@@ -116,12 +116,23 @@ releases:
             - |
               echo "Checking for namespace {{ $projectName }} on user cluster (context: {{ $userClusterContext }})..."
               # Wait for namespace
+              START_TIME=$(date +%s)
+              TIMEOUT=3600
               until kubectl --context {{ $userClusterContext }} -n {{ $projectName }} get serviceaccount default >/dev/null 2>&1; do
+                if [ $(( $(date +%s) - START_TIME )) -ge "$TIMEOUT" ]; then
+                  echo "❌ Timeout: Namespace {{ $projectName }} was not synchronized on the user cluster within 1 hour."
+                  exit 1
+                fi
                 echo "...still waiting for namespace {{ $projectName }} on user cluster (context: {{ $userClusterContext }})..."
                 sleep 10
               done
               # Wait for permissions
+              START_TIME=$(date +%s)
               until kubectl --context {{ $userClusterContext }} auth can-i create deployments -n {{ $projectName }} >/dev/null 2>&1; do
+                if [ $(( $(date +%s) - START_TIME )) -ge "$TIMEOUT" ]; then
+                  echo "❌ Timeout: Deployments permissions failed to sync on the user cluster within 1 hour."
+                  exit 1
+                fi
                 echo "...still waiting for deployments permissions in {{ $projectName }} on user cluster (context: {{ $userClusterContext }})..."
                 sleep 10
               done

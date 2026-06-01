@@ -1,50 +1,54 @@
 #!/usr/bin/env bash
 # update-certs.sh: Shared certificate trust utility
-# Fetches and registers Console, AIS, and KMS endpoints TLS certificates.
+# Fetches GDC Root CA certificate and registers it in system and browser trust stores.
 
 set -e
 
 ORG_NAME=${ORG_NAME:-"org-1"}
-ZONE_NAME=${ZONE_NAME:-"east1"}
+ZONE_NAME=${ZONE_NAME:-"zone1"}
 HOST_SUFFIX=${HOST_SUFFIX:-"google.gdch.test"}
 
 CONSOLE_HOST=${CONSOLE_HOST:-"console.${ORG_NAME}.${ZONE_NAME}.${HOST_SUFFIX}"}
-AIS_HOST=${AIS_HOST:-"ais-core.${ORG_NAME}.${ZONE_NAME}.${HOST_SUFFIX}"}
-KMS_HOST=${KMS_HOST:-"kms.${ORG_NAME}.${ZONE_NAME}.${HOST_SUFFIX}"}
 
 CERT_DIR="./.certs"
 mkdir -p "$CERT_DIR"
 
 echo "================================================="
-echo "🔐 GDC Certificate Trust Chain Manager"
+echo "🔐 GDC Complete CA Trust Chain Manager"
 echo "================================================="
 
-echo "Fetching Console Certificate from ${CONSOLE_HOST}..."
-openssl s_client -showcerts -connect "${CONSOLE_HOST}:443" </dev/null 2>/dev/null | openssl x509 -outform PEM > "${CERT_DIR}/gdc-console.crt"
+echo "📡 Extracting GDC Root CA Certificate from ${CONSOLE_HOST}..."
+# Fetch certificate chain and extract the last certificate block (GDC Root CA)
+openssl s_client -showcerts -connect "${CONSOLE_HOST}:443" </dev/null 2>/dev/null | awk '
+  /BEGIN CERTIFICATE/ { cert=""; in_cert=1 }
+  in_cert { cert = cert $0 "\n" }
+  /END CERTIFICATE/ { in_cert=0 }
+  END { print cert }
+' > "${CERT_DIR}/gdc-root-ca.crt"
 
-echo "Fetching AIS Certificate from ${AIS_HOST}..."
-openssl s_client -showcerts -connect "${AIS_HOST}:443" </dev/null 2>/dev/null | openssl x509 -outform PEM > "${CERT_DIR}/ais-core.crt"
+if [ ! -s "${CERT_DIR}/gdc-root-ca.crt" ] || ! grep -q "BEGIN CERTIFICATE" "${CERT_DIR}/gdc-root-ca.crt"; then
+    echo "❌ Error: Failed to extract a valid GDC Root CA certificate."
+    exit 1
+fi
+UPDATE_SYSTEM_TRUST=${UPDATE_SYSTEM_TRUST:-"false"}
 
-echo "Fetching KMS Certificate from ${KMS_HOST}..."
-openssl s_client -showcerts -connect "${KMS_HOST}:443" </dev/null 2>/dev/null | openssl x509 -outform PEM > "${CERT_DIR}/gdc-kms.crt"
-
-echo "Adding certificates to local trust store (requires sudo)..."
-sudo cp "${CERT_DIR}"/* /usr/local/share/ca-certificates/
-sudo update-ca-certificates
-echo "✅ Certificate trust store updated successfully!"
+if [ "$UPDATE_SYSTEM_TRUST" = "true" ]; then
+    echo "🛡️  Adding GDC Root CA to local system trust store (requires sudo)..."
+    sudo cp "${CERT_DIR}/gdc-root-ca.crt" /usr/local/share/ca-certificates/gdc-root-ca.crt
+    sudo update-ca-certificates
+    echo "✅ System trust store updated successfully!"
+fi
 
 # 4. local browser trust database auto-injection (NSS / Chrome)
 echo ""
 if command -v certutil >/dev/null 2>&1; then
-    echo "🦊 Found certutil. Registering certificates in local browser trust database (NSS)..."
+    echo "🦊 Found certutil. Registering GDC Root CA in local browser trust database (NSS)..."
     mkdir -p "$HOME/.pki/nssdb"
     
-    certutil -d sql:"$HOME/.pki/nssdb" -A -t "P,," -n "GDC Console CA" -i "${CERT_DIR}/gdc-console.crt"
-    certutil -d sql:"$HOME/.pki/nssdb" -A -t "P,," -n "GDC AIS CA" -i "${CERT_DIR}/ais-core.crt"
-    certutil -d sql:"$HOME/.pki/nssdb" -A -t "P,," -n "GDC KMS CA" -i "${CERT_DIR}/gdc-kms.crt"
+    # Import GDC Root CA as a trusted Certificate Authority (-t "C,,")
+    certutil -d sql:"$HOME/.pki/nssdb" -A -t "C,," -n "GDC Root CA" -i "${CERT_DIR}/gdc-root-ca.crt"
     echo "✅ Browser trust database updated successfully!"
 else
     echo "ℹ️  certutil (libnss3-tools) not found. Browser TLS security warnings will need to be bypassed manually."
     echo "👉 To automate browser trust, please install it: sudo apt install libnss3-tools"
 fi
-
