@@ -2,11 +2,11 @@
 # This file defines the desired state for the ioc-test-iperf3 project.
 
 # Global chart paths (relative to this folder)
-gdc_iam_roles_chart_path: "../../../charts/gdc-iam-roles"
-gdc_iam_rolebindings_chart_path: "../../../charts/gdc-iam-role-bindings"
-gdc_projects_chart_path: "../../../charts/gdc-projects"
-gdc_projects_sa_chart_path: "../../../charts/gdc-project-service-accounts"
-gdc_iperf3_chart_path: "../../../charts/gdc-iperf3"
+gdc_iam_roles_chart_path: "../../../../charts/gdc-iam-roles"
+gdc_iam_rolebindings_chart_path: "../../../../charts/gdc-iam-role-bindings"
+gdc_projects_chart_path: "../../../../charts/gdc-projects"
+gdc_projects_sa_chart_path: "../../../../charts/gdc-project-service-accounts"
+gdc_iperf3_chart_path: "../../../../charts/gdc-iperf3"
 
 gdc_tenants:
   ioc-test-tenant:
@@ -23,19 +23,19 @@ gdc_tenants:
               subject_name: "fop-iac@example.com"
             - role: "project-editor"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-002-sa"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
               subject_name: "fop-iac@example.com"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-002-sa"
             - role: "project-viewer"
               subject_kind: "User"
               subject_name: "fop-iac@example.com"
             - role: "project-viewer"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-002-sa"
           resources:
             iperf3:
               server_name: "iperf3-server"

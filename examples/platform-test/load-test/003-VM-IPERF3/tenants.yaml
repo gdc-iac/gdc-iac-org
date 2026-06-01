@@ -2,18 +2,18 @@
 # This file defines the desired state for the ioc-test-vm-iperf3 project.
 
 # Global chart paths (relative to this folder)
-gdc_iam_roles_chart_path: "../../../charts/gdc-iam-roles"
-gdc_iam_rolebindings_chart_path: "../../../charts/gdc-iam-role-bindings"
-gdc_projects_chart_path: "../../../charts/gdc-projects"
-gdc_projects_sa_chart_path: "../../../charts/gdc-project-service-accounts"
-gdc_vm_chart_path: "../../../charts/gdc-vm"
-gdc_project_network_policies_chart_path: "../../../charts/gdc-project-network-policies"
+gdc_iam_roles_chart_path: "../../../../charts/gdc-iam-roles"
+gdc_iam_rolebindings_chart_path: "../../../../charts/gdc-iam-role-bindings"
+gdc_projects_chart_path: "../../../../charts/gdc-projects"
+gdc_projects_sa_chart_path: "../../../../charts/gdc-project-service-accounts"
+gdc_vm_chart_path: "../../../../charts/gdc-vm"
+gdc_project_network_policies_chart_path: "../../../../charts/gdc-project-network-policies"
 
 gdc_tenants:
   ioc-test-tenant:
     global:
       projects:
-        - name: "ioc-test-project-003"
+        - name: "load-test-project-003"
           # Ensure the project propagates to the user cluster
           cluster_bindings:
             - clusterName: "user-vm-1" # Match your user cluster name
@@ -24,19 +24,19 @@ gdc_tenants:
               subject_name: "fop-iac@example.com"
             - role: "project-vm-admin"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-003-sa"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
               subject_name: "fop-iac@example.com"
             - role: "project-networkpolicy-admin"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-003-sa"
             - role: "project-viewer"
               subject_kind: "User"
               subject_name: "fop-iac@example.com"
             - role: "project-viewer"
               subject_kind: "User"
-              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+              subject_name: "system:serviceaccount:iac-root:test-runner-003-sa"
           resources:
             projectnetworkpolicies:
               # Open port 5201 for VM-to-VM iperf3 traffic

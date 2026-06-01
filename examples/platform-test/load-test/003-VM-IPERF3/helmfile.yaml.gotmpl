@@ -1,4 +1,4 @@
-# helmfile.yaml for 002-CONTAINER-IPERF3
+# helmfile.yaml for 003-VM-IPERF3
 # Logic engine to dynamically generate Helm releases based on tenants.yaml
 
 # Load tenants.yaml directly
@@ -58,7 +58,7 @@ releases:
     # --- STAGE 1b: DEPLOY PROJECT CLUSTER BINDINGS ---
     {{- if $project.cluster_bindings }}
     - name: {{ $projectName }}-cluster-bindings
-      chart: "../../../charts/gdc-project-bindings"
+      chart: "../../../../charts/gdc-project-bindings"
       kubeContext: {{ $adminContext }}
       namespace: iac-root
       installed: true
@@ -76,16 +76,15 @@ releases:
             {{- end }}
     {{- end }}
 
-    # --- STAGE 2: CONTAINER IPERF3 TEST WORKLOADS ---
-    {{- if and $project.resources (hasKey $project.resources "iperf3") }}
-    {{- $iperf := $project.resources.iperf3 }}
-    - name: {{ $projectName }}-iperf3
-      chart: {{ $vals.gdc_iperf3_chart_path }}
-      kubeContext: {{ $adminContext }}
+    # --- STAGE 1c: DEPLOY IPERF3 PROJECT NETWORK POLICIES ---
+    {{- if and $project.resources (hasKey $project.resources "projectnetworkpolicies") }}
+    - name: {{ $projectName }}-network-policies
+      chart: {{ $vals.gdc_project_network_policies_chart_path }}
+      kubeContext: {{ $globalContext }}
       namespace: iac-root
       installed: true
       labels:
-        tier: iperf3
+        tier: network-policies
         tenant: {{ $tenantName }}
         project: {{ $projectName }}
       needs:
@@ -100,26 +99,58 @@ releases:
             - "-c"
             - |
               echo "Waiting for GDC namespace creation and IAM role propagation..."
-              # Wait until the test runner SA has access to create deployments/jobs in the regional project namespace
-              until kubectl --context {{ $adminContext }} auth can-i create deployments -n {{ $projectName }} >/dev/null 2>&1; do
+              until kubectl --context {{ $globalContext }} auth can-i create projectnetworkpolicies -n {{ $projectName }} >/dev/null 2>&1; do
                 echo "...still waiting for namespace and role propagation to sync..."
                 sleep 10
               done
-              echo "Environment is ready for iperf3 container workloads!"
+              echo "Environment is ready for ProjectNetworkPolicies!"
       values:
         - namespace: {{ $projectName }}
-          server:
-            name: {{ $iperf.server_name }}
-            port: {{ $iperf.port }}
-          client:
-            name: {{ $iperf.client_name }}
-            args:
-              - "-c"
-              - {{ $iperf.server_name }}
-              - "-t"
-              - "10"
-          networkPolicy:
-            create: {{ $iperf.network_policy }}
+          projectnetworkpolicies: {{ $project.resources.projectnetworkpolicies | toJson }}
+    {{- end }}
+
+    # --- STAGE 2: VIRTUAL MACHINES ---
+    {{- if and $project.resources (hasKey $project.resources "vms") }}
+    - name: {{ $projectName }}-vms
+      chart: {{ $vals.gdc_vm_chart_path }}
+      kubeContext: {{ $adminContext }}
+      namespace: iac-root
+      installed: true
+      labels:
+        tier: vm
+        tenant: {{ $tenantName }}
+        project: {{ $projectName }}
+      needs:
+        - {{ $globalContext }}/iac-root/{{ $projectName }}
+        - {{ $globalContext }}/iac-root/{{ $projectName }}-iam-rolebindings
+        - {{ $adminContext }}/iac-root/{{ $projectName }}-cluster-bindings
+        {{- if hasKey $project.resources "projectnetworkpolicies" }}
+        - {{ $globalContext }}/iac-root/{{ $projectName }}-network-policies
+        {{- end }}
+      hooks:
+        - events: ["presync"]
+          showlogs: true
+          command: "sh"
+          args: 
+            - "-c"
+            - |
+              echo "Waiting for GDC namespace creation and IAM role propagation..."
+              until kubectl --context {{ $adminContext }} auth can-i get virtualmachines -n {{ $projectName }} >/dev/null 2>&1; do
+                echo "...still waiting for namespace and role propagation to sync..."
+                sleep 10
+              done
+              echo "Environment is ready for Virtual Machines!"
+      values:
+        - virtualMachines:
+            {{- range $vm := $project.resources.vms }}
+            - name: {{ $vm.name }}
+              namespace: {{ $projectName }}
+              imageName: {{ $vm.image_name }}
+              imageNamespace: {{ $vm.image_namespace }}
+              bootDiskSize: {{ $vm.boot_disk_size }}
+              machineType: {{ $vm.machine_type }}
+              ssh: {{ $vm.ssh | toJson }}
+            {{- end }}
     {{- end }}
 
     {{- end }} # End Project Loop

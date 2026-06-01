@@ -4,9 +4,9 @@
 
 This directory contains a self-contained IaC (Infrastructure as Code) setup to satisfy the requirements of the **002-CONTAINER-IPERF3** test case, which automates secure container-to-container network performance and connectivity verification across GDC's logical and physical API planes using a **progressive, bottom-up staging stance**:
 
-1. **Adhoc Sandbox ([setup-adhoc-env.sh](./setup-adhoc-env.sh)):** Validates OIDC/AIS identity synchronization loops interactively.
-2. **Operator Scope ([setup-operator-sa.sh](./setup-operator-sa.sh)):** Performs out-of-band K8s-native bootstrapping directly on physical Admin/User Clusters for time-zero platform start-up.
-3. **Tenant Scope ([setup-tenant-sa.sh](./setup-tenant-sa.sh)):** Provisions resources strictly within GDC-native customer tenant boundaries.
+1. **Adhoc Sandbox ([setup-adhoc-env.sh](setup-adhoc-env.sh)):** Validates OIDC/AIS identity synchronization loops interactively.
+2. **Operator Scope ([setup-operator-sa.sh](setup-operator-sa.sh)):** Performs out-of-band K8s-native bootstrapping directly on physical Admin/User Clusters for time-zero platform start-up.
+3. **Tenant Scope ([setup-customer-sa.sh](setup-customer-sa.sh)):** Provisions resources strictly within GDC-native customer tenant boundaries.
 
 The orchestration is driven by `helmfile.yaml.gotmpl`, which dynamically routes cross-plane tokens and uses a namespaced `auth can-i` presync hook to securely handle asynchronous namespace and IAM replication delays without requiring cluster-wide administrative privileges.
 
@@ -28,11 +28,11 @@ The orchestration is driven by `helmfile.yaml.gotmpl`, which dynamically routes 
 ### Assets
 - **`tenants.yaml`**: The declarative desired-state manifest defining the tenant topology, target projects, regional cluster bindings, dynamic user IAM permissions, and iperf3 test workload parameters.
 - **`helmfile.yaml.gotmpl`**: The core logical orchestration engine that dynamically parses `tenants.yaml` into ordered Helm releases. It implements multi-phase execution and incorporates the optimized namespaced `auth can-i` presync hook to poll regional cluster readiness safely without requiring cluster-wide Namespace privileges.
-- **`tenant-bootstrap.yaml`**: The declarative Kubernetes manifest applied to the Global API Cluster to bootstrap the logical Service Accounts (`platform-bootstrap-sa`, `test-runner-sa`) and GDC-native IAM bindings.
-- **`operator-bootstrap.yaml`**: The declarative Kubernetes manifest applied out-of-band directly to the regional Admin Cluster to provision local Service Accounts and local K8s `RoleBindings` scoped strictly to the `iac-root` namespace.
+- **`../../000-SETUP/base-customer-identity.yaml`**: The parameterized declarative Kubernetes manifest applied to the Global API Cluster to bootstrap the logical Service Accounts (`test-setup-sa`, `test-runner-002-sa`) and GDC-native IAM bindings.
+- **`../../000-SETUP/base-operator-identity.yaml`**: The parameterized declarative Kubernetes manifest applied out-of-band directly to the regional Admin Cluster to provision local Service Accounts and local K8s `RoleBindings` scoped strictly to the `iac-root` namespace.
 - **`setup-adhoc-env.sh`**: The interactive adhoc testing script that establishes certificate trust, guides the operator through double interactive OIDC logins (Platform Admin + IAC User) against GDC's AIS, and enforces a **30-second logical propagation wait** before executing Helm.
-- **`setup-tenant-sa.sh`**: The automated script that deploys `tenant-bootstrap.yaml` to the Global API, extracts the resulting tokens, and generates the client-side **2-context** `.kubeconfig-sa` to authenticate headless tenant-scoped pipeline runs.
-- **`setup-operator-sa.sh`**: The automated script that deploys `tenant-bootstrap.yaml` to the Global API and `operator-bootstrap.yaml` directly to the Admin Cluster out-of-band, extracts all 4 tokens, and constructs the **4-context** `.kubeconfig-sa` to authenticate headless operator-scoped bootstrap runs.
+- **`setup-customer-sa.sh`**: The automated script that deploys the customer identity to the Global API, extracts the resulting tokens, and generates the client-side **2-context** `.kubeconfig-sa` to authenticate headless customer/tenant-scoped pipeline runs.
+- **`setup-operator-sa.sh`**: The automated script that deploys the customer identity to the Global API and the operator identity directly to the Admin Cluster out-of-band, extracts all 4 tokens, and constructs the **4-context** `.kubeconfig-sa` to authenticate headless operator-scoped bootstrap runs.
 
 ---
 ## 2. Execution Steps
@@ -82,7 +82,7 @@ For physical/local testing without Interactive OIDC, run as an operator with Ser
    ```
 
 ---
-### Option C: Executing the Tenant-Scoped Pathway (Production & Staging)
+### Option C: Executing the Customer-Scoped Pathway (Production & Staging)
 
 Designed for Production GDC-AG tenant environments and automated GitOps pipelines.
 
@@ -91,7 +91,7 @@ Designed for Production GDC-AG tenant environments and automated GitOps pipeline
 1. **Generate Service Account Credentials:**
    Run the bootstrap script using your active platform context to provision the Service Accounts and write their tokens into a local Kubeconfig file (`.kubeconfig-sa`):
    ```bash
-   ./setup-tenant-sa.sh
+   ./setup-customer-sa.sh
    ```
 
    > [!WARNING]
@@ -154,10 +154,10 @@ A successful run should display standard iperf3 client transmission logs conclud
 
 To remove all resources created for this test case:
 
-### A. Teardown Tenant-Scoped Deployments
+### A. Teardown Customer-Scoped Deployments
 ```bash
 KUBECONFIG=./.kubeconfig-sa GLOBAL_API_CONTEXT=bootstrap-context ADMIN_CLUSTER_CONTEXT=runner-context helmfile destroy
-kubectl --context "$GLOBAL_API_CONTEXT" delete -f tenant-bootstrap.yaml
+sed -e "s/\\${TEST_CASE_NO}/002/g" -e "s/\\${IAC_PROJECT}/iac-root/g" ../../000-SETUP/base-customer-identity.yaml | kubectl --context "$GLOBAL_API_CONTEXT" delete -f -
 rm -f .kubeconfig-sa
 ```
 
@@ -170,7 +170,7 @@ KUBECONFIG=./.kubeconfig-sa GLOBAL_API_CONTEXT=bootstrap-global-context ADMIN_CL
 KUBECONFIG=./.kubeconfig-sa GLOBAL_API_CONTEXT=bootstrap-global-context ADMIN_CLUSTER_CONTEXT=bootstrap-admin-context helmfile --selector tier!=iperf3 destroy
 
 # Delete the bootstrap service accounts and bindings
-kubectl --context "$GLOBAL_API_CONTEXT" delete -f tenant-bootstrap.yaml
+sed -e "s/\\${TEST_CASE_NO}/002/g" -e "s/\\${IAC_PROJECT}/iac-root/g" ../../000-SETUP/base-customer-identity.yaml | kubectl --context "$GLOBAL_API_CONTEXT" delete -f -
 rm -f .kubeconfig-sa
 ```
 
@@ -185,8 +185,8 @@ This represents the standard production-aligned architecture. The client-side Ku
 ```mermaid
 graph TD
     subgraph "1. Logical Personas (Identity Layer)"
-        SA_B["Platform Bootstrap SA<br/>(High Privilege)"]
-        SA_R["Test Runner SA<br/>(Restricted)"]
+        SA_B["Test Setup SA<br/>(test-setup-sa)"]
+        SA_R["Test Runner SA<br/>(test-runner-002-sa)"]
     end
 
     subgraph "2. Kubeconfig Mapping (.kubeconfig-sa)"
@@ -250,8 +250,8 @@ This represents the low-level infrastructure bootstrap and diagnostic architectu
 ```mermaid
 graph TD
     subgraph "1. Logical Personas (Identity Layer)"
-        SA_B["Platform Bootstrap SA<br/>(High Privilege)"]
-        SA_R["Test Runner SA<br/>(Restricted)"]
+        SA_B["Test Setup SA<br/>(test-setup-sa)"]
+        SA_R["Test Runner SA<br/>(test-runner-002-sa)"]
     end
 
     subgraph "2. Kubeconfig Mapping (.kubeconfig-sa)"

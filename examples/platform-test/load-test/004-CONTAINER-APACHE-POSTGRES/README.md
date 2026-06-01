@@ -4,9 +4,9 @@
 
 This directory contains a self-contained IaC (Infrastructure as Code) setup to satisfy the requirements of the **004-CONTAINER-APACHE-POSTGRES** test case, which automates secure container-to-container web-database query execution and benchmarks throughput (requests per minute) across GDC's logical and physical API planes using a **progressive, bottom-up staging stance**:
 
-1. **Adhoc Sandbox ([setup-adhoc-env.sh](./setup-adhoc-env.sh)):** Validates OIDC/AIS identity synchronization loops interactively.
-2. **Operator Scope ([setup-operator-sa.sh](./setup-operator-sa.sh)):** Performs out-of-band K8s-native bootstrapping directly on physical Admin/User Clusters for time-zero platform start-up.
-3. **Tenant Scope ([setup-tenant-sa.sh](./setup-tenant-sa.sh)):** Provisions resources strictly within GDC-native customer tenant boundaries.
+1. **Adhoc Sandbox ([setup-adhoc-env.sh](setup-adhoc-env.sh)):** Validates OIDC/AIS identity synchronization loops interactively.
+2. **Operator Scope ([setup-operator-sa.sh](setup-operator-sa.sh)):** Performs out-of-band K8s-native bootstrapping directly on physical Admin/User Clusters for time-zero platform start-up.
+3. **Tenant Scope ([setup-tenant-sa.sh](setup-tenant-sa.sh)):** Provisions resources strictly within GDC-native customer tenant boundaries.
 
 The orchestration is driven by `helmfile.yaml.gotmpl`, which dynamically routes cross-plane tokens and uses a namespaced `auth can-i` presync hook to securely handle asynchronous namespace and IAM replication delays without requiring cluster-wide administrative privileges.
 
