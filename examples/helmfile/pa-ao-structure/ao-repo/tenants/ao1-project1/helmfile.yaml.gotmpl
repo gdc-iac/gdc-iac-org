@@ -1,0 +1,21 @@
+{{- $config := (readFile "ao1-project1-tenants.yaml" | fromYaml) }}
+
+releases:
+{{- range $tenantName, $tenantConfig := $config.gdc_tenants }}
+  {{- range $project := $tenantConfig.projects }}
+    {{- if hasKey $project "vms" }}
+  - name: {{ $project.name }}-vms
+    chart: {{ $config.gdc_vm_chart_path }}
+    kubeContext: {{ $config.gdc_context_global }}
+    namespace: {{ $project.name }}
+    installed: true
+    values:
+      - vms: {{ $project.vms | toJson }}
+    labels:
+      tenant: {{ $tenantName }}
+      project: {{ $project.name }}
+      bundle: {{ $config.bundle.name }}
+      tier: workload
+    {{- end }}
+  {{- end }}
+{{- end }}

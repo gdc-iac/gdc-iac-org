@@ -1,0 +1,19 @@
+# Chart paths relative to the ao-repo root
+gdc_gke_chart_path: "../../charts/gdc-clusters"
+gdc_context_global: # insert API context here
+
+bundle:
+  name: ao1-project2-workloads
+  privileged: false
+
+gdc_tenants:
+  ao1-tenant:
+    projects:
+      - name: "ao1-project2"
+        clusters:
+          - name: "standard-cluster-01"
+            release_channel: "REGULAR"
+            node_pool_config:
+              initial_node_count: 3
+              max_node_count: 10
+              machine_type: "n1-standard-8"
