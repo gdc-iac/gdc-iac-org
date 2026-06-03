@@ -1,0 +1,21 @@
+{{- $config := (readFile "ao1-project2-tenants.yaml" | fromYaml) }}
+
+releases:
+{{- range $tenantName, $tenantConfig := $config.gdc_tenants }}
+  {{- range $project := $tenantConfig.projects }}
+    {{- if hasKey $project "clusters" }}
+  - name: {{ $project.name }}-clusters
+    chart: {{ $config.gdc_gke_chart_path }}
+    kubeContext: {{ $config.gdc_context_global }}
+    namespace: {{ $project.name }}
+    installed: true
+    values:
+      - clusters: {{ $project.clusters | toJson }}
+    labels:
+      tenant: {{ $tenantName }}
+      project: {{ $project.name }}
+      bundle: {{ $config.bundle.name }}
+      tier: workload
+    {{- end }}
+  {{- end }}
+{{- end }}

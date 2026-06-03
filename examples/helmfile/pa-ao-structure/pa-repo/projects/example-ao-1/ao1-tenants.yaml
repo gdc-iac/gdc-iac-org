@@ -1,0 +1,152 @@
+# projects-tenants.yaml
+
+# Definitions for GDC projects
+
+# the below is example config for illustration purposes
+
+# this code will deploy 3 projects for an example AO (ao1), each with a custom iam role,
+# service accounts, iam rolebindings and network policies
+
+gdc_projects_chart_path: "../charts/gdc-projects"
+gdc_iam_roles_chart_path: "../charts/gdc-iam-roles"
+gdc_iam_rolebindings_chart_path: "../charts/gdc-iam-role-bindings"
+gdc_service_accounts_chart_path: "../charts/gdc-service-accounts"
+gdc_network_policies_chart_path: "../charts/gdc-network-policies"
+
+gdc_context_global: # global API context
+gdc_context_zone: # zone-specific context
+iac_sa: &iac_sa system:serviceaccount:iac-root:iac001-sa
+
+projects_config:
+  gdc_tenants:
+    ao1-tenant:
+      projects:
+        - name: "ao1-project1"
+          iamroles:
+            - name: "ao1-project1-example-bucket-reader"
+              title: "ao1-project1-example-bucket-reader"
+              description: "ao1-project1-example-bucket-reader"
+              scope: project
+              roleNamespaces:
+                - ao1-project1
+              stage: "GA"
+              zonalRules: |
+                - apiGroups:
+                    - object.gdc.goog
+                  resources:
+                    - buckets
+                  resourceNames:
+                    - "example-bucket"
+                  verbs:
+                    - list
+                    - read-object
+          serviceaccounts:
+            - "ao1-project1-sa"
+          iamrolebindings:
+            - role: "project-editor"
+              subject_kind: "Group"
+              subject_name: "<ao1-team@example.com>"
+            - role: "project-editor"
+              subject_kind: "Group"
+              subject_name: "<ao1-viewers@example.com>"
+            - role: "ao1-project1-example-bucket-reader"
+              subject_kind: "Group"
+              subject_name: "<ao1-viewers@example.com>"
+            - role: "project-networkpolicy-admin"
+              subject_kind: "User"
+              subject_name: *iac_sa
+          network_policies:
+            - name: "example-network-policy"
+              subject:
+                match_labels:
+                  app: "example"
+              ingress:
+                - from:
+                    - ip_block:
+                        cidr: # example range
+        - name: "ao1-project2"
+          iamroles:
+            - name: "ao1-project2-example-bucket-reader"
+              title: "ao1-project2-example-bucket-reader"
+              description: "ao1-project2-example-bucket-reader"
+              scope: project
+              roleNamespaces:
+                - ao1-project2
+              stage: "GA"
+              zonalRules: |
+                - apiGroups:
+                    - object.gdc.goog
+                  resources:
+                    - buckets
+                  resourceNames:
+                    - "example-bucket"
+                  verbs:
+                    - list
+                    - read-object
+          serviceaccounts:
+            - "ao1-project2-sa"
+          iamrolebindings:
+            - role: "project-editor"
+              subject_kind: "Group"
+              subject_name: "<ao1-team@example.com>"
+            - role: "project-editor"
+              subject_kind: "Group"
+              subject_name: "<ao1-viewers@example.com>"
+            - role: "ao1-project2-example-bucket-reader"
+              subject_kind: "Group"
+              subject_name: "<ao1-viewers@example.com>"
+            - role: "project-networkpolicy-admin"
+              subject_kind: "User"
+              subject_name: *iac_sa
+          network_policies:
+            - name: "example-network-policy2"
+              subject:
+                match_labels:
+                  app: "example2"
+              ingress:
+                - from:
+                    - ip_block:
+                        cidr: # example range
+        - name: "ao1-project3"
+          iamroles:
+            - name: "ao1-project3-example-bucket-reader"
+              title: "ao1-project3-example-bucket-reader"
+              description: "ao1-project3-example-bucket-reader"
+              scope: project
+              roleNamespaces:
+                - ao1-project3
+              stage: "GA"
+              zonalRules: |
+                - apiGroups:
+                    - object.gdc.goog
+                  resources:
+                    - buckets
+                  resourceNames:
+                    - "example-bucket"
+                  verbs:
+                    - list
+                    - read-object
+          serviceaccounts:
+            - "ao1-project3-sa"
+          iamrolebindings:
+            - role: "project-editor"
+              subject_kind: "Group"
+              subject_name: "<ao1-team@example.com>"
+            - role: "project-editor"
+              subject_kind: "Group"
+              subject_name: "<ao1-viewers@example.com>"
+            - role: "ao1-project3-example-bucket-reader"
+              subject_kind: "Group"
+              subject_name: "<ao1-viewers@example.com>"
+            - role: "project-networkpolicy-admin"
+              subject_kind: "User"
+              subject_name: *iac_sa
+          network_policies:
+            - name: "example-network-policy3"
+              subject:
+                match_labels:
+                  app: "example3"
+              ingress:
+                - from:
+                    - ip_block:
+                        cidr: # example range
