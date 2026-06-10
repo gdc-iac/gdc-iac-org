@@ -15,7 +15,7 @@ In GDC, a **Project** is a logical container. When a Project is bound to a clust
 
 ## Prerequisites
 
-1.  **Accounts**: `ioc-test-pa@example.com` and `ioc-test-ao@example.com` must be created in ADFS.
+1.  **Accounts**: `ioc-test-pa@test.local` and `ioc-test-ao@test.local` must be created in ADFS.
 2.  **Permissions**:
     - `ioc-test-pa` must have Organization IAM Admin roles to create projects and assign bindings.
 3.  **Environment Variables**:

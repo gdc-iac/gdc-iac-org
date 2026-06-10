@@ -1,0 +1,15 @@
+{{- range $idp := .Values.idpConfigs }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IdentityProviderConfig
+metadata:
+  name: {{ $idp.name }}
+  namespace: platform
+spec:
+  oidc:
+    issuerURI: {{ $idp.issuerUri }}
+    clientID: {{ $idp.clientId }}
+    clientSecret: {{ $idp.clientSecret }}
+    userClaim: {{ default "email" $idp.userClaim }}
+    groupsClaim: {{ default "groups" $idp.groupsClaim }}
+{{- end }}

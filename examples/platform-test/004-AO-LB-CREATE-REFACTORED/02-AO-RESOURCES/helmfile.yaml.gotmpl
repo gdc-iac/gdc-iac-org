@@ -1,0 +1,36 @@
+# helmfile.yaml.gotmpl for AO RESOURCES (Load Balancer Test)
+# Orchestrates Load Balancer provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-004-lb-create" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "admin-cluster" }}
+
+releases:
+  # 1. Provision Backend Virtual Machine
+  - name: {{ $projectName }}-vms
+    chart: ../../../charts/gdc-vm
+    kubeContext: {{ $adminContext }}
+    namespace: platform
+    values:
+      - virtualMachines:
+          {{- range $vm := $vals.vms }}
+          - name: {{ $vm.name }}
+            namespace: {{ $projectName }}
+            imageName: {{ $vm.image_name }}
+            imageNamespace: {{ $vm.image_namespace }}
+            bootDiskSize: {{ $vm.boot_disk_size }}
+            machineType: {{ $vm.machine_type }}
+            ssh: {{ $vm.ssh | toJson }}
+          {{- end }}
+
+  # 2. Provision Load Balancer Resources
+  - name: {{ $projectName }}-lb
+    chart: ../../../charts/gdc-load-balancers
+    kubeContext: {{ $adminContext }}
+    namespace: platform
+    needs:
+      - platform/{{ $projectName }}-vms
+    values:
+      - namespace: {{ $projectName }}
+        load_balancers: {{ $vals.load_balancers | toJson }}
+        # Assuming the chart uses .Values.load_balancers structure

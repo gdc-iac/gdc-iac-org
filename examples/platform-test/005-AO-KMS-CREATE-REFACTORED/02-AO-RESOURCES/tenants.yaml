@@ -1,0 +1,7 @@
+# tenants.yaml for AO RESOURCES (KMS Test)
+# Defines the KMS AEAD key.
+
+kms:
+  aead_keys:
+    - name: "ioc-test-key"
+      algorithm: "AES_256_GCM"

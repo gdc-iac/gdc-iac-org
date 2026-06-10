@@ -1,0 +1,31 @@
+# helmfile.yaml.gotmpl for AO RESOURCES (Global Resources Test)
+# Orchestrates Global Resource provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-038-global-resources" }}
+{{- $globalContext := env "GLOBAL_API_CONTEXT" | default "global-api" }}
+
+releases:
+  # 1. Provision Global Buckets
+  - name: {{ $projectName }}-buckets
+    chart: ./charts/gdc-global-buckets
+    kubeContext: {{ $globalContext }}
+    values:
+      - namespace: {{ $projectName }}
+        global_buckets: {{ $vals.global_buckets | toJson }}
+
+  # 2. Provision Global External Load Balancers
+  - name: {{ $projectName }}-lb
+    chart: ./charts/gdc-global-lb
+    kubeContext: {{ $globalContext }}
+    values:
+      - namespace: {{ $projectName }}
+        global_load_balancers: {{ $vals.global_load_balancers | toJson }}
+
+  # 3. Provision Global IDP Configs
+  - name: {{ $projectName }}-idp
+    chart: ./charts/gdc-global-idp
+    kubeContext: {{ $globalContext }}
+    values:
+      - namespace: {{ $projectName }}
+        global_idp_configs: {{ $vals.global_idp_configs | toJson }}

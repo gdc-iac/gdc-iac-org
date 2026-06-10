@@ -1,14 +1,14 @@
-# tenants.yaml for PA SETUP
+# tenants.yaml for PA SETUP (Container Test)
 # Defines the project and the IAM bindings for the AO user.
 
 # The AO user who will be granted permissions to manage resources.
 ao_user: ioc-test-ao@test.local
 
 # Roles to be granted to the AO user within the project.
+# namespace-admin allows creating deployments and services.
 ao_roles:
   - project-viewer
-  - project-vm-admin
-  - project-networkpolicy-admin
+  - namespace-admin
 
 # The user cluster where the project should be bound.
 user_cluster_name: user-cluster-1

@@ -1,0 +1,40 @@
+# tenants.yaml for AO RESOURCES (Load Balancer Test)
+# Defines the backend VM and the Load Balancer resources.
+
+vms:
+  - name: "ioc-test-vm-lb"
+    image_name: "ubuntu-24.04-v20260224-gdch"
+    image_namespace: "vm-system"
+    boot_disk_size: "20Gi"
+    machine_type: "n3-standard-2-gdc"
+    ssh:
+      uiAccessEnabled: true
+      createProjectNetworkPolicy: true
+
+load_balancers:
+  backends:
+    - name: "ioc-test-be"
+      selectorKey: "virtualmachine.gdc.goog/name"
+      selectorValue: "ioc-test-vm-lb"
+  health_checks:
+    - name: "ioc-test-hc"
+      type: "TCP"
+      port: 80
+      checkIntervalSec: 5
+      timeoutSec: 5
+  backend_services:
+    - name: "ioc-test-bs"
+      healthCheckName: "ioc-test-hc"
+      backends:
+        - name: "ioc-test-be"
+      targetPorts:
+        - port: 80
+          targetPort: 80
+          protocol: "TCP"
+  forwarding_rules:
+    - name: "ioc-test-fr"
+      backendServiceName: "ioc-test-bs"
+      ports:
+        - port: 80
+          protocol: "TCP"
+      loadBalancingScheme: "INTERNAL"

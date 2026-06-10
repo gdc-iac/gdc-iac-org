@@ -1,0 +1,19 @@
+# tenants.yaml for AO RESOURCES (Container Test)
+# Defines the NGINX deployment and service.
+
+deployments:
+  - name: nginx-deployment
+    image: harbor.org-1.zone1.google.gdch.test/library/private-cloud-staging/toolbox:latest
+    replicas: 1
+    command: ["/bin/bash", "-c", "sleep infinity"]
+    ports:
+      - 80
+
+services:
+  - name: nginx-service
+    deploymentName: nginx-deployment
+    type: ClusterIP
+    ports:
+      - port: 80
+        targetPort: 80
+        protocol: TCP

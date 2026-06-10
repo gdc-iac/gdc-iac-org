@@ -1,0 +1,25 @@
+# tenants.yaml for AO RESOURCES (Global Resources Test)
+# Defines the Global Buckets, Global ELB, and Global IDP.
+
+# Step 2: Global dual-zone Bucket (object.global.gdc.goog/v1)
+global_buckets:
+  create_location: true
+  buckets:
+    - name: "ioc-test-global-bucket"
+      location: "dual-zone"
+      description: "Global Dual-Zone Bucket for IOC-TEC-038"
+
+# Step 4: Global External Load Balancer (networking.global.gdc.goog/v1)
+global_load_balancers:
+  - name: "ioc-test-global-elb"
+    loadBalancingScheme: "EXTERNAL"
+    ports:
+      - port: 80
+        protocol: "TCP"
+
+# Step 5: Global Identity Provider (iam.global.gdc.goog/v1)
+global_idp_configs:
+  - name: "ioc-test-idp"
+    issuer_uri: "https://example.com/adfs"
+    client_id: "gdc-client"
+    client_secret: "gdc-secret"

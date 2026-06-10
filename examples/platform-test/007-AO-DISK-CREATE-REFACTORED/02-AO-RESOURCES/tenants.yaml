@@ -1,0 +1,7 @@
+# tenants.yaml for AO RESOURCES (Disk Test)
+# Defines the independent Virtual Machine disks.
+
+disks:
+  - name: "ioc-test-disk"
+    size: "20Gi"
+    # Omit image_name to create a blank disk

@@ -1,0 +1,17 @@
+# helmfile.yaml.gotmpl for AO RESOURCES (Container Test)
+# Orchestrates container provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-006-container-create" }}
+{{- $userClusterContext := env "USER_CLUSTER_CONTEXT" | default "user-cluster" }}
+
+releases:
+  # Provision Containerized Workloads in the PA-created Project
+  - name: {{ $projectName }}-workloads
+    chart: ../../../charts/gdc-workloads
+    kubeContext: {{ $userClusterContext }}
+    # Note: Deployment/Service will be created in this namespace
+    values:
+      - namespace: {{ $projectName }}
+        deployments: {{ $vals.deployments | toJson }}
+        services: {{ $vals.services | toJson }}

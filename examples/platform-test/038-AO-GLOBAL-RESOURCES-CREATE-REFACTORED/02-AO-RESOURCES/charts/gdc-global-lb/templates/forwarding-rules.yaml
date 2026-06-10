@@ -1,0 +1,14 @@
+{{- range $fr := .Values.forwardingRules }}
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: {{ if eq (default "INTERNAL" $fr.loadBalancingScheme) "INTERNAL" }}ForwardingRuleInternal{{ else }}ForwardingRuleExternal{{ end }}
+metadata:
+  name: {{ $fr.name }}
+  namespace: {{ $.Values.namespace }}
+spec:
+  ports:
+  {{- range $port := $fr.ports }}
+  - port: {{ $port.port }}
+    protocol: {{ default "TCP" $port.protocol }}
+  {{- end }}
+{{- end }}

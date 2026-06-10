@@ -1,0 +1,48 @@
+# helmfile.yaml.gotmpl for PA SETUP (Container Test)
+# Orchestrates project creation and IAM bootstrapping.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-006-container-create" }}
+{{- $globalContext := env "GLOBAL_API_CONTEXT" | default "global-api" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "admin-cluster" }}
+
+releases:
+  # 1. Create the GDC Project (Global)
+  - name: {{ $projectName }}
+    chart: ../../../charts/gdc-projects
+    kubeContext: {{ $globalContext }}
+    namespace: platform
+    values:
+      - projects:
+          {{ $projectName }}:
+            name: {{ $projectName }}
+            namespace: platform
+
+  # 2. Grant IAM Roles to the AO User (Global)
+  - name: {{ $projectName }}-iam
+    chart: ../../../charts/gdc-iam-role-bindings
+    kubeContext: {{ $globalContext }}
+    namespace: platform
+    needs:
+      - platform/{{ $projectName }}
+    values:
+      - namespace: {{ $projectName }}
+        iamrolebindings:
+          {{- range $role := $vals.ao_roles }}
+          - role: {{ $role }}
+            subject_kind: User
+            subject_name: {{ $vals.ao_user }}
+          {{- end }}
+
+  # 3. Bind the Project to the User Cluster (Admin Cluster)
+  - name: {{ $projectName }}-bindings
+    chart: ../../../charts/gdc-project-bindings
+    kubeContext: {{ $adminContext }}
+    namespace: platform
+    needs:
+      - platform/{{ $projectName }}
+    values:
+      - namespace: platform
+        projectBindings:
+          - clusterName: {{ env "USER_CLUSTER_NAME" | default $vals.user_cluster_name }}
+            projectName: {{ $projectName }}

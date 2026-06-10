@@ -1,0 +1,11 @@
+# tenants.yaml for AO RESOURCES (Database Test)
+# Defines the Postgres database cluster.
+
+database:
+  engine: "postgresql"
+  clusterName: "ioc-test-db"
+  version: "15"
+  password: "dGVzdHBhc3N3b3Jk" # "testpassword" in base64
+  cpu: "2"
+  memory: "4Gi"
+  dataDiskSize: "20Gi"

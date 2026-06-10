@@ -1,0 +1,25 @@
+# tenants.yaml for PA SETUP (Database Test)
+# Defines the project, IAM bindings, and backup infrastructure.
+
+# The AO user who will be granted permissions to manage resources.
+ao_user: ioc-test-ao@test.local
+
+# Roles to be granted to the AO user within the project.
+ao_roles:
+  - project-viewer
+  - project-db-admin
+
+# The user cluster where the project should be bound.
+user_cluster_name: user-cluster-1
+
+# Backup infrastructure (Admin Cluster)
+backup_infra:
+  namespace: ioc-test-infra
+  repo_name: dbs-backup-repository
+  secret_name: s3-backup-secret
+  endpoint: "http://s3.local"
+  bucket: "dbs-backups"
+  region: "zone1"
+  # Base64 encoded values for "admin" and "password"
+  access_key_id: "YWRtaW4="
+  access_key: "cGFzc3dvcmQ="

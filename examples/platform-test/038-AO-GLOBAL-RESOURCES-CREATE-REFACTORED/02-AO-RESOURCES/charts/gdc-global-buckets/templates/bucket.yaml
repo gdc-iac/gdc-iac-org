@@ -1,0 +1,27 @@
+{{- range $bucket := .Values.buckets }}
+---
+apiVersion: object.global.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: {{ $bucket.name }}
+  namespace: {{ $bucket.namespace }}
+spec:
+  description: {{ default "Global Bucket" $bucket.description }}
+  location: {{ $bucket.location }}
+  storageClass: {{ default "Standard" $bucket.storageClass }}
+{{- end }}
+
+{{- if .Values.createBucketLocation }}
+---
+apiVersion: object.global.gdc.goog/v1
+kind: BucketLocation
+metadata:
+  name: {{ .Values.bucketLocationName | default "dual-zone" }}
+spec:
+  locationType: AsyncDualZone
+  asyncDualZone:
+    combinationPrefix: "aa"
+    zoneNames:
+      - "zone1"
+  active: true
+{{- end }}

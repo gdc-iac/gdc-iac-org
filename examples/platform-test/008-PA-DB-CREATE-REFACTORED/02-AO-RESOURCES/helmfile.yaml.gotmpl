@@ -1,0 +1,23 @@
+# helmfile.yaml.gotmpl for AO RESOURCES (Database Test)
+# Orchestrates database provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-008-db-create" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "admin-cluster" }}
+
+releases:
+  # Provision Database Cluster in the PA-created Project
+  - name: {{ $projectName }}-db
+    chart: ../../../charts/gdc-dbs
+    kubeContext: {{ $adminContext }}
+    # Note: DB Cluster will be created in this namespace
+    values:
+      - namespace: {{ $projectName }}
+        {{ $vals.database.engine }}:
+          enabled: true
+          clusterName: {{ $vals.database.clusterName }}
+          version: {{ $vals.database.version }}
+          base64EncodedPassword: {{ $vals.database.password }}
+          cpu: {{ $vals.database.cpu }}
+          memory: {{ $vals.database.memory }}
+          dataDiskSize: {{ $vals.database.dataDiskSize }}

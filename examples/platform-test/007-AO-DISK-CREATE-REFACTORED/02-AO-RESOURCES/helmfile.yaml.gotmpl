@@ -1,0 +1,16 @@
+# helmfile.yaml.gotmpl for AO RESOURCES (Disk Test)
+# Orchestrates Disk provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-007-disk-create" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "admin-cluster" }}
+
+releases:
+  # Provision Virtual Machine Disks in the PA-created Project
+  - name: {{ $projectName }}-disks
+    chart: ../../../charts/gdc-disks
+    kubeContext: {{ $adminContext }}
+    # Note: Disk resources will be created in this namespace
+    values:
+      - namespace: {{ $projectName }}
+        disks: {{ $vals.disks | toJson }}

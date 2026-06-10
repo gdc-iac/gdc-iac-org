@@ -1,0 +1,16 @@
+# helmfile.yaml.gotmpl for AO RESOURCES (KMS Test)
+# Orchestrates KMS provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-005-kms-create" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "admin-cluster" }}
+
+releases:
+  # Provision KMS AEAD Keys in the PA-created Project
+  - name: {{ $projectName }}-kms
+    chart: ../../../charts/gdc-kms
+    kubeContext: {{ $adminContext }}
+    # Note: KMS resources will be created in this namespace
+    values:
+      - namespace: {{ $projectName }}
+        kms: {{ $vals.kms | toJson }}
