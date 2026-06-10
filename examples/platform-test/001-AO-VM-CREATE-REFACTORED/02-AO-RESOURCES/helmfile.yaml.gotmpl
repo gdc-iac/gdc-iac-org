@@ -1,0 +1,24 @@
+# helmfile.yaml.gotmpl for AO RESOURCES
+# Orchestrates Virtual Machine provisioning by the AO.
+
+{{- $vals := (readFile "tenants.yaml" | fromYaml) }}
+{{- $projectName := env "PROJECT_NAME" | default "pt-001-vm-create" }}
+{{- $adminContext := env "ADMIN_CLUSTER_CONTEXT" | default "admin-cluster" }}
+
+releases:
+  # Provision Virtual Machines in the PA-created Project
+  - name: {{ $projectName }}-vms
+    chart: ../../../charts/gdc-vm
+    kubeContext: {{ $adminContext }}
+    namespace: platform
+    values:
+      - virtualMachines:
+          {{- range $vm := $vals.vms }}
+          - name: {{ $vm.name }}
+            namespace: {{ $projectName }}
+            imageName: {{ $vm.image_name }}
+            imageNamespace: {{ $vm.image_namespace }}
+            bootDiskSize: {{ $vm.boot_disk_size }}
+            machineType: {{ $vm.machine_type }}
+            ssh: {{ $vm.ssh | toJson }}
+          {{- end }}

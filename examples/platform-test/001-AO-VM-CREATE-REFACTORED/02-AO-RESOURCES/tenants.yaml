@@ -1,0 +1,12 @@
+# tenants.yaml for AO RESOURCES
+# Defines the Virtual Machine resources to be provisioned.
+
+vms:
+  - name: ioc-test-vm
+    image_name: ubuntu-24.04-v20260224-gdch # Use the latest GDC-provided image
+    image_namespace: vm-system
+    boot_disk_size: 20Gi
+    machine_type: n3-standard-2-gdc
+    ssh:
+      uiAccessEnabled: true
+      createProjectNetworkPolicy: true
