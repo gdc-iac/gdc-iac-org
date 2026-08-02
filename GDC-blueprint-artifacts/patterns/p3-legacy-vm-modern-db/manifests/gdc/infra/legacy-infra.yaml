@@ -1,0 +1,18 @@
+apiVersion: networking.gdc.goog/v1
+kind: Network
+metadata:
+  name: vm-net
+  namespace: test-project # kpt-set: ${namespace}
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: legacy-db
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  version: POSTGRESQL_14
+  availabilityType: ZONAL_HA
+  resources:
+     requests: { cpu: "4", memory: "16Gi" }
+  storage: { size: "100G" }
+

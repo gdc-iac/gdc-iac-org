@@ -1,0 +1,2 @@
+# 3P Container Dependencies for p11-vault (Air-Gapped GDC)
+hashicorp/vault:1.15.0

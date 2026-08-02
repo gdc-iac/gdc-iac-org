@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: test-project
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: gemini-gui-sa
+      containers:
+      - name: backend
+        image: us-central1-docker.pkg.dev/test-project/blueprint-images/p10-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PROJECT_ID
+          value: "test-project" # Placeholder
+        - name: INPUT_BUCKET
+          value: "gs://gemini-gui-files-test-project" # Placeholder
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: gemini-gui-db-credentials
+              key: connection_string
+        - name: REGION
+          value: "us-central1"
+        # - name: GEMINI_ENDPOINT
+        #   value: "us-central1-aiplatform.googleapis.com" # Uncomment to override
+        - name: GEMINI_MODEL
+          value: "gemini-2.5-flash"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: test-project
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP

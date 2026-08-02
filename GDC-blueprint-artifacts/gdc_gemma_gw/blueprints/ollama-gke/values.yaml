@@ -1,0 +1,43 @@
+replicaCount: 1
+
+nameOverride: "ollama"
+fullnameOverride: "ollama"
+
+image:
+  repository: ollama/ollama
+  tag: "0.20.2"
+  pullPolicy: IfNotPresent # GDC-ag imports via local registry
+
+service:
+  type: ClusterIP
+  port: 11434
+
+model:
+  variant: "26b"
+
+# GDC-ag specific security constraints
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  limits:
+    nvidia.com/gpu: 1
+
+# nodeSelector:
+#   cloud.google.com/gke-accelerator: nvidia-l4 # Adjust based on GDC hardware
+
+persistence:
+  enabled: true
+  # storageClassName: "standard-rwo" # Commented out to use cluster DEFAULT
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi
+
+tolerations:
+  - key: "nvidia.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"

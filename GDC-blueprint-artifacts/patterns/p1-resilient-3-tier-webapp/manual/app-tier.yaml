@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logic-tier
+  namespace: test-project
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: logic } }
+  template:
+    metadata: { labels: { app: logic } }
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values: ["logic"]
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: api-server
+        image: test-registry.local/my-org/api-server:v1
+        env:
+        - name: DB_HOST
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_PASS
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logic-svc
+  namespace: test-project
+spec:
+  type: ClusterIP
+  selector: { app: logic }
+  ports: [ { protocol: TCP, port: 8080, targetPort: 8080 } ]

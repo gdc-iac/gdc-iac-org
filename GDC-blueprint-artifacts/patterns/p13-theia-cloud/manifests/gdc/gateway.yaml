@@ -1,0 +1,94 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: gdc-theia-gateway-class
+  namespace: theia-cloud
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: theia-cloud-gateway
+  namespace: theia-cloud
+  labels:
+    app.kubernetes.io/name: theia-cloud
+spec:
+  gatewayClassName: gdc-theia-gateway-class
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: Same
+  - name: https-selfsigned
+    protocol: HTTPS
+    port: 443
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: theia-selfsigned-cert-secret
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# HTTPRoute for Theia Cloud Host Landing Page & Session Management
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: theia-cloud-host-route
+  namespace: theia-cloud
+  labels:
+    app.kubernetes.io/name: theia-cloud
+spec:
+  parentRefs:
+  - name: theia-cloud-gateway
+    namespace: theia-cloud
+  hostnames:
+  - "theia.gdc.local"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: theia-cloud-landing-page
+      port: 8080
+---
+# HTTPRoute for Dynamic User Workspace Sessions (EduIDE Shared Gateway Pattern)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: theia-cloud-session-route
+  namespace: theia-cloud
+  labels:
+    app.kubernetes.io/name: theia-cloud
+spec:
+  parentRefs:
+  - name: theia-cloud-gateway
+    namespace: theia-cloud
+  hostnames:
+  - "theia.gdc.local"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /instances
+    backendRefs:
+    - name: theia-cloud-session-service
+      port: 3000

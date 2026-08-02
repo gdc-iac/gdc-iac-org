@@ -1,0 +1,7 @@
+apiVersion: fleet.dbadmin.gdc.goog/v1
+kind: Failover
+metadata:
+  name: trigger-failover-tier3-db
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  dbclusterRef: tier3-db

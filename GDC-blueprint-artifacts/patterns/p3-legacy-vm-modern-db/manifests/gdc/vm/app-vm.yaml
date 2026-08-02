@@ -1,0 +1,14 @@
+apiVersion: virtualmachine.compute.gdc.goog/v1
+kind: VirtualMachine
+metadata:
+  name: app-vm-01
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  compute: { machineType: n2-highcpu-8-gdc }
+  storage:
+    disks:
+    - boot: true
+      size: 10G
+      # Update this source image path based on your 'gdcloud compute images list' output
+      source: { image: projects/gradec-images/global/images/family/ubuntu-2004 }
+  networkInterfaces: [ { subnetwork: vm-subnet } ]

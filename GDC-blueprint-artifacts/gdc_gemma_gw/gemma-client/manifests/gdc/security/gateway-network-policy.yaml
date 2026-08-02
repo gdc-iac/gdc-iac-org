@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-tenant-ingress-to-gateway
+  namespace: gemma-inference
+spec:
+  podSelector:
+    matchLabels:
+      app: gemma-gateway
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: test-project
+    ports:
+    - protocol: TCP
+      port: 8080

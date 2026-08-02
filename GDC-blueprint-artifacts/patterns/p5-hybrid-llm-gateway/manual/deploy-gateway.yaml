@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-conf
+  namespace: test-project
+data:
+  PRIMARY_URL: "https://vertex-ai.gdc.local/gemini"
+  FAILOVER_URL: "http://gemma-failover.test-project.svc.cluster.local"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-gateway
+  namespace: test-project
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: gateway } }
+  template:
+    metadata: { labels: { app: gateway } }
+    spec:
+      containers:
+      - name: proxy
+        image: test-registry.local/my-org/llm-gateway:latest
+        envFrom:
+        - configMapRef: { name: gateway-conf }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-gateway
+  namespace: test-project
+spec:
+  selector: { app: gateway }
+  ports: [ { port: 80, targetPort: 8080 } ]

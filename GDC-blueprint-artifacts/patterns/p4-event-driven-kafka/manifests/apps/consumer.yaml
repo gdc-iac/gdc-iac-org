@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: consumer } }
+  template:
+    metadata: { labels: { app: consumer } }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: worker
+        image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p4-consumer:v1 # kpt-set: ${registry-host}/my-org/consumer-app:v1.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        # Assumes Helm created a service named 'kafka'
+        - name: KAFKA_BROKERS
+          value: "kafka-svc.test-project.svc.cluster.local:9092" # kpt-set: kafka.${namespace}.svc.cluster.local:9092
+        - name: DB_CONN
+          valueFrom: { secretKeyRef: { name: event-db-credentials, key: connection_string } }
+        livenessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/healthy
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/ready
+          initialDelaySeconds: 5
+          periodSeconds: 5

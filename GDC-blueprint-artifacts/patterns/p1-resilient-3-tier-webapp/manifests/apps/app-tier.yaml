@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logic-tier
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: logic } }
+  template:
+    metadata: { labels: { app: logic } }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values: ["logic"]
+            topologyKey: "kubernetes.io/hostname"
+      containers:
+      - name: api-server
+        image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p1-backend:latest # kpt-set: ${registry-host}/p1-backend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: DB_NAME
+          value: "postgres"
+        - name: DB_HOST
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_PASS
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logic-svc
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  type: ClusterIP
+  selector: { app: logic }
+  ports: [ { protocol: TCP, port: 8080, targetPort: 8080 } ]

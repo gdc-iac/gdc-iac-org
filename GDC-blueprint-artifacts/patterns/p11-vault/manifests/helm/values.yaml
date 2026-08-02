@@ -1,0 +1,41 @@
+global:
+  image:
+    repository: "hashicorp/vault"
+    tag: "1.15.0"
+
+server:
+  image:
+    repository: "hashicorp/vault"
+    tag: "1.15.0"
+  
+  # Identity mapping for KMS
+  serviceAccount:
+    create: false
+    name: "vault-kms-sa"
+
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      config: |
+        ui = true
+        
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+
+        seal "gcpckms" {
+          project    = "my-gdc-project"
+          region     = "us-central1"
+          key_ring   = "vault-ring"
+          crypto_key = "vault-unseal-key"
+        }
+        storage "raft" {
+          path = "/vault/data"
+        }
+  
+  dataStorage:
+    storageClass: "standard" # Ensure this matches GDC StorageClass

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gemma-inference
+  labels:
+    environment: testing
+    managed-by: local-kubectl

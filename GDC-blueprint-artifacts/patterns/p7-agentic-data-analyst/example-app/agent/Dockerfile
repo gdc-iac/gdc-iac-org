@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+RUN pip install psycopg2-binary pandas matplotlib requests flask google-adk==1.27.4
+
+# Create a non-root user
+RUN useradd -m -u 1000 appuser
+
+COPY app.py .
+
+# Switch to non-root user
+USER appuser
+
+CMD ["python", "-u", "app.py"]

@@ -1,0 +1,11 @@
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: rag-db
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  version: POSTGRESQL_14
+  availabilityType: ZONAL_HA
+  resources:
+     requests: { cpu: "4", memory: "16Gi" }
+  storage: { size: "100G" }

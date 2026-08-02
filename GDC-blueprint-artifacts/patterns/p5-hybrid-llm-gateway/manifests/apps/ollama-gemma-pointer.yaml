@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ollama-gemma-pointer
+  namespace: test-project # kpt-set: ${namespace}
+data:
+  # This serves as a dummy pointer so the package-for-gdc.sh script
+  # natively parses and packages the heavy baked Ollama LLM image into 
+  # the transfer bundle without needing external manual exports.
+  image: "us-central1-docker.pkg.dev/your-project-id/blueprint-images/ollama-gemma:7b" # kpt-set: ${registry-host}/ollama-gemma:7b

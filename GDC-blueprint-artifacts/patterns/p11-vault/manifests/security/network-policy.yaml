@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-internal-policy
+  namespace: my-gdc-project
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  ingress:
+    - from: # Raft and Client traffic
+      - podSelector: {}
+      ports:
+      - port: 8200
+      - port: 8201
+  egress:
+    - to: # DNS
+      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports: [{ port: 53, protocol: UDP }]
+    - to: # GDC Control Plane (KMS endpoint)
+      - ipBlock: { cidr: 0.0.0.0/0 }
+      ports: [{ port: 443 }]

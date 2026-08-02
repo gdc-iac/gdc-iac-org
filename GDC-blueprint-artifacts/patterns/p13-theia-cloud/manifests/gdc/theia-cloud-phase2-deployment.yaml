@@ -1,0 +1,87 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: theia-cloud-operator
+  namespace: theia-cloud
+  labels:
+    app.kubernetes.io/name: theia-cloud-operator
+    app.kubernetes.io/component: phase2-oidc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: theia-cloud-operator
+  template:
+    metadata:
+      labels:
+        app: theia-cloud-operator
+    spec:
+      serviceAccountName: theia-cloud-operator-sa
+      containers:
+      - name: operator
+        image: us-central1-docker.pkg.dev/test-project/blueprint-images/theia-cloud-operator:latest # kpt-set: ${registry-host}/theia-cloud-operator:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: theia-oidc-auth-config
+        ports:
+        - containerPort: 3000
+          name: session
+        - containerPort: 8080
+          name: health
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: theia-cloud-landing-page
+  namespace: theia-cloud
+  labels:
+    app.kubernetes.io/name: theia-cloud-landing-page
+    app.kubernetes.io/component: phase2-oidc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: theia-cloud-landing-page
+  template:
+    metadata:
+      labels:
+        app: theia-cloud-landing-page
+    spec:
+      containers:
+      - name: landing-page
+        image: us-central1-docker.pkg.dev/test-project/blueprint-images/theia-cloud-landing-page:latest # kpt-set: ${registry-host}/theia-cloud-landing-page:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: theia-oidc-auth-config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
