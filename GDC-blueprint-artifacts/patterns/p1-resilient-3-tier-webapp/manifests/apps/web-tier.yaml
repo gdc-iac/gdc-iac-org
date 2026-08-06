@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-tier
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101 # nginx user
+        fsGroup: 101
+      containers:
+      - name: nginx
+        image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p1-frontend:latest # kpt-set: ${registry-host}/p1-frontend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        env:
+        # Points to the internal K8s DNS of the logic tier service
+        - name: API_UPSTREAM
+          value: "http://logic-svc.test-project.svc.cluster.local:8080" # kpt-set: http://logic-svc.${namespace}.svc.cluster.local:8080
+        ports:
+        - containerPort: 8080
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  type: ClusterIP
+  selector: { app: web }
+  ports: [ { protocol: TCP, port: 80, targetPort: 8080 } ]

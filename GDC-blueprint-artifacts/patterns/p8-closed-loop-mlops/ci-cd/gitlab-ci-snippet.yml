@@ -1,0 +1,23 @@
+# .gitlab-ci.yml snippet:
+# This job is intended to be triggered by a webhook from Prometheus Alertmanager.
+# The 'only:variables' condition ensures it only runs when the trigger source is identified correctly.
+
+retrain_on_drift:
+  stage: retrain
+  only:
+    variables:
+      - $TRIGGER_SOURCE == "alertmanager"
+  script:
+    # 1. Pull the latest training data. Assumes DVC is configured.
+    - dvc pull gs://ml-data/latest.dvc
+
+    # 2. Run the training script to produce a new model.
+    - python train.py
+
+    # 3. Push the newly trained model artifacts to GDC Storage.
+    - gdcloud storage cp new_model.pb gs://models/vNext/
+
+    # 4. Trigger an Argo Rollouts canary deployment by updating the image.
+    #    'model-serving' should be the name of your Argo Rollout resource.
+    #    'container' should be the name of the container in the deployment spec.
+    - kubectl argo rollouts set image model-serving container=test-registry.local/model:vNext

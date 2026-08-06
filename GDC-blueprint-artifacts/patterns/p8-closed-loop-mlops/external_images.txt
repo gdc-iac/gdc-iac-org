@@ -1,0 +1,2 @@
+# 3P Container Dependencies for p8-closed-loop-mlops (Air-Gapped GDC)
+ghcr.io/mlflow/mlflow:v2.11.3

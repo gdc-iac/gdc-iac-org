@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sql-agent
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: sql-agent } }
+  template:
+    metadata: { labels: { app: sql-agent } }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: adk-agent
+        image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p7-agent:v1
+        imagePullPolicy: Always
+        command: ["python", "app.py"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: DB_USER
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: username } }
+        - name: DB_PASS
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: password } }
+        - name: DB_HOST
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: host } }
+        - name: DB_NAME
+          value: "postgres"
+        - name: LLM_PROVIDER
+          value: "gemma"
+        - name: LLM_GATEWAY_URL
+          value: "http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1" # kpt-set: http://gemma-gateway.${namespace}.svc.cluster.local:80/v1
+        - name: LLM_URL
+          value: "http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1"
+        - name: GEMINI_MODEL
+          value: "gemma-2-27b-it"
+        - name: AO_PROJECT_ID
+          value: "projects/your-project-id" # kpt-set: projects/${project-id}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sql-agent
+  namespace: test-project
+spec:
+  selector:
+    app: sql-agent
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP

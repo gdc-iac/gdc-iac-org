@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: doc-ingest
+  namespace: test-project
+spec:
+  schedule: "*/15 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: rag-sa  # Must match Step 1
+          containers:
+          - name: ingest
+            image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/my-org/rag-ingest:v1
+            env:
+            - name: INPUT_BUCKET
+              value: "gs://raw-docs"
+          restartPolicy: OnFailure

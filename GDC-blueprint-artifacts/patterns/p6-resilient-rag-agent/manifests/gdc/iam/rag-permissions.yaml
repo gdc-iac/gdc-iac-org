@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rag-sa
+  namespace: test-project # kpt-set: ${namespace}
+---
+apiVersion: iam.gdc.goog/v1
+kind: ProjectPolicy
+metadata:
+  name: rag-bindings
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  bindings:
+  - role: Role/ai-ocr-developer
+    members: [ serviceAccount:rag-sa ]
+  - role: Role/ai-translation-developer
+    members: [ serviceAccount:rag-sa ]

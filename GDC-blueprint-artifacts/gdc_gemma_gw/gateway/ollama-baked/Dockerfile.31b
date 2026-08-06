@@ -1,0 +1,12 @@
+FROM ollama/ollama:latest
+
+# Build Argument to specify model tag to bake into the image
+ARG MODEL_TAG=gemma4:31b
+
+# Start server silently, pull the model weights, then package them into the image
+RUN nohup bash -c "ollama serve &" && \
+    sleep 5 && \
+    ollama pull ${MODEL_TAG}
+
+ENTRYPOINT ["/bin/ollama"]
+CMD ["serve"]

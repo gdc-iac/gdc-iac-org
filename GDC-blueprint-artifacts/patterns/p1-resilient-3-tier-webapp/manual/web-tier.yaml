@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-tier
+  namespace: test-project
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+      - name: nginx
+        image: test-registry.local/library/nginx:latest
+        env:
+        # Points to the internal K8s DNS of the logic tier service
+        - name: API_UPSTREAM
+          value: "http://logic-svc.test-project.svc.cluster.local:8080"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: test-project
+spec:
+  type: LoadBalancer
+  selector: { app: web }
+  ports: [ { protocol: TCP, port: 80, targetPort: 80 } ]

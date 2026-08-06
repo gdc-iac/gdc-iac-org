@@ -1,0 +1,76 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: doc-ingest
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: rag-sa  # Must match Step 1
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: ingest
+            image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/rag-ingest:v7 # kpt-set: ${registry-host}/rag-ingest:v7
+            imagePullPolicy: Always
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "128Mi"
+              limits:
+                cpu: "500m"
+                memory: "512Mi"
+            env:
+            - name: INPUT_BUCKET
+              value: "gs://raw-docs-your-project-id" # kpt-set: gs://raw-docs-${project-id}
+            - name: DB_NAME
+              value: "postgres"
+            - name: LLM_PROVIDER
+              value: "gemma"
+            - name: LLM_GATEWAY_URL
+              value: "http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1" # kpt-set: http://gemma-gateway.${namespace}.svc.cluster.local:80/v1
+            - name: GEMINI_ENDPOINT
+              value: "http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1"
+            - name: GEMINI_MODEL
+              value: "gemma-2-27b-it"
+            - name: EMBEDDING_MODEL
+              value: "text-embedding-004"
+            - name: PROJECT_ID
+              value: "your-project-id" # kpt-set: ${project-id}
+            - name: AO_PROJECT_ID
+              value: "projects/your-project-id" # kpt-set: projects/${project-id}
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-secrets
+                  key: api-key
+                  optional: true
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: rag-db-credentials
+                  key: host
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rag-db-credentials
+                  key: username
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rag-db-credentials
+                  key: password
+          restartPolicy: OnFailure
+

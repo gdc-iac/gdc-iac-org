@@ -1,0 +1,33 @@
+replicaCount: 1
+
+image:
+  repository: vllm/vllm-openai
+  tag: "latest"
+  pullPolicy: IfNotPresent # GDC-ag imports via local registry
+
+service:
+  type: ClusterIP
+  port: 8000
+
+model:
+  name: "google/gemma-2b-it" # Default test model. Override with gemma-4-26b
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.90
+
+resources:
+  limits:
+    nvidia.com/gpu: 1 # Scale to 2 for Gemma 4 31B
+    memory: "48Gi"
+  requests:
+    cpu: "4000m"
+    memory: "24Gi"
+
+nodeSelector:
+  cloud.google.com/gke-accelerator: nvidia-l4 # A100/L4 recommended for vLLM
+
+persistence:
+  enabled: true
+  storageClassName: "standard-rwo" # Default for GKE staging/testing. Override on GDC-ag
+  accessModes:
+    - ReadWriteOnce
+  size: 50Gi

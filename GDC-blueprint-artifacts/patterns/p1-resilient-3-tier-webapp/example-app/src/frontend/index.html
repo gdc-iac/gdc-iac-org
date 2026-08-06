@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDC Todo App</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; padding-top: 50px; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 400px; }
+        h1 { text-align: center; color: #333; }
+        input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        ul { list-style: none; padding: 0; }
+        li { background: #f9f9f9; border-bottom: 1px solid #eee; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+        li:last-child { border-bottom: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>My Tasks</h1>
+        <input type="text" id="taskInput" placeholder="Add a new task...">
+        <button onclick="addTodo()">Add Task</button>
+        <ul id="todoList"></ul>
+    </div>
+
+    <script>
+        const API_URL = '/api/todos';
+
+        async function fetchTodos() {
+            try {
+                const response = await fetch(API_URL);
+                const todos = await response.json();
+                const list = document.getElementById('todoList');
+                list.innerHTML = '';
+                todos.forEach(todo => {
+                    const li = document.createElement('li');
+                    li.textContent = todo.title;
+                    list.appendChild(li);
+                });
+            } catch (e) {
+                console.error('Error fetching todos:', e);
+            }
+        }
+
+        async function addTodo() {
+            const input = document.getElementById('taskInput');
+            const title = input.value;
+            if (!title) return;
+
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                input.value = '';
+                fetchTodos();
+            } catch (e) {
+                console.error('Error adding todo:', e);
+            }
+        }
+
+        fetchTodos();
+    </script>
+</body>
+</html>

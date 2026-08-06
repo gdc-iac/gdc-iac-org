@@ -1,0 +1,6 @@
+apiVersion: v2
+name: vllm-gke
+description: vLLM GPU-Optimized Inference Engine for Gemma 4 on GDC-ag GKE
+type: application
+version: 0.1.0
+appVersion: "latest"

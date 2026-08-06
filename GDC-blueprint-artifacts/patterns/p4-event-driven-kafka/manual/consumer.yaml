@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer
+  namespace: test-project
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: consumer } }
+  template:
+    metadata: { labels: { app: consumer } }
+    spec:
+      containers:
+      - name: worker
+        image: test-registry.local/my-org/consumer-app:v1.0
+        env:
+        # Assumes Helm created a service named 'kafka'
+        - name: KAFKA_BROKERS
+          value: "kafka.test-project.svc.cluster.local:9092"
+        - name: DB_CONN
+          valueFrom: { secretKeyRef: { name: event-db-credentials, key: connection_string } }

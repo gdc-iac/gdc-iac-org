@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-app-vm
+  namespace: test-project
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy-app
+  template:
+    metadata:
+      labels:
+        app: legacy-app
+    spec:
+      containers:
+      - name: legacy-app
+        image: python:3.9-slim
+        command: ["/bin/sh", "-c", "while true; do echo 'Simulating legacy app...'; sleep 10; done"]
+        env:
+        - name: DB_HOST
+          value: "postgres-postgresql"
+        - name: DB_NAME
+          value: "postgres"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASS
+          value: "password"

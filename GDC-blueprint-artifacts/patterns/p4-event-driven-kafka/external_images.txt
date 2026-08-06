@@ -1,0 +1,3 @@
+# 3P Container Dependencies for p4-event-driven-kafka (Air-Gapped GDC)
+docker.io/apache/kafka:3.7.0
+busybox:latest

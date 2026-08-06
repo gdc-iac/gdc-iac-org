@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # Primary LLM (Gemini) - Configured to fail 50% of the time to demonstrate failover
+  mock-llm-primary:
+    build: ./mock-llm
+    environment:
+      SERVICE_NAME: "Gemini-Mock"
+      FAILURE_RATE: "0.5"
+    ports:
+      - "8001:8000"
+
+  # Failover LLM (Gemma) - Reliable
+  mock-llm-failover:
+    build: ./mock-llm
+    environment:
+      SERVICE_NAME: "Gemma-Mock"
+      FAILURE_RATE: "0.0"
+    ports:
+      - "8002:8000"
+
+  gateway:
+    build: ./gateway
+    environment:
+      PRIMARY_URL: "http://mock-llm-primary:8000/generate"
+      FAILOVER_URL: "http://mock-llm-failover:8000/generate"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mock-llm-primary
+      - mock-llm-failover

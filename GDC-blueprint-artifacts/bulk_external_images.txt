@@ -1,0 +1,10 @@
+# Consolidated 3P Container Images for Air-Gapped GDC Deployment
+# Note: PostgreSQL and GDC storage are platform-managed services (DBCluster CRDs)
+
+busybox:latest
+docker.io/apache/kafka:3.7.0
+ghcr.io/mlflow/mlflow:v2.11.3
+hashicorp/vault:1.15.0
+ollama/ollama:latest
+quay.io/keycloak/keycloak:24.0.4
+vllm/vllm-openai:latest

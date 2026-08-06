@@ -1,0 +1,91 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ==============================================================================
+# GDC Air-Gapped Platform PKI Certificate Request Options
+#
+# Prerequisite IAM Role:
+# To request certificates in GDC air-gapped, you must be granted the:
+# CA Service Certificate Requester (`certificate-authority-service-certificate-requester`)
+# role inside the target project namespace.
+#
+# This manifest provides two supported pathways for obtaining trusted certificates
+# across GDC Standard Clusters and User Clusters:
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# OPTION A: GDC Native Certificate Authority Service (CAS) API
+# (Recommended when ACME mode is disabled or when requesting directly via Management API / Standard Cluster without cert-manager CRDs)
+#
+# Documentation: https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/ca-service/request-cert
+#
+# When applied (`kubectl apply -f certificate.yaml --kubeconfig <KUBECONFIG>`), GDC CAS
+# auto-generates the private key and signs the X.509 certificate, depositing `tls.crt`
+# and `tls.key` directly into `signedCertificateSecret: theia-cloud-tls-secret` inside the
+# user project namespace (`USER_PROJECT_NAMESPACE`).
+#
+# For Standard Clusters and User Clusters, the secret (`theia-cloud-tls-secret`) can be:
+# 1. Mounted directly by `Gateway` or application pods running in the same namespace.
+# 2. Synchronized into isolated User Cluster workloads using GDC `SecretSync` / `configsync`.
+# ------------------------------------------------------------------------------
+apiVersion: pki.security.gdc.goog/v1
+kind: CertificateRequest
+metadata:
+  name: theia-cloud-cas-cert-req
+  namespace: theia-cloud # Or target USER_PROJECT_NAMESPACE
+  labels:
+    app.kubernetes.io/name: theia-cloud
+    app.kubernetes.io/component: phase3-pki-native
+spec:
+  certificateAuthorityRef:
+    name: gdc-root-ca # Or target sub-CA name (`CA_NAME`)
+    namespace: theia-cloud # Or target USER_PROJECT_NAMESPACE
+  certificateConfig:
+    subjectConfig:
+      commonName: "theia.gdc.local"
+      organization: "Google Distributed Cloud Developer Services"
+      dnsNames:
+      - "theia.gdc.local"
+      - "*.theia.gdc.local"
+  signedCertificateSecret: theia-cloud-tls-secret
+  notAfter: "2027-01-01T00:00:00Z" # Optional: defaults to 90 days if omitted
+
+---
+
+# ------------------------------------------------------------------------------
+# OPTION B: ACME Mode via Kubernetes cert-manager
+# (Recommended when the GDC Certificate Authority is hosted in ACME mode (`.status.acme.uri`)
+# and cert-manager controllers are active inside the Standard or User Cluster)
+#
+# When applied, cert-manager interfaces with `ClusterIssuer/gdc-ca-issuer` (or a namespace `Issuer`)
+# to automatically request, issue, and rotate `theia-cloud-tls-secret` every 90 days.
+# ------------------------------------------------------------------------------
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: theia-cloud-tls-cert
+  namespace: theia-cloud
+  labels:
+    app.kubernetes.io/name: theia-cloud
+    app.kubernetes.io/component: phase3-pki
+spec:
+  secretName: theia-cloud-tls-secret
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  dnsNames:
+  - theia.gdc.local
+  - "*.theia.gdc.local"
+  issuerRef:
+    name: gdc-ca-issuer
+    kind: ClusterIssuer

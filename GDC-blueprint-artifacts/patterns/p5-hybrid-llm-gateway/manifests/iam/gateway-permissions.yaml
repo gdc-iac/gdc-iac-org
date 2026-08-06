@@ -1,0 +1,9 @@
+apiVersion: iam.gdc.goog/v1
+kind: ProjectPolicy
+metadata:
+  name: gateway-bindings
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  bindings:
+  - role: Role/ai-invoker
+    members: [ serviceAccount:gateway-sa ]
