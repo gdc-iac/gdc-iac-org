@@ -1,0 +1,45 @@
+# tenants.yaml for 004-CONTAINER-APACHE-POSTGRES Container Web & Database Benchmark
+# This file defines the desired state for the ioc-test-web-db project.
+
+# Global chart paths (relative to this folder)
+gdc_iam_roles_chart_path: "../../../../charts/gdc-iam-roles"
+gdc_iam_rolebindings_chart_path: "../../../../charts/gdc-iam-role-bindings"
+gdc_projects_chart_path: "../../../../charts/gdc-projects"
+gdc_projects_sa_chart_path: "../../../../charts/gdc-project-service-accounts"
+gdc_apache_postgres_chart_path: "../../../../charts/gdc-apache-postgres"
+
+gdc_tenants:
+  ioc-test-tenant:
+    global:
+      projects:
+        - name: "ioc-test-project-004"
+          # Ensure the project propagates to the user cluster
+          cluster_bindings:
+            - clusterName: "user-vm-1" # Match your user cluster name
+          iamrolebindings:
+            # PR-01: User has the appropriate RBAC roles for deployments, jobs, and network policies
+            - role: "project-editor"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            - role: "project-editor"
+              subject_kind: "User"
+              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+            - role: "project-networkpolicy-admin"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            - role: "project-networkpolicy-admin"
+              subject_kind: "User"
+              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+            - role: "project-viewer"
+              subject_kind: "User"
+              subject_name: "fop-iac@example.com"
+            - role: "project-viewer"
+              subject_kind: "User"
+              subject_name: "system:serviceaccount:iac-root:test-runner-sa"
+          resources:
+            apache_postgres:
+              postgres_name: "postgres-db"
+              web_name: "web-server"
+              benchmark_name: "benchmark-client"
+              requests: 2000
+              concurrency: 20

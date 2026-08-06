@@ -1,0 +1,18 @@
+apiVersion: networking.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: allow-web-and-db-traffic
+  namespace: {{ required "namespace is required" .Values.namespace }}
+spec:
+  policyType: Ingress
+  subject:
+    subjectType: UserWorkload
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - port: {{ .Values.web.port }}
+      protocol: TCP
+    - port: {{ .Values.postgres.port }}
+      protocol: TCP

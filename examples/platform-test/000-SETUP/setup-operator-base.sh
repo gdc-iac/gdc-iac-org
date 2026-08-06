@@ -4,6 +4,7 @@
 # Sourced by case-scoped setup-operator-sa.sh scripts.
 
 set -e
+SETUP_DIR=$(dirname "${BASH_SOURCE[0]}")
 
 if [ -z "${TEST_CASE_NO}" ] || [ -z "${VERIFY_RBAC}" ] || [ -z "${HELM_SELECTOR}" ]; then
     echo "❌ Error: TEST_CASE_NO, VERIFY_RBAC, and HELM_SELECTOR must be defined before sourcing setup-operator-base.sh"
@@ -39,7 +40,7 @@ echo "======================================================="
 # ==============================================================================
 if [ "${UPDATE_CERTS}" = "true" ] || [ ! -f "${CERT_DIR}/gdc-root-ca.crt" ]; then
     echo "🔒 [STEP 1] Fetching and updating certificates for local trust store..."
-    ../000-SETUP/update-certs.sh
+    ${SETUP_DIR}/update-certs.sh
 fi
 
 # ==============================================================================
@@ -56,7 +57,7 @@ if [ "$CAN_CREATE_SA" != "yes" ] || [ "$CAN_CREATE_RB" != "yes" ]; then
     
     # Unconditionally update certificates to ensure system trust prior to OIDC handshake
     echo "📥 Ensuring GDC CA certificates are updated and trusted..."
-    ../000-SETUP/update-certs.sh
+    ${SETUP_DIR}/update-certs.sh
     
     gdcloud auth login --login-config-cert "${CERT_DIR}/gdc-root-ca.crt"
     
@@ -87,14 +88,16 @@ echo "📦 [STEP 3] Applying ServiceAccounts, Tokens & GDC IAMRoleBindings to Gl
 # Substitute placeholders in base-customer-identity.yaml and apply
 sed -e "s/\${TEST_CASE_NO}/${TEST_CASE_NO}/g" \
     -e "s/\${IAC_PROJECT}/${IAC_PROJECT}/g" \
-    ../000-SETUP/base-customer-identity.yaml | kubectl --context "$GLOBAL_CONTEXT" apply -f -
-kubectl --context "$GLOBAL_CONTEXT" apply -f ./auth-extension.yaml
+    ${SETUP_DIR}/base-customer-identity.yaml | kubectl --context "$GLOBAL_CONTEXT" apply -f -
+if [ -f "./auth-extension.yaml" ]; then
+    kubectl --context "$GLOBAL_CONTEXT" apply -f ./auth-extension.yaml
+fi
 
 echo "📦 Applying ServiceAccounts, Tokens & ClusterRoleBindings to Admin Cluster..."
 kubectl --context "$ADMIN_CONTEXT" create namespace "$IAC_PROJECT" 2>/dev/null || true
 sed -e "s/\${TEST_CASE_NO}/${TEST_CASE_NO}/g" \
     -e "s/\${IAC_PROJECT}/${IAC_PROJECT}/g" \
-    ../000-SETUP/base-operator-identity.yaml | kubectl --context "$ADMIN_CONTEXT" apply -f -
+    ${SETUP_DIR}/base-operator-identity.yaml | kubectl --context "$ADMIN_CONTEXT" apply -f -
 
 echo "⏳ Waiting for tokens and IAM roles to propagate (20s)..."
 sleep 20
@@ -103,7 +106,7 @@ sleep 20
 # [STEP 4] EXTRACT DECRYPTED TOKEN DATA & GENERATE KUBECONFIG
 # ==============================================================================
 echo "💾 [STEP 4] Generating unified ServiceAccount Kubeconfig at '$KUBECONFIG_SA'..."
-../000-SETUP/generate-kubeconfig.sh --type operator
+${SETUP_DIR}/generate-kubeconfig.sh --type operator
 
 # ==============================================================================
 # [STEP 5] VERIFY PRIVILEGES AND ROLE ASSIGNMENTS
