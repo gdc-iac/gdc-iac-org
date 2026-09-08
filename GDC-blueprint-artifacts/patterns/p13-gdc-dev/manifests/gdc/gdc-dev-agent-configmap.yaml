@@ -1,0 +1,51 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdc-dev-agent-config
+  namespace: gdc-dev
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: ai-agentic-phase3
+data:
+  # Phase 3 Agentic Mode Activation
+  AI_ENABLED: "true"
+  AI_AGENT_MODE: "agentic"                 # "passive" (Phase 2 Co-pilot) vs "agentic" (Phase 3 ReAct Agent)
+  AI_APPROVAL_POLICY: "selective"          # "selective" (read auto-approved, diff/exec prompted) vs "full_auto"
+  AI_MAX_TURNS: "10"                       # Recursion ceiling to prevent runaway loops
+  AI_REQUEST_TIMEOUT: "300"                # 5-minute timeout matching Gateway & Ollama 31B
+
+  # Multi-Agent Swarm Specialization
+  AI_SWARM_ENABLED: "true"
+  AI_SWARM_ROLES: "architect,coder,reviewer"
+  AI_DEFAULT_ROLE: "swarm"                 # "swarm" (autonomous collaboration), "architect", "coder", "reviewer"
+
+  # Model Tiering & Providers (Dual Engine Alignment)
+  AI_PROVIDER: "gemma"                     # "gemma" (air-gapped local GPU) or "gemini" (GDC sovereign API)
+  OPENAI_API_BASE_URL: "http://gemma-gateway.gemma-inference.svc.cluster.local/v1"
+  
+  # Tier 1 (Fast / Routine tasks & completions)
+  AI_TIER1_MODEL: "gemma4:26b"             # Fast MoE variant (~4B active params)
+  AI_GEMINI_TIER1_MODEL: "gemini-2.0-flash"
+
+  # Tier 2 (Deep reasoning, multi-step ReAct loops, & terminal test repairs)
+  AI_CODER_MODEL: "gemma4:31b"             # 31B Dense reasoning variant
+  AI_DEFAULT_MODEL: "gemma4:31b"
+  AI_GEMINI_TIER2_MODEL: "gemini-2.0-pro"
+
+  # Sovereign Constraints & Proxy
+  AI_VISION_TOKEN_BUDGET: "280"
+  NO_PROXY: "*.gemma-inference.svc.cluster.local,*.gemma-inference,*.svc.cluster.local,localhost,127.0.0.1"
