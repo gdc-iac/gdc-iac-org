@@ -1,0 +1,76 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gdc-dev-netpol
+  namespace: gdc-dev
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: phase3-hardening
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: ["gdc-dev-landing-page", "gdc-dev-operator"]
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from Gateway API ingress controllers and internal cluster monitoring
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: gdc-gateway-system
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-operator
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 3000
+  egress:
+  # Allow DNS resolution within cluster
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow OIDC authentication traffic to Keycloak (`p12-keycloak`)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: my-gdc-project # or target keycloak namespace
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 8080
+  # Allow internal session proxying from landing page to operator
+  - to:
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-operator
+    ports:
+    - protocol: TCP
+      port: 3000

@@ -1,0 +1,154 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gdc-dev-operator-sa
+  namespace: gdc-dev
+  labels:
+    app.kubernetes.io/name: gdc-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gdc-dev-operator-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets", "namespaces"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["httproutes"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gdc-dev-operator-binding
+subjects:
+- kind: ServiceAccount
+  name: gdc-dev-operator-sa
+  namespace: gdc-dev
+roleRef:
+  kind: ClusterRole
+  name: gdc-dev-operator-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdc-dev-operator
+  namespace: gdc-dev
+  labels:
+    app.kubernetes.io/name: gdc-dev-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gdc-dev-operator
+  template:
+    metadata:
+      labels:
+        app: gdc-dev-operator
+    spec:
+      serviceAccountName: gdc-dev-operator-sa
+      containers:
+      - name: operator
+        image: us-central1-docker.pkg.dev/test-project/blueprint-images/gdc-dev-operator:latest # kpt-set: ${registry-host}/gdc-dev-operator:latest
+        imagePullPolicy: Always
+        env:
+        - name: AUTH_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: gdc-dev-mock-auth-config
+              key: AUTH_MODE
+        - name: MOCK_USER_ID
+          valueFrom:
+            configMapKeyRef:
+              name: gdc-dev-mock-auth-config
+              key: MOCK_USER_ID
+        ports:
+        - containerPort: 3000
+          name: session
+        - containerPort: 8080
+          name: health
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdc-dev-landing-page
+  namespace: gdc-dev
+  labels:
+    app.kubernetes.io/name: gdc-dev-landing-page
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gdc-dev-landing-page
+  template:
+    metadata:
+      labels:
+        app: gdc-dev-landing-page
+    spec:
+      serviceAccountName: gdc-dev-operator-sa
+      containers:
+      - name: landing-page
+        image: us-central1-docker.pkg.dev/test-project/blueprint-images/gdc-dev-landing-page:latest # kpt-set: ${registry-host}/gdc-dev-landing-page:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: gdc-dev-mock-auth-config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdc-dev-landing-page
+  namespace: gdc-dev
+spec:
+  selector:
+    app: gdc-dev-landing-page
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdc-dev-session-service
+  namespace: gdc-dev
+spec:
+  selector:
+    app: gdc-dev-operator
+  ports:
+  - port: 3000
+    targetPort: 3000

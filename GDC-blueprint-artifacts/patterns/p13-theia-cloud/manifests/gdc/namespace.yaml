@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: theia-cloud
-  labels:
-    app.kubernetes.io/name: theia-cloud
-    app.kubernetes.io/part-of: gdc-blueprints
