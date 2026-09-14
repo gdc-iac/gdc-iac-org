@@ -1,0 +1,45 @@
+# Default values for gdc-iperf3.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+namespace: ""
+
+# iperf3 Server configuration
+server:
+  name: iperf3-server
+  image:
+    repository: networkstatic/iperf3
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 5201
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# iperf3 Client configuration
+client:
+  name: iperf3-client
+  image:
+    repository: networkstatic/iperf3
+    tag: latest
+    pullPolicy: IfNotPresent
+  args:
+    - "-c"
+    - "iperf3-server"
+    - "-t"
+    - "10"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Network Policy configuration
+networkPolicy:
+  create: true

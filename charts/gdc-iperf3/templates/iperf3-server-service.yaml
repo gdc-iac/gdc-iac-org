@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.server.name }}
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    app: {{ .Values.server.name }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.server.port }}
+    targetPort: {{ .Values.server.port }}
+    name: tcp-iperf
+    protocol: TCP
+  - port: {{ .Values.server.port }}
+    targetPort: {{ .Values.server.port }}
+    name: udp-iperf
+    protocol: UDP
+  selector:
+    app: {{ .Values.server.name }}

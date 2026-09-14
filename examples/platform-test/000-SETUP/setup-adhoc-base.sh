@@ -4,6 +4,7 @@
 # Sourced by case-scoped setup-adhoc-env.sh scripts.
 
 set -e
+SETUP_DIR=$(dirname "${BASH_SOURCE[0]}")
 
 if [ -z "${TEST_CASE_NO}" ] || [ -z "${VERIFY_RESOURCE}" ]; then
     echo "❌ Error: TEST_CASE_NO and VERIFY_RESOURCE must be defined before sourcing setup-adhoc-base.sh"
@@ -52,7 +53,7 @@ echo "=========================================================="
 
 # 1. Certificate Management & Trust Store Setup
 echo "📥 Ensuring GDC CA certificates are updated and trusted..."
-UPDATE_SYSTEM_TRUST=false ../000-SETUP/update-certs.sh
+UPDATE_SYSTEM_TRUST=false ${SETUP_DIR}/update-certs.sh
 
 
 # 2. Platform Admin Login
@@ -113,13 +114,6 @@ fi
 echo ""
 echo "⏳ Waiting for IAM propagation (30s)..."
 sleep 30
-
-# Check for and execute local post-login extension hook (modular dependency wiring)
-if [ -f "./post-login-hook.sh" ]; then
-    echo "🔌 [HOOK] Executing local post-login-hook.sh..."
-    source ./post-login-hook.sh
-    echo "🔌 [HOOK] Hook execution completed."
-fi
 
 # 6. IAC User Login
 echo ""

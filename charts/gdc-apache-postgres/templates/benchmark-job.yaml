@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.benchmark.name }}
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    app: {{ .Values.benchmark.name }}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.benchmark.name }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: benchmark-client
+        image: "{{ .Values.benchmark.image.repository }}:{{ .Values.benchmark.image.tag }}"
+        imagePullPolicy: {{ .Values.benchmark.image.pullPolicy }}
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "Waiting for web server {{ .Values.web.name }} on port {{ .Values.web.port }}..."
+          until nc -z {{ .Values.web.name }} {{ .Values.web.port }}; do
+            sleep 2
+          done
+          echo "Web server is ready. Installing apache2-utils (containing ab)..."
+          apk add --no-cache apache2-utils
+          echo "Executing HTTP PostgreSQL query benchmark..."
+          ab -n {{ .Values.benchmark.requestsCount }} -c {{ .Values.benchmark.concurrency }} http://{{ .Values.web.name }}:{{ .Values.web.port }}/
+          echo "Benchmark completed!"
+      resources:
+        limits:
+          cpu: 500m
+          memory: 512Mi
+        requests:
+          cpu: 100m
+          memory: 128Mi
+  backoffLimit: 4
