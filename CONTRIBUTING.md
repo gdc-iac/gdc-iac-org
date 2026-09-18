@@ -71,7 +71,7 @@ All Helm charts in the `charts/` directory adhere to [Semantic Versioning (SemVe
 - **Minor release (`0.X.0`):** New features, backward-compatible additions to `values.yaml`, or new optional templates.
 - **Major release (`X.0.0`):** Breaking changes, removed or renamed values without fallbacks, or incompatible resource schema updates.
 
-Always increment the `version` field in `charts/<chart-name>/Chart.yaml` whenever you modify a chart.
+Always increment the `version` field in `charts/<chart-name>/Chart.yaml` whenever you modify a chart. For details on how charts, blueprints, and foundations are published across connected and air-gapped environments, see [RELEASE_STRATEGY.md](RELEASE_STRATEGY.md).
 
 ### 2. Documentation Guidelines
 - Chart documentation (including parameter tables in `charts/<chart-name>/README.md`) is generated using `helm-docs`.
