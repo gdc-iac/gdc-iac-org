@@ -40,7 +40,7 @@ releases:
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "backup_repositories") }}
       - name: {{ $project.name }}-backup-repos
-        chart: {{ $vals | get "gdc_backup_repositories_chart_path" "../../charts/gdc-backup-repositories" }}
+        chart: {{ $vals | get "gdc_backup_repositories_chart_path" "../../../charts/gdc-backup-repositories" }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 2-resources

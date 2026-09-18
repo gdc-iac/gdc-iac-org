@@ -1,0 +1,19 @@
+# Patterns to ignore when packaging a Helm chart.
+# To learn more about .helmignore, read: https://helm.sh/docs/howto/chart_development_tips/#the-helmignore-file
+
+# Ignore VCS
+.git
+# Ignore metadata
+.gitignore
+.gitmodules
+# Ignore development tools
+.travis.yml
+.circleci
+# Ignore editor files
+.idea
+*.swp
+*~
+.vscode
+# Ignore OS metadata
+.DS_Store
+Thumbs.db

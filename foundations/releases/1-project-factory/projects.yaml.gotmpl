@@ -39,7 +39,7 @@ releases:
 
     {{- range $project := $tenantConfig.global.projects }}
     - name: {{ $project.name }}
-      chart: {{ $vals | get "gdc_projects_chart_path" "../../charts/gdc-projects" }}
+      chart: {{ $vals | get "gdc_projects_chart_path" "../../../charts/gdc-projects" }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 1-project-factory

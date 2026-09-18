@@ -27,7 +27,7 @@ helmfiles:
   - path: dbs.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
-  - path: habor.yaml.gotmpl
+  - path: harbor.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
   - path: backup-repositories.yaml.gotmpl

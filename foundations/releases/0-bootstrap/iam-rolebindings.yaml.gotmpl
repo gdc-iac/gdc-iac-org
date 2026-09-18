@@ -61,7 +61,7 @@ templates:
 releases:
   {{- if or (gt (len $projectPredefined) 0) (gt (len $projectCustom) 0) }}
   - name: iac-iam-rolebindings-project
-    chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../charts/gdc-iam-role-bindings" }}
+    chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
     labels:
       stage: 0-bootstrap
     inherit:
@@ -74,7 +74,7 @@ releases:
 
   {{- if or (gt (len $globalPredefined) 0) (gt (len $globalCustom) 0) }}
   - name: iac-iam-rolebindings-global
-    chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../charts/gdc-iam-role-bindings" }}
+    chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
     labels:
       stage: 0-bootstrap
     inherit:

@@ -40,7 +40,7 @@ releases:
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "harbors") }}
       - name: {{ $project.name }}-harbor
-        chart: {{ $vals | get "gdc_harbors_chart_path" "../../charts/gdc-harbors" }}
+        chart: {{ $vals | get "gdc_harbors_chart_path" "../../../charts/gdc-harbors" }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 2-resources

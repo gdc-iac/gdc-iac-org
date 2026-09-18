@@ -1,0 +1,35 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- if .Values.name }}
+apiVersion: networking.gdc.goog/v1
+kind: CloudNATGateway
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ required "A valid name is required (.Values.name)" .Values.name | quote }}
+spec:
+  workloadSelector:
+    matchLabels:
+      app: {{ required "A valid app workload selector is required (.Values.workloadSelector.matchLabels.app)" .Values.workloadSelector.matchLabels.app | quote }}
+  subnetRefs:
+    {{- range $subnet := required "At least one leaf subnet reference is required (.Values.subnetRefs)" .Values.subnetRefs }}
+    - {{ $subnet | quote }}
+    {{- end }}
+  connectionOptions:
+    nonTCPTimeoutSeconds: {{ .Values.connectionOptions.nonTCPTimeoutSeconds }}
+    tcpTimeoutSeconds: {{ .Values.connectionOptions.tcpTimeoutSeconds }}
+    tcpTeardownTimeoutSeconds: {{ .Values.connectionOptions.tcpTeardownTimeoutSeconds }}
+    tcpEstablishmentTimeoutSeconds: {{ .Values.connectionOptions.tcpEstablishmentTimeoutSeconds }}
+
+{{- end }}
