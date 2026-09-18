@@ -6,6 +6,7 @@
     "namespace": {},
     "base64EncodedPassword": {},
     "postgresql": {},
-    "oracle": {}
+    "oracle": {},
+    "alloydbomni": {}
   }
 }

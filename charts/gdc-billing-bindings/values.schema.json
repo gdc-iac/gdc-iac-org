@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Values schema for gdc-billingbindings",
+  "title": "Values schema for gdc-billing-bindings",
   "type": "object",
   "properties": {
     "billingbindings": {}

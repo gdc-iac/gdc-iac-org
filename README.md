@@ -1,5 +1,3 @@
-Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
-
 # Google Distributed Cloud Infrastructure Automation
 
 This repository provides an end-to-end Infrastructure as Code (IaC) and GitOps automation framework for **Google Distributed Cloud air-gapped (GDCag)**. It brings together modular Helm charts, enterprise landing zone foundations, multi-engine deployment tooling, and production-ready reference architecture blueprints.
