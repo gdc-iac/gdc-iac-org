@@ -3,27 +3,29 @@
 Thank you for your interest in contributing to the Google Distributed Cloud Infrastructure Automation project! We welcome contributions, bug reports, and suggestions from the community.
 
 ---
+## Before you begin
 
-## Contributor License Agreement (CLA)
+### Sign our Contributor License Agreement
 
-Contributions to this project must be accompanied by a Contributor License Agreement (CLA). You (or your employer) retain the copyright to your contribution; this simply gives us permission to use and redistribute your contributions as part of the project.
+Contributions to this project must be accompanied by a
+[Contributor License Agreement](https://cla.developers.google.com/about) (CLA).
+You (or your employer) retain the copyright to your contribution; this simply
+gives us permission to use and redistribute your contributions as part of the
+project.
 
-- **Individual contributors:** If you are contributing as an individual, please sign the [Google Individual Contributor License Agreement](https://cla.developers.google.com/about/google-individual).
-- **Corporate contributors:** If you are contributing on behalf of your employer, your company must sign the [Google Corporate Contributor License Agreement](https://cla.developers.google.com/about/google-corporate).
+If you or your current employer have already signed the Google CLA (even if it
+was for a different project), you probably don't need to do it again.
 
-Head over to <https://cla.developers.google.com/> to check your current agreements on file or to sign a new one.
+Visit <https://cla.developers.google.com/> to see your current agreements or to
+sign a new one.
+
+### Review our community guidelines
+
+This project follows
+[Google's Open Source Community Guidelines](https://opensource.google/conduct/).
 
 > [!IMPORTANT]
 > When submitting a pull request, ensure that the email address associated with your Git commits matches the email address you used to sign the CLA. If the emails do not match, the automated CLA check will fail.
-
----
-
-## Community Guidelines & Code of Conduct
-
-This project follows the [Google Open Source Community Guidelines](https://opensource.google/conduct/). We expect contributors to uphold these principles to ensure an open, welcoming, and inclusive environment.
-
-If you observe or experience inappropriate behavior, please contact the project maintainers or report it to `opensource@google.com`.
-
 ---
 
 ## How to Contribute
