@@ -295,3 +295,6 @@ We welcome contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for d
 - `zoneselectionresults.location.mz.global.private.gdc.goog`
 - `zoneselections.location.mz.global.private.gdc.goog`
 </details>
+---
+  Eligibility for the [Google Open Source Software Vulnerability Rewards
+  Program](https://bughunters.google.com/open-source-security) is determined by the [Google Open Source Software Vulnerability Reward Program Rules](https://bughunters.google.com/about/rules/open-source/google-open-source-software-vulnerability-reward-program-rules).
