@@ -1,8 +1,0 @@
-{{- range $harbor := .Values.harbors }}
----
-apiVersion: artifactregistry.gdc.goog/v1
-kind: HarborInstance
-metadata:
-  name: {{ $harbor.name }}
-  namespace: {{ $harbor.namespace }}
-{{- end }}

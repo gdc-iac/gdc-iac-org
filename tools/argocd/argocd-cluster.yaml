@@ -1,0 +1,17 @@
+apiVersion: cluster.gdc.goog/v1
+kind: Cluster
+metadata:
+  name: argocd-cluster
+  namespace: iac-root
+spec:
+  clusterNetwork:
+    podCIDRSize: 21
+    serviceCIDRSize: 23
+  initialVersion:
+    kubernetesVersion: "1.32.13-gke.100"
+  nodePools:
+  - name: default-node-pool
+    machineTypeName: "n3-standard-2-gdc"
+    nodeCount: 3
+  releaseChannel:
+    channel: UNSPECIFIED

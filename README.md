@@ -2,123 +2,205 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 # Google Distributed Cloud Infrastructure Automation
 
-This repository provides a flexible toolkit for managing infrastructure as code (IaC) using predefined YAML configuration files and Helm charts for **Google Distributed Cloud air-gapped (GDCag)**.
+This repository provides an end-to-end Infrastructure as Code (IaC) and GitOps automation framework for **Google Distributed Cloud air-gapped (GDCag)**. It brings together modular Helm charts, enterprise landing zone foundations, multi-engine deployment tooling, and production-ready reference architecture blueprints.
 
 ## Terminology
 - **GDCag**: Google Distributed Cloud air-gapped (formerly known as **GDCH**)
-
-## Repository Structure
-
-- `charts/`: The raw Helm charts that template the GDCag Custom Resources (e.g., Projects, VM, DB Clusters).
-- `tools/`: Tooling and configuration files for deploying resources:
-  - `helmfile/`: Declarative, data-driven orchestration using `helmfile`.
-  - `helm_cli/`: Custom python wrapper script for processing configurations and deploying.
-  - `config-sync/`: Examples for operators using GitOps.
-  - `kpt/`: Package management integration using kpt.
-  - `argocd/`: GitOps deployment configurations using ArgoCD.
-- `examples/`: Sample configuration files organized by organization or use case (e.g., `sample-org`, `dga`, `dga-factory`, `helmfile`) representing desired state layouts.
-- `scripts/`: Helper utilities for testing charts and updating documentation.
-- `policy/`: OPA/Rego policies for security and configuration validation.
+- **Global API Cluster**: Central administrative context managing Projects, IAM, and global service accounts
+- **Org Admin / Zone Cluster**: Zonal management context managing VMs, storage Buckets, databases, and network policies
+- **Standard / User Clusters**: Dedicated tenant Kubernetes clusters hosting containerized application workloads
 
 ---
 
-## Prerequisites
+## Repository Structure
 
-To use this framework successfully, you'll need the following tools installed and authenticated with your GDCag environment:
+```text
+.
+├── foundations/               # Multi-stage enterprise landing zone automation via Helmfile
+│   ├── bases/environments/    # Environment configurations (dev, stg, prd)
+│   └── releases/              # Phased deployment stages (0-bootstrap to 4-notebooks)
+├── blueprints/                # Production-ready, 100% self-contained workload reference architectures
+│   ├── patterns/              # Enterprise patterns (P0-P13: 3-tier web, Kafka, RAG, Vault, Keycloak, etc.)
+│   ├── gdc_gemma_gw/          # Self-contained Gemma LLM Gateway (vLLM & Ollama serving)
+│   ├── common-scripts/        # Packaging, building, parameter configuration, and image mirroring scripts
+│   └── docs/                  # In-depth architectural implementation guides
+├── charts/                    # 27 modular Helm charts templating GDCag Custom Resources
+├── tools/                     # Deployment tooling and GitOps orchestration engines
+│   ├── bootstrap/             # Initial root project, service account, and credentials bootstrap
+│   ├── helmfile/              # Declarative, data-driven orchestration using helmfile
+│   ├── helm_cli/              # Custom Python CLI wrapper script for imperative templating and deployments
+│   ├── config-sync/           # In-cluster continuous GitOps synchronization with Google Config Sync
+│   └── argocd/                # Continuous deployment and GitOps synchronization using ArgoCD
+├── policy/                    # OPA/Rego policies for security and configuration validation
+└── scripts/                   # CI/CD validation, testing, schema generation, and documentation utilities
+```
 
-- `gdcloud` CLI configured with an active context
-- `kubectl` and `helm`
-- Access to the target GDCag organization and project
+---
 
-You will also need elevated permissions to bootstrap the initial organization roles. To do that follow [tools/bootstrap/README.md](tools/bootstrap/README.md).
+## Core Pillars
+
+### 1. Landing Zone Foundations (`foundations/`)
+The `foundations/` directory automates the setup of an enterprise GDCag landing zone using Helmfile. It structures environment resources into phased execution layers:
+- **`0-bootstrap/`**: Root administrative namespace, base operations, and landing zone operator setup.
+- **`0-org-setup/`**: Platform operations, organizational policy boundaries, and billing linkages.
+- **`1-project-factory/`**: Dynamic tenant project creation, IAM role bindings, and project service accounts.
+- **`2-resources/`**: Zonal resources (observability dashboards, Harbor registries, backup repositories, VMs, databases, and buckets).
+- **`3-clusters/`**: Standard Kubernetes cluster provisioning and RBAC baseline setup.
+- **`4-notebooks/`**: AI/ML Jupyter notebooks and supporting infrastructure.
+
+Environment-specific definitions are maintained under `foundations/bases/environments/` (`dev/`, `stg/`, `prd/`) with modular configuration files (`globals.yaml`, `iac.yaml`, `tenants-org-*.yaml`, and `overrides.yaml`).
+
+👉 **[View Foundations Documentation & Deployment Manual](foundations/README.md)**
+
+### 2. Production Workload Blueprints (`blueprints/`)
+The `blueprints/` directory contains **100% self-contained**, production-ready deployment assets for air-gapped environments. These packages require zero external internet dependencies and can be transferred as standalone bundles into air-gapped registries:
+- **Enterprise Patterns (`blueprints/patterns/`)**:
+  - `p0-dga-factory`: Factory automation for tenant workloads
+  - `p1-resilient-3-tier-webapp`: High-availability 3-tier web application
+  - `p3-legacy-vm-modern-db`: Mixed-mode legacy VM workloads connecting to managed PostgreSQL
+  - `p4-event-driven-kafka`: Scalable, event-driven messaging with Kafka
+  - `p5-hybrid-llm-gateway`: Hybrid LLM inference gateway supporting Ollama and vLLM
+  - `p6-resilient-rag-agent`: Resilient Retrieval-Augmented Generation (RAG) agent
+  - `p7-agentic-data-analyst`: AI-powered data analysis platform
+  - `p8-closed-loop-mlops`: Air-gapped MLOps model training and serving pipeline
+  - `p10-gemini-gui`: Conversational web interface for internal AI models
+  - `p11-vault`: Enterprise secret management with HashiCorp Vault
+  - `p12-keycloak`: Centralized Identity and Access Management with Keycloak
+  - `p13-gdc-dev`: Developer workstation and sandbox environment
+- **Gemma LLM Gateway (`blueprints/gdc_gemma_gw/`)**: Production inference serving for Google Gemma models.
+- **Air-Gapped Tooling (`blueprints/common-scripts/`)**: Scripts for offline image mirroring (`bulk_mirror_images.sh`), parameter substitution (`configure-blueprints.sh`), and packaging (`package-for-gdc.sh`).
+
+👉 **[View Blueprints Documentation & Workflow Guide](blueprints/README.md)**
+
+### 3. Modular Helm Charts (`charts/`)
+The repository includes purpose-built Helm charts that declare GDCag Custom Resources across organizational hierarchy, networking, IAM, storage, databases, and workloads. Each chart is equipped with strongly typed `values.schema.json` validation and local unit tests.
 
 ---
 
 ## Architecture & Resource Orchestration
 
-GDCag heavily relies on custom resources, which are typically created in alphabetical order by Helm (as described in [issue/1228](https://github.com/helm/helm/issues/1228)). For example, an `IAMRole` resource must be created before a `Project` resource. 
+GDCag heavily relies on custom resources, which are typically created in alphabetical order by Helm (as described in [helm/helm#1228](https://github.com/helm/helm/issues/1228)). For example, an `IAMRole` resource must exist before a `Project` resource can bind it.
 
-To overcome this constraint, this framework uses a **layered approach**, where configurations (like `org.yaml` or `tenants.yaml`) are shared across multiple, highly specialized charts. These charts are then deployed in a strict, predefined order:
+To overcome this constraint, this framework enforces a **strict, layered deployment order**:
 
-1. Organization roles
-2. User Clusters [scope: zone]
-3. Projects
-4. Buckets [scope: zone]
-5. Project roles
-6. Project Service Accounts
-7. Role Bindings
-8. Workloads (VMs, DBs, Harbors, Notebooks, Network Policies)
+```mermaid
+flowchart TD
+    A["1. Organization Roles & Policies"] --> B["2. User / Standard Clusters (Zone)"]
+    B --> C["3. Projects & Namespaces (Global)"]
+    C --> D["4. Storage Buckets (Zone)"]
+    D --> E["5. Project Roles & Custom Roles"]
+    E --> F["6. Project Service Accounts"]
+    F --> G["7. IAM & RBAC Role Bindings"]
+    G --> H["8. Workloads (VMs, DBs, Harbors, Notebooks, NetPols)"]
+```
 
 ### Separating Infrastructure Provisioning from Access Management
-
-When provisioning GDCag standard clusters, it is highly recommended to logically separate cluster provisioning from access management:
-- **Infrastructure Provisioning (`gdc-standard-clusters`)**: Dedicated only to creating standard clusters. Cluster creation has a separate lifecycle and requires higher privileges.
-- **Access Management (`gdc-standard-clusters-rbac`)**: Dedicated to managing Kubernetes RBAC (`RoleBindings`, `ClusterRoleBindings`) inside the provisioned clusters. This allows developers to be onboarded or offboarded securely without modifying the core cluster infrastructure.
+When provisioning standard clusters, it is highly recommended to separate cluster lifecycle operations from access management:
+- **Infrastructure Provisioning (`charts/gdc-standard-clusters`)**: Creates and manages the lifecycle of the standard cluster itself. Requires elevated platform privileges.
+- **Access Management (`charts/gdc-standard-clusters-rbac`)**: Configures Kubernetes RBAC (`RoleBindings`, `ClusterRoleBindings`) inside the target cluster. Allows developers to be onboarded or offboarded securely without altering underlying cluster infrastructure.
 
 ---
 
 ## Deployment Strategies
 
-The toolkit allows you to use different tools to template and synchronize these configurations based on your operational needs. The detailed setup workflows and prerequisites for each method are documented in their respective tool directories.
+This toolkit accommodates various operational models depending on your infrastructure automation maturity and air-gapped tooling preferences:
 
-### Method 1: Deployment via Custom Helm CLI wrapper (Preview)
-A custom Python wrapper script (`helm_cli.py`) designed for local or CI/CD usage. It streamlines the parsing of YAML configurations and loops through the charts imperatively, substituting the correct contexts and environments automatically.
-👉 **[View Helm CLI Documentation & Setup Guide](tools/helm_cli/README.md)**
-
-### Method 2: Config Sync (Preview)
-Continuous state synchronization using the Config Sync operator. It acts as an in-cluster reconciliation agent, applying changes made directly to this repository.
-👉 **[View Config Sync Documentation & Setup Guide](tools/config-sync/README.md)**
-
-### Method 3: Infrastructure Automation via Helmfile (Preview)
-This method utilizes a **data-driven approach** linking `tenants.yaml` inputs through a logic engine (`helmfile.yaml`) to dynamically generate and sequence Helm releases based on the required dependency chain.
-👉 **[View Helmfile Documentation & Setup Guide](tools/helmfile/README.md)**
-
-### Method 4: GitOps via ArgoCD (Preview)
-Continuous deployment and automated state synchronization using ArgoCD.
-👉 **[View ArgoCD Documentation & Setup Guide](tools/argocd/README.md)**
+| Method | Best For | Description | Documentation |
+| :--- | :--- | :--- | :--- |
+| **Foundations (Helmfile)** | Enterprise Landing Zones | Phased multi-stage orchestration across Global and Zonal endpoints using Helmfile. | [Foundations Guide](foundations/README.md) |
+| **Helmfile (Tools)** | Data-Driven Tenancy | Dynamic release generation sequenced directly from `tenants.yaml`. | [Helmfile Guide](tools/helmfile/README.md) |
+| **Custom Helm CLI** | Local / CI/CD Pipelines | Python CLI (`helm_cli.py`) imperatively managing contexts and deployments. | [Helm CLI Guide](tools/helm_cli/README.md) |
+| **Config Sync** | In-Cluster GitOps | Continuous reconciliation using Google's Config Sync operator. | [Config Sync Guide](tools/config-sync/README.md) |
+| **ArgoCD** | GitOps Continuous Delivery | Enterprise continuous delivery and state synchronization using ArgoCD. | [ArgoCD Guide](tools/argocd/README.md) |
 
 ---
 
-## Quick Start & Forking Guide
+## Prerequisites
 
-If you are planning to fork this repository as a starting template for your GDCag air-gapped deployments:
+To use this framework, ensure you have the following tools installed and authenticated with your GDCag environment:
 
-1. **Review Example Layouts**:
-   Browse the `examples/` directory to see sample structures (`sample-org`, `dga`, `dga-factory`, `helmfile`) demonstrating how to define your desired infrastructure state using values.
-2. **Define Your State**:
-   Adapt one of these examples or create your own directory with your specific `org.yaml` and `tenants.yaml` configuration parameters. These files drive your Helm deployments.
-3. **Authenticate Iterative Deployment Tools**:
+- `gdcloud` CLI configured with an active context
+- `kubectl` and `helm` (v3.10+)
+- `helmfile` (v1.2.1+) and the `helm-diff` plugin (for Helmfile workflows)
+- Access to the target GDCag organization and projects
+
+### Initial Bootstrap
+Before deploying tenant workloads, you must bootstrap the initial root project and service account permissions. Follow the setup guide in [tools/bootstrap/README.md](tools/bootstrap/README.md):
+
+```bash
+cd tools/bootstrap
+cp config.sh.sample config.sh
+# Edit config.sh with your environment details
+./bootstrap.sh
+./authenticate.sh
+```
+
+---
+
+## Quick Start Guide
+
+### Option 1: Deploy Landing Zone via Foundations
+1. Navigate to the foundations directory:
    ```bash
-   gdcloud auth login --login-config-cert=/tmp/org-1-web-tls-ca.cert
+   cd foundations
    ```
-4. **Deploy Lifecycle (Using Helmfile as an Example)**:
+2. Configure your environment variables in `bases/environments/dev/` (`globals.yaml`, `iac.yaml`, `tenants-org-1.yaml`).
+3. Execute the release pipeline sequentially:
    ```bash
-   # 1. Prechecks
-   cd tools/helmfile # or the path matching your setup
-   helmfile lint
-   helmfile show-dag
-   
-   # 2. First Run Provisioning
-   # Note: 'helmfile diff' will likely fail on a fresh install due to chicken-and-egg 
-   # resource sequencing dependencies (e.g. attempting to interact with namespaces that don't yet exist).
-   # The 'helmfile sync' command applies the DAG sequentially in correct order.
-   helmfile sync
-   
-   # 3. Subsequent Updates
-   # Once foundational project resources and rolebindings exist, you can generate normal diffs:
-   helmfile diff
-   helmfile apply
+   helmfile -e dev -f releases/0-bootstrap/helmfile.yaml.gotmpl sync
+   helmfile -e dev -f releases/0-org-setup/helmfile.yaml.gotmpl sync
+   helmfile -e dev -f releases/1-project-factory/helmfile.yaml.gotmpl sync
+   helmfile -e dev -f releases/2-resources/helmfile.yaml.gotmpl sync
+   helmfile -e dev -f releases/3-clusters/helmfile.yaml.gotmpl sync
+   ```
+
+### Option 2: Deploy Production Workload Blueprints
+1. Navigate to the blueprints directory:
+   ```bash
+   cd blueprints
+   ```
+2. Configure target environment parameters across all manifests:
+   ```bash
+   ./common-scripts/configure-blueprints.sh -p <target-project-id> -r <registry-url> -n <target-namespace>
+   ```
+3. Deploy GDC managed service custom resources and application workloads:
+   ```bash
+   kubectl apply -f patterns/p1-resilient-3-tier-webapp/manifests/gdc/db/
+   kubectl apply -f patterns/p1-resilient-3-tier-webapp/manifests/apps/
    ```
 
 ---
 
 ## Code Validation & Testing
 
-All charts and configurations submitted to this repository should be validated against the included policies and test scripts to ensure compliance.
+This repository enforces a strict, 4-layer offline validation pipeline to guarantee chart correctness, schema integrity, and security compliance before deployment:
 
-- **Chart Testing**: Scripts to template and validate charts are located in `scripts/test-charts.sh`.
-- **Security Policies**: OPA/Gatekeeper validations (like `policy/security.rego`) exist to ensure that deployments adhere to the organization's security defaults.
-- **Helper Scripts**: Additional utilities for schema generation (`scripts/generate_schemas.py`), documentation (`scripts/helm-docs.sh`), and README updates (`scripts/update_readmes.py`).
+1. **Input / Schema Validation (`helm lint` & `values.schema.json`):** Asserts that required values are provided and strongly typed.
+2. **Logic Validation (`helm-unittest`):** Verifies Go templating logic via unit tests without requiring a running cluster.
+3. **Structural Validation (`kubeconform`):** Verifies rendered YAML against Kubernetes OpenAPI specifications.
+4. **Security Policy Compliance (`conftest` / OPA):** Asserts that manifests conform to security policies (e.g. `policy/security.rego`).
+
+Run the entire offline test suite across all charts:
+
+```bash
+./scripts/test-charts.sh
+```
+
+Run chart linting (matching GitHub Actions CI):
+
+```bash
+ct lint --debug --config ./.github/configs/ct-lint.yaml --lint-conf ./.github/configs/lintconf.yaml
+```
+
+---
+
+## Contributing
+
+We welcome contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
+- Contributor License Agreement (CLA) requirements
+- Community guidelines & Code of Conduct
+- Chart versioning and documentation standards
+- Pull request submission checklist
 
 ---
 
