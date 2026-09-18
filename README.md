@@ -1,5 +1,3 @@
-Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
-
 # Google Distributed Cloud Infrastructure Automation
 
 This repository provides an end-to-end Infrastructure as Code (IaC) and GitOps automation framework for **Google Distributed Cloud air-gapped (GDCag)**. It brings together modular Helm charts, enterprise landing zone foundations, multi-engine deployment tooling, and production-ready reference architecture blueprints.
@@ -10,9 +8,19 @@ This repository provides an end-to-end Infrastructure as Code (IaC) and GitOps a
 - **Org Admin / Zone Cluster**: Zonal management context managing VMs, storage Buckets, databases, and network policies
 - **Standard / User Clusters**: Dedicated tenant Kubernetes clusters hosting containerized application workloads
 
----
+## Repository Paradigm & Architecture
 
-## Repository Structure
+This repository operates as a **Reusable Helm & Helmfile Blueprint Library**. It provides versioned Helm charts, composable Helmfile stacks, and deployment blueprints for Google Distributed Cloud (GDC) infrastructure.
+
+### Architectural Principles
+
+| Principle | Description |
+|---|---|
+| **No In-Tree Environment State** | This repository contains zero environment-specific secrets, live cluster configurations, or deployed release state. |
+| **Artifact Publishing & OCI Registries** | Charts are packaged and published as immutable OCI artifacts (or chart repository archives). Blueprints and Helmfiles are referenced via SemVer Git tags. |
+| **Declarative Composition** | Blueprints provide parameterized templates. Downstream environment repos supply environment-specific `values-*.yaml` files and execute `helmfile apply`. |
+
+### Repository Structure
 
 ```text
 .
@@ -201,6 +209,12 @@ We welcome contributions! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for d
 - Community guidelines & Code of Conduct
 - Chart versioning and documentation standards
 - Pull request submission checklist
+
+---
+
+## Release & Versioning Strategy
+
+For details on how Helm charts, foundations, and blueprints are versioned, packaged, and distributed across connected registries and air-gapped GDC facilities, please review [RELEASE_STRATEGY.md](RELEASE_STRATEGY.md).
 
 ---
 
