@@ -1,0 +1,218 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logic-tier
+  namespace: {{ include "p1-resilient-3-tier-webapp.namespace" . }}
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: logic
+  template:
+    metadata:
+      labels:
+        app: logic
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - logic
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: api-server
+        image: {{ include "p1-resilient-3-tier-webapp.registry" . }}/p1-backend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        - name: DB_NAME
+          value: postgres
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: tier3-db-credentials
+              key: host
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: tier3-db-credentials
+              key: password
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logic-svc
+  namespace: {{ include "p1-resilient-3-tier-webapp.namespace" . }}
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: logic
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web-gateway
+  namespace: {{ include "p1-resilient-3-tier-webapp.namespace" . }}
+  annotations:
+    networking.gke.io/load-balancer-type: Internal
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: eg
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web-route
+  namespace: {{ include "p1-resilient-3-tier-webapp.namespace" . }}
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - name: web-gateway
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: web-lb
+      port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-tier
+  namespace: {{ include "p1-resilient-3-tier-webapp.namespace" . }}
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        fsGroup: 101
+      containers:
+      - name: nginx
+        image: {{ include "p1-resilient-3-tier-webapp.registry" . }}/p1-frontend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        env:
+        - name: API_UPSTREAM
+          value: http://logic-svc.test-project.svc.cluster.local:8080
+        ports:
+        - containerPort: 8080
+          name: http
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: {{ include "p1-resilient-3-tier-webapp.namespace" . }}
+  labels:
+    {{- include "p1-resilient-3-tier-webapp.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: web
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+{{- end }}

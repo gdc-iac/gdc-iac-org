@@ -1,64 +1,39 @@
-# Plan: Integrating GDC Blueprint Patterns with IaC Framework
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Plan: Integrating GDC Blueprint Patterns with IaC Framework (Issue #54)
 
 ## Objective
-Align the `blueprints/patterns` with the core IaC orchestration framework (as described in the repository `README.md`) while preserving the ability to perform standalone deployments.
+Align `blueprints/patterns` (`p1` through `p13`) with the core IaC orchestration framework (`foundations/` and `charts/`) while preserving standalone deployments (`kubectl apply -f manifests/`).
 
 ## Scope
-- **Patterns**: `blueprints/patterns/`
-- **Documentation**: `blueprints/docs/implementation-guides/`
+- **Patterns**: `blueprints/patterns/p*/chart/` (`p1`, `p3`, `p4`, `p5`, `p6`, `p7`, `p8`, `p10`, `p11`, `p12`, `p13`)
+- **Foundations Orchestration**: `foundations/releases/5-patterns/` (`helmfile.yaml.gotmpl`, `patterns.yaml.gotmpl`), `foundations/helmfile.yaml`, `foundations/bases/environments/*/charts.yaml`
+- **Validation & Tooling**: `scripts/test-charts.sh`, `blueprints/common-scripts/configure-blueprints.sh`
+- **Documentation**: `blueprints/patterns/p*/README.md`, `blueprints/docs/implementation-guides/*.md`, `foundations/README.md`
 
-## Proposed Approach: Option A (Helm-based Integration)
+## Architecture & Control-Plane Separation
 
-### Concept
-Transform patterns from static manifest collections into deployable Helm charts. This allows the patterns to be managed by the existing orchestration tools (Helmfile, ArgoCD, etc.) used in the main repository.
+### 1. Wrapper Charts (`blueprints/patterns/<pattern>/chart/`)
+Each pattern includes a lightweight Helm chart wrapping its resources into two gated template groups:
+- **User Cluster Workloads (`templates/apps/workloads.yaml`, gated by `apps.enabled: true`)**:
+  Deploys standard Kubernetes resources (`Deployment`, `StatefulSet`, `Service`, `GatewayClass`, `Gateway`, `HTTPRoute`, `CronJob`, `ConfigMap`, `Secret`, `ServiceAccount`, `NetworkPolicy`) to the target User Cluster context in Stage 5 (`5-patterns`).
+- **Zonal GDC Resources (`templates/gdc/resources.yaml`, gated by `gdc.enabled: false`)**:
+  In the layered IaC framework, Stage 2 (`2-resources`) provisions Zonal managed databases (`DBCluster`), Virtual Machines (`VirtualMachine`), and Buckets (`Bucket`) via the core `charts/gdc-dbs`, `charts/gdc-vm`, and `charts/gdc-buckets` charts. Consequently, `gdc.enabled` defaults to `false` for Stage 5 User Cluster deployments, while remaining available (`--set gdc.enabled=true`) for operators who want to deploy Zonal CRDs directly from the wrapper chart.
+- **Day-2 Failover Protection (`templates/gdc/failover.yaml`, gated by `gdc.failover.enabled: false`)**:
+  Prevents `fleet.dbadmin.gdc.goog/v1/Failover` resources from triggering unintended database failovers during automated Helmfile / ArgoCD syncs.
 
-### How it works
-1.  **Wrapper Chart**: Each pattern will include a lightweight Helm chart.
-2.  **Resource Wrapping**: This chart will wrap the existing `manifests/gdc` resources.
-3.  **Parameterization**: Use `values.yaml` to allow the IaC framework to inject environment-specific configurations (e.g., namespaces, labels, service accounts) into the pattern's resources.
-4.  **Dual-Mode Deployment**:
-    - **Standalone Mode**: Users can still use `kubectl apply -f manifests/` for quick, unmanaged testing.
-    - **Orchestrated Mode**: The IaC framework (via `helmfile` or `argocd`) can deploy the pattern as a Helm release, benefiting from dependency management and automated lifecycle handling.
-
-## Implementation Steps
-
-### 1. Audit & Standardization
-- **Audit**: Systematically review all patterns in `blueprints/patterns` to identify all GDC-specific Custom Resources (CRDs).
-- **Template Creation**: Develop a standardized Helm chart template for patterns to ensure consistency across the library.
-
-### 2. Pilot Implementation
-- **Target**: Select a representative pattern (e.g., `p1-resilient-3-tier-webapp`).
-- **Execution**:
-    - Create the Helm chart structure.
-    - Migrate/wrap existing `manifests/gdc` into the chart's `templates/` directory.
-    - Implement `values.yaml` for key parameterization points.
-- **Verification**: Validate that the pattern deploys successfully via both `kubectl` (standalone) and `helmfile` (orchestrated).
-
-### 3. Documentation Update
-- **Implementation Guides**: Update all guides in `blueprints/docs/implementation-guides/` to reflect the two deployment paths (Standalone vs. IaC-integrated).
-- **Pattern READMEs**: Update individual pattern `README.md` files to include instructions for the new Helm-based deployment.
-
-### 4. Validation & QA
-- Ensure no regressions in the existing standalone deployment workflow.
-- Verify that the new approach adheres to the dependency layers defined in the main repository `README.md`.
-
----
-
-## Summary for Repo Owners (For Issue/Feedback)
-
-**Proposal: Helm-based Integration for GDC Blueprint Patterns**
-
-**Problem Statement:**
-Currently, the patterns in `blueprints/patterns` are standalone manifest collections. While functional, they are disconnected from the advanced orchestration and dependency management capabilities (Helmfile, ArgoCD, etc.) provided by the main IaC framework.
-
-**Proposed Solution (Option A):**
-We propose wrapping pattern manifests into lightweight Helm charts.
-
-**Key Benefits:**
-- **Orchestration Alignment**: Enables patterns to be part of the automated, layered deployment lifecycle (e.g., ensuring a Project exists before a Pattern's workload is deployed).
-- **Dynamic Configuration**: Leverages `values.yaml` to allow the IaC framework to inject context-specific metadata (namespaces, labels, etc.) without modifying the pattern itself.
-- **Zero Regression**: The existing `manifests/` directory remains intact, ensuring that the current "standalone" deployment method remains fully operational.
-- **Standardization**: Provides a consistent deployment interface across all architectural patterns.
-
-**Impact:**
-Low complexity, high value for automation and scalability.
+### 2. Zero Regression on Standalone `manifests/`
+- All `blueprints/patterns/*/manifests/` directories remain untouched for `kubectl apply -f manifests/`.
+- `blueprints/common-scripts/configure-blueprints.sh` excludes `*/chart/*` and `*/charts/*` paths so `sed` replacements on standalone manifests never mutate Helm templates or `values.yaml`.

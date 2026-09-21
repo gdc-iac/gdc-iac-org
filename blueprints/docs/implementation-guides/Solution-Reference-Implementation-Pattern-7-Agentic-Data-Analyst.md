@@ -482,3 +482,11 @@ spec:
 | `Permission Denied (SQL)` | Agent attempted to run a mutating statement (e.g. UPDATE, INSERT) or user permissions are restricted. | Confirm the DB user `analyst_ro` has SELECT permissions on all tables. |
 | `LLM Gateway timeout` | The gateway endpoint failed to return a response within timeout. | Check gateway health status and check if the underlying Gemini service has quota limit bottlenecks. |
 | `ReAct planning loop crash` | The model returned invalid planning actions that broke the ADK parsing code. | Verify parsing filters or upgrade parser libraries inside the agent's container. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

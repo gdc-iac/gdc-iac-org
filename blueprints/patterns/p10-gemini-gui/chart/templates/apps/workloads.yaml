@@ -1,0 +1,110 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: {{ include "p10-gemini-gui.namespace" . }}
+  labels:
+    {{- include "p10-gemini-gui.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: gemini-gui-sa
+      containers:
+      - name: backend
+        image: {{ include "p10-gemini-gui.registry" . }}/p10-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PROJECT_ID
+          value: test-project
+        - name: INPUT_BUCKET
+          value: gs://gemini-gui-files-{{ include "p10-gemini-gui.projectId" . }}
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: gemini-gui-db-credentials
+              key: connection_string
+        - name: REGION
+          value: us-central1
+        - name: GEMINI_MODEL
+          value: gemini-2.5-flash
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: {{ include "p10-gemini-gui.namespace" . }}
+  labels:
+    {{- include "p10-gemini-gui.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p10-frontend
+  namespace: {{ include "p10-gemini-gui.namespace" . }}
+  labels:
+    {{- include "p10-gemini-gui.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: p10-frontend
+  template:
+    metadata:
+      labels:
+        app: p10-frontend
+    spec:
+      containers:
+      - name: p10-frontend
+        image: {{ include "p10-gemini-gui.registry" . }}/p10-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        env:
+        - name: VITE_API_URL
+          value: /api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p10-frontend-svc
+  namespace: {{ include "p10-gemini-gui.namespace" . }}
+  labels:
+    {{- include "p10-gemini-gui.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: p10-frontend
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
+{{- end }}

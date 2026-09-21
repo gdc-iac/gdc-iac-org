@@ -556,3 +556,11 @@ spec:
 | `File Upload fails` | ServiceAccount lacks permissions to write objects to the GCS Bucket. | Verify that the `IAMPolicyBinding` binds `roles/storage.objectAdmin` to `gemini-gui-sa`. |
 | `Chat history fails to save` | Database connection string in `gemini-gui-db-credentials` is misconfigured. | Verify database host address and secret string formatting. |
 | `CORS errors in browser` | Browser tries to reach the API directly on port 8000 instead of route paths. | Verify HTTPRoute path rewrite rules are active and that frontend configuration uses `/api` base path. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

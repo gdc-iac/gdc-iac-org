@@ -608,3 +608,11 @@ spec:
 | `DB connection timeout` | Network policies block App Tier pods from accessing the Database Service. | Verify the database ingress rules allow connections from the `app: logic` pods. |
 | `503 Service Unavailable` | Gateway cannot reach the Nginx backend (Web Tier) or pods fail health probes. | Check pod logs via `kubectl logs -l app=web -n my-gdc-project` and verify readiness probes. |
 | `ImagePullBackOff` | Secret `p1-pull-secret` missing, or Harbor registry is unreachable. | Confirm the secret is created in the correct namespace and Harbor robot credentials are active. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

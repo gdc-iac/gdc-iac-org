@@ -413,3 +413,11 @@ kubectl logs -l app=gateway -n my-gdc-project
 | `403 Permission Denied` | ServiceAccount lacks the `ai-invoker` project IAM role. | Verify that the `ProjectPolicy` binds `Role/ai-invoker` to the `gateway-sa` service account. |
 | `Failover loop exhaustion` | The secondary fallback backend is down or unreachable. | Verify DNS resolution for the secondary host and make sure the serving container is running. |
 | `504 Gateway Timeout` | Large token responses cause client timeout limits to break. | Increase timeout parameters inside your downstream calling client and gateway configuration. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

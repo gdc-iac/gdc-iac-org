@@ -408,3 +408,11 @@ spec:
 | `Keycloak crashes during DB migrations` | JDBC database URL contains invalid address, or database credentials are incorrect. | Verify hostname/IP coordinates inside `KC_DB_URL` env variable. |
 | `Infinite redirect loop in browser` | Keycloak hostname settings require SSL validation but upstream TLS termination is active. | Verify `KC_PROXY_HEADERS` is configured to `xforwarded` and `KC_HOSTNAME_STRICT` is `false`. |
 | `OOMKilled during startup` | Container memory limits are set too low. Keycloak requires at least 1Gi memory on GDC nodes. | Increase memory limits inside the container configuration to `2Gi`. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

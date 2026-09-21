@@ -24,6 +24,7 @@ helmfiles:
   - path: releases/2-resources/helmfile.yaml.gotmpl
   - path: releases/3-clusters/helmfile.yaml.gotmpl
   - path: releases/4-notebooks/helmfile.yaml.gotmpl
+  - path: releases/5-patterns/helmfile.yaml.gotmpl
 
 
 

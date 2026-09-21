@@ -1,0 +1,57 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+suite: p11-vault chart unit tests
+templates:
+  - templates/apps/workloads.yaml
+  - templates/gdc/resources.yaml
+tests:
+  - it: should render User Cluster workloads by default with custom namespace and labels
+    set:
+      global:
+        namespace: custom-tenant-ns
+        projectId: custom-tenant-proj
+        registry: harbor.corp.local/blueprints
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: NetworkPolicy
+        documentIndex: 0
+  - it: should not render User Cluster workloads when apps.enabled is false
+    set:
+      apps:
+        enabled: false
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: should not render Zonal GDC resources by default (handled by Stage 2 2-resources)
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: should render Zonal GDC resources when gdc.enabled is true
+    set:
+      gdc:
+        enabled: true
+      global:
+        namespace: custom-tenant-ns
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: DBCluster
+        documentIndex: 0

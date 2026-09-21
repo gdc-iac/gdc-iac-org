@@ -22,8 +22,8 @@ echo "================================================="
 echo "Starting CI/CD pre-deployment checks..."
 echo "================================================="
 
-# Loop through all subdirectories in chars/
-for chart in charts/*; do
+# Loop through all core charts and blueprint pattern wrapper charts
+for chart in charts/* blueprints/patterns/*/chart; do
   if [ -d "$chart" ] && [ -f "$chart/Chart.yaml" ]; then
     echo ""
     echo "================================================="
@@ -41,8 +41,8 @@ for chart in charts/*; do
 
     echo ""
     echo "3. Structural & Schema Validation (kubeconform)..."
-    # Note: Skipping custom GDC resource ProjectNetworkPolicy for now until OpenAPI schemas are supplied.
-    helm template test-release "$chart" | kubeconform -strict -summary -skip ProjectNetworkPolicy
+    # Note: Skipping custom GDC and Gateway/Cert-Manager CRDs until OpenAPI schemas are supplied.
+    helm template test-release "$chart" | kubeconform -strict -summary -skip ProjectNetworkPolicy,DBCluster,Failover,VirtualMachine,Network,ProjectPolicy,CertificateRequest,GatewayClass,Gateway,HTTPRoute,Certificate
     echo "✅ Kubeconform structural validation passed."
 
     echo ""

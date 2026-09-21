@@ -393,3 +393,11 @@ Verify:
 | `Canary fails & rolls back` | The newly trained model accuracy is below threshold, or serving throws exceptions. | Inspect training logs in GitLab CI; check model serving error logs. |
 | `Webhook fails to trigger pipeline` | Network configuration prevents Alertmanager pods from communicating with GitLab. | Verify network routes and whitelists inside your user project's network configs. |
 | `Rollout status Stuck` | Insufficient compute resources to schedule new canary pods. | Check GKE node capacity; provision additional standard node pools if needed. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

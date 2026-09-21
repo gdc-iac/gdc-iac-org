@@ -671,3 +671,11 @@ spec:
 | `LLM Gateway Call Failed` | The `rag-sa` lacks required credentials or the Gateway endpoint is unreachable. | Verify `LLM_GATEWAY_URL` endpoint and ensure `ProjectPolicy` includes `Role/ai-inference-developer`. |
 | `DB extension missing` | `pgvector` was not loaded or DB initialization script failed. | Connect to PostgreSQL as admin and re-run `CREATE EXTENSION vector;`. |
 | `Out of memory (OOM)` | Large document sizes cause processing memory limits to break. | Scale container resource limits or split large PDFs into smaller text parts before uploading. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-patterns`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

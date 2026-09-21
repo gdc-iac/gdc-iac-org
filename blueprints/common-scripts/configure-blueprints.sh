@@ -76,8 +76,8 @@ if [ -z "$TARGET_NAMESPACE" ]; then
     TARGET_NAMESPACE="test-project"
 fi
 
-# Find all YAML files in subdirectories (including testing)
-find "$TARGET_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) -not -path "*/.*" | while read -r file; do
+# Find all YAML files in subdirectories (including testing, excluding Helm chart directories)
+find "$TARGET_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) -not -path "*/.*" -not -path "*/chart/*" -not -path "*/charts/*" | while read -r file; do
     echo "Processing $file..."
     
     NS_PLACEHOLDER="___NAMESPACE_PLACEHOLDER___"
@@ -110,7 +110,7 @@ find "$TARGET_DIR" -type f \( -name "*.yaml" -o -name "*.yml" \) -not -path "*/.
 done
 
 # Also update manual scripts if they exist
-find "$TARGET_DIR" -type f -name "*.sh" -not -name "configure-blueprints.sh" -not -path "*/.*" | while read -r file; do
+find "$TARGET_DIR" -type f -name "*.sh" -not -name "configure-blueprints.sh" -not -path "*/.*" -not -path "*/chart/*" -not -path "*/charts/*" | while read -r file; do
     echo "Processing script $file..."
     
     NS_PLACEHOLDER="___NAMESPACE_PLACEHOLDER___"

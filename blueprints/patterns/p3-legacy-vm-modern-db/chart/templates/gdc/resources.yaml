@@ -1,0 +1,58 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.gdc.enabled }}
+apiVersion: networking.gdc.goog/v1
+kind: Network
+metadata:
+  name: vm-net
+  namespace: {{ include "p3-legacy-vm-modern-db.namespace" . }}
+  labels:
+    {{- include "p3-legacy-vm-modern-db.labels" . | nindent 4 }}
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: legacy-db
+  namespace: {{ include "p3-legacy-vm-modern-db.namespace" . }}
+  labels:
+    {{- include "p3-legacy-vm-modern-db.labels" . | nindent 4 }}
+spec:
+  version: POSTGRESQL_14
+  availabilityType: ZONAL_HA
+  resources:
+    requests:
+      cpu: '4'
+      memory: 16Gi
+  storage:
+    size: 100G
+---
+apiVersion: virtualmachine.compute.gdc.goog/v1
+kind: VirtualMachine
+metadata:
+  name: app-vm-01
+  namespace: {{ include "p3-legacy-vm-modern-db.namespace" . }}
+  labels:
+    {{- include "p3-legacy-vm-modern-db.labels" . | nindent 4 }}
+spec:
+  compute:
+    machineType: n2-highcpu-8-gdc
+  storage:
+    disks:
+    - boot: true
+      size: 10G
+      source:
+        image: projects/gradec-images/global/images/family/ubuntu-2004
+  networkInterfaces:
+  - subnetwork: vm-subnet
+{{- end }}

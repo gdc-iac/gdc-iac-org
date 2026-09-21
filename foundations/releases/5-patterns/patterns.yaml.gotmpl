@@ -1,0 +1,81 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
+  {{- if not $tenantZonalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
+
+templates:
+  pattern-template:
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_patterns" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
+    {{- $patternsBasePath := $vals | get "gdc_patterns_base_path" "../../../blueprints/patterns" }}
+
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- if and $project.resources (hasKey $project.resources "patterns") }}
+        {{- range $pattern := $project.resources.patterns }}
+          {{- $patternId := $pattern.pattern }}
+          {{- $releaseName := $pattern.name | default (printf "%s-%s" $project.name $patternId) }}
+          {{- $targetContext := $pattern.kube_context_cluster | default $tenantZonalContext }}
+          {{- $chartPath := $pattern.chart_path | default (printf "%s/%s/chart" $patternsBasePath $patternId) }}
+      - name: {{ $releaseName | quote }}
+        chart: {{ $chartPath | quote }}
+        kubeContext: {{ $targetContext | quote }}
+        labels:
+          stage: 5-patterns
+          tenant: {{ $tenantName | quote }}
+          project: {{ $project.name | quote }}
+          pattern: {{ $patternId | quote }}
+          type: "patterns"
+        inherit:
+          - template: pattern-template
+        values:
+          - global:
+              projectId: {{ $project.name | quote }}
+              namespace: {{ $pattern.namespace | default $project.name | quote }}
+              registry: {{ $pattern.registry | default ($vals | get "gdc_default_registry" "harbor.gdc.local/blueprint-images") | quote }}
+              commonLabels:
+                tenant: {{ $tenantName | quote }}
+                project: {{ $project.name | quote }}
+                pattern: {{ $patternId | quote }}
+          - gdc:
+              # Stage 2 (2-resources) provisions Zonal databases/VMs via core charts/gdc-dbs & charts/gdc-vm
+              enabled: {{ $pattern | get "deploy_gdc_resources" false }}
+              failover:
+                enabled: false
+            apps:
+              enabled: {{ $pattern | get "deploy_apps" true }}
+          {{- if hasKey $pattern "values" }}
+          - {{ $pattern.values | toJson }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}

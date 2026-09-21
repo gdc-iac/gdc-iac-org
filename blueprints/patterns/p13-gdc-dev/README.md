@@ -683,3 +683,52 @@ To test and demonstrate the Multi-Agent Swarm directly in the web browser interf
 5. **Human-in-the-Loop (HITL) Guardrails:** Enforcing selective auto-approval (auto-approving read queries while gating code mutations behind visual diff cards) achieves high developer velocity while preventing unintended code mutations.
 6. **Emulation Latency Alignment:** Dense 31B LLM generation on single-GPU emulation requires matching client socket timeouts (`AI_REQUEST_TIMEOUT: "300"`) with inference gateway timeouts (`GATEWAY_TIMEOUT=300.0`) to avoid premature disconnections during heavy completions.
 
+---
+
+## Helm & IaC Orchestrated Deployment
+
+In addition to standalone manifest application (`kubectl apply -f manifests/`), this pattern provides a standardized Helm wrapper chart in [`chart/`](./chart/) integrated with the repository's layered Helmfile orchestration (`foundations/releases/5-patterns`).
+
+### Control-Plane Separation (`gdc.enabled` vs `apps.enabled`)
+- **Zonal Managed Infrastructure (`Stage 2: 2-resources`)**: GDC managed resources (`DBCluster`, `VirtualMachine`, `Bucket`) are provisioned on the Zonal Management API server via the core `charts/gdc-dbs` and `charts/gdc-vm` charts (`gdc.enabled: false` by default in the pattern chart).
+- **User Cluster Workloads (`Stage 5: 5-patterns`)**: Kubernetes application workloads (`Deployment`, `StatefulSet`, `Service`, `Gateway`, `HTTPRoute`, `CronJob`, `NetworkPolicy`) are deployed to the target User Cluster (`apps.enabled: true`).
+- **Day-2 Triggers**: Any `Failover` CRDs (`fleet.dbadmin.gdc.goog/v1`) are gated behind `gdc.failover.enabled: false` so automated GitOps syncs never trigger unintended failovers.
+
+### Option A: Orchestrated Deployment via Helmfile (`foundations/`)
+Declare the pattern under your tenant project's `resources.patterns` list in `foundations/bases/environments/<env>/tenants-org-<N>.yaml`:
+
+```yaml
+resources:
+  patterns:
+    - name: "my-p13-gdc-dev"
+      pattern: "p13-gdc-dev"
+      namespace: "my-gdc-project"
+      registry: "harbor.gdc.local/blueprint-images"
+      deploy_gdc_resources: false
+      deploy_apps: true
+```
+
+Then template or apply Stage 5 from `foundations/`:
+```bash
+cd foundations
+helmfile -e dev -l stage=5-patterns template
+helmfile -e dev -l stage=5-patterns apply
+```
+
+### Option B: Direct Helm CLI Deployment
+```bash
+# Deploy User Cluster workloads (default: apps.enabled=true, gdc.enabled=false)
+helm upgrade --install p13-gdc-dev ./blueprints/patterns/p13-gdc-dev/chart \
+  --namespace my-gdc-project \
+  --set global.projectId=my-gdc-project \
+  --set global.namespace=my-gdc-project \
+  --set global.registry=harbor.gdc.local/blueprint-images
+
+# Optional: Render/deploy Zonal GDC CRDs directly from the wrapper chart
+helm upgrade --install p13-gdc-dev-gdc ./blueprints/patterns/p13-gdc-dev/chart \
+  --namespace my-gdc-project \
+  --set gdc.enabled=true \
+  --set apps.enabled=false \
+  --set global.projectId=my-gdc-project \
+  --set global.namespace=my-gdc-project
+```
