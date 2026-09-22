@@ -11,10 +11,8 @@ spec:
     kind: Gateway
     name: gdc-platform-gateway
     namespace: gemma-inference
-  hostnames:
-  - "app.gdc.local"
-  - "*.cloudworkstations.dev"
-  - "localhost"
+  # Omit hostnames so gke-l7-rilb matches multi-label Cloud Workstation subdomains
+  # (8081-w-<vm>.<cluster>.cloudworkstations.dev), localhost:8081, and app.gdc.local
   rules:
   - matches:
     - path:
