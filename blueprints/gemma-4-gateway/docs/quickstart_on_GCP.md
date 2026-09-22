@@ -512,6 +512,10 @@ kubectl apply -f gemma-client/manifests/gcp/statefulset-postgres.yaml -n $NAMESP
 # 3. VERIFICATION GATE: Wait for PostgreSQL to reach Running status
 kubectl rollout status statefulset/postgres -n $NAMESPACE --timeout=120s
 kubectl get pods -n $NAMESPACE -l app=postgres
+
+# 4. Seed the Operational Readiness, Sensor Telemetry, and Intelligence RAG tables
+chmod +x scripts/populate-db.sh
+./scripts/populate-db.sh
 ```
 
 ---
