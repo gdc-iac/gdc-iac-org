@@ -1,19 +1,3 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import axios from 'axios';
 
 // 1. Cryptographically strong random string generator
@@ -104,4 +88,35 @@ export async function exchangeCodeForTokens(authority, clientId, code, state) {
     sessionStorage.removeItem("oidc_state");
     sessionStorage.removeItem("oidc_verifier");
     return res.data;
+}
+
+// 7. Silently refresh expired access tokens using the stored refresh token
+export async function refreshAccessToken(authority, clientId) {
+    const refreshToken = sessionStorage.getItem("oidc_refresh_token");
+    if (!refreshToken) return null;
+
+    try {
+        const tokenUrl = `${authority}/protocol/openid-connect/token`;
+        const params = new URLSearchParams();
+        params.append("grant_type", "refresh_token");
+        params.append("client_id", clientId);
+        params.append("refresh_token", refreshToken);
+
+        const res = await axios.post(tokenUrl, params, {
+            headers: { "Content-Type": "application/x-www-form-urlencoded" }
+        });
+
+        if (res.data && res.data.access_token) {
+            sessionStorage.setItem("oidc_access_token", res.data.access_token);
+            if (res.data.refresh_token) {
+                sessionStorage.setItem("oidc_refresh_token", res.data.refresh_token);
+            }
+            return res.data.access_token;
+        }
+    } catch (err) {
+        console.warn("Silent token refresh failed:", err);
+        sessionStorage.removeItem("oidc_access_token");
+        sessionStorage.removeItem("oidc_refresh_token");
+    }
+    return null;
 }

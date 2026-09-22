@@ -1,5 +1,3 @@
-Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
-
 # Gemma Client - Multi-User Chat Interface
 
 **Use Case:** A multi-user chatbot interface for **Gemma 4** models in a GDC air-gapped environment. This pattern provides a direct wrapper around the **Gemma Inference Gateway**, allowing users to chat, upload documents, and ground reasoning tasks securely. It supports model selection, chat history persistence, and role-based access control (RBAC).
@@ -441,3 +439,11 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
    ```
 
 4. **Deploy Helm Charts (If Applicable):** Unpack any required software suites from `artifacts/external-dependencies/charts/` using `--untar` and `helm install` them securely referencing your internal registry.
+
+---
+
+## Helm & IaC Orchestrated Deployment (`gdc-iac-org` Integration)
+
+All Gemma Gateway and Gemma Client components include standardized Helm charts (`blueprints/ollama-gke`, `blueprints/vllm-gke`, `standalone/chart`, and `gemma-client/chart`) compatible with the `gdc-iac-org` layered Helmfile orchestration (`foundations/releases/5-patterns`).
+- **Zonal Managed Databases (`Stage 2: 2-resources`)**: Provisioned via core `charts/gdc-dbs` (`gdc.enabled: false` by default in `gemma-client/chart`).
+- **User Cluster Workloads (`Stage 5: 5-patterns`)**: Deployed via Helmfile or `helm upgrade --install` with `apps.enabled: true`.

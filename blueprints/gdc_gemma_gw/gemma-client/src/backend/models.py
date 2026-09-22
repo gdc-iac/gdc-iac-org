@@ -1,17 +1,3 @@
-# Copyright 2026 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Literal, Union
 from datetime import datetime
@@ -63,3 +49,48 @@ class ChatResponse(BaseModel):
     response: str
     chat_id: str
     model: Optional[str] = None
+
+class TelemetryEvent(BaseModel):
+    id: Optional[Union[str, uuid.UUID]] = None
+    event_timestamp: Optional[datetime] = None
+    domain: str # LAND, AIR, SEA, SPACE, CYBER
+    sensor_id: str
+    sector: str = "Sector 9"
+    threat_level: str # CRITICAL, HIGH, MEDIUM, LOW
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    title: str
+    summary: Optional[str] = None
+    raw_payload: Optional[dict] = None
+
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
+class AnalystRequest(BaseModel):
+    query: str
+    model: Optional[str] = "gemma4:26b"
+
+class AnalystResponse(BaseModel):
+    query: str
+    generated_sql: str
+    results: List[dict]
+    summary: str
+    row_count: int
+    execution_time_ms: float
+    model_used: str
+
+class RagQueryRequest(BaseModel):
+    query: str
+    sector: Optional[str] = "Sector 9"
+
+class Citation(BaseModel):
+    report_id: str
+    title: str
+    source_agency: str
+    snippet: str
+
+class RagQueryResponse(BaseModel):
+    query: str
+    answer: str
+    citations: List[Citation]
+    model_used: str
+

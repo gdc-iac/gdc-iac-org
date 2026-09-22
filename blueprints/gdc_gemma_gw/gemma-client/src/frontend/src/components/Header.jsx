@@ -1,23 +1,7 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import React, { useState, useEffect } from 'react';
 import { User, Shield, LogOut } from 'lucide-react';
 
-export default function Header({ currentUser, setCurrentUser, selectedModel, setSelectedModel, isThinkingEnabled, setIsThinkingEnabled }) {
+export default function Header({ currentUser, setCurrentUser, selectedModel, setSelectedModel, isThinkingEnabled, setIsThinkingEnabled, isIntelConsoleEnabled }) {
   const users = [
     { id: 'user1', name: 'Alice (User)', role: 'user' },
     { id: 'user2', name: 'Bob (User)', role: 'user' },
@@ -59,49 +43,56 @@ export default function Header({ currentUser, setCurrentUser, selectedModel, set
   };
 
   return (
-    <header className="h-16 border-b bg-white flex items-center justify-between px-6 shadow-sm">
-      <div className="flex items-center gap-2">
-        <div className="bg-blue-600 p-2 rounded-lg">
+    <header className="h-16 border-b border-slate-800 bg-slate-900 flex items-center justify-between px-6 shadow-md text-slate-100">
+      <div className="flex items-center gap-3">
+        <div className="bg-blue-600 p-2 rounded-xl shadow-md shadow-blue-500/20">
           <Shield className="w-5 h-5 text-white" />
         </div>
-        <h1 className="font-bold text-xl text-gray-800">Gemma Client</h1>
+        <div>
+          <h1 className="font-bold text-base text-white tracking-tight leading-tight">
+            {isIntelConsoleEnabled ? "Joint Intelligence & Readiness Console" : "Gemma Client"}
+          </h1>
+          <p className="text-[10px] text-slate-400 font-mono">
+            {isIntelConsoleEnabled ? "GDC-AG DECISION SUPPORT // JTF VANGUARD" : "MULTI-TENANT CHAT & REASONING"}
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
         {/* Active Model Engine Badge (Read-Only) */}
-        <div className="flex items-center gap-2 bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Model: {models.find(m => m.id === selectedModel)?.name || models[0]?.name || 'Loading active model...'}</span>
+        <div className="flex items-center gap-2 bg-slate-800/90 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 shadow-sm">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span className="font-mono">Engine: {models.find(m => m.id === selectedModel)?.name || models[0]?.name || 'Auto-Routing'}</span>
         </div>
 
         {/* Thinking Toggle */}
-        <div className="flex items-center gap-2 border-l pl-4 text-sm text-gray-600">
+        <div className="flex items-center gap-2 border-l border-slate-800 pl-4 text-xs text-slate-300">
           <input
             type="checkbox"
             id="thinking-toggle"
             checked={isThinkingEnabled}
             onChange={(e) => setIsThinkingEnabled(e.target.checked)}
-            className="w-4 h-4 accent-blue-600 rounded border-gray-300 outline-none"
+            className="w-3.5 h-3.5 accent-blue-600 rounded border-slate-700 bg-slate-800 cursor-pointer"
           />
-          <label htmlFor="thinking-toggle" className="cursor-pointer font-medium select-none">
-            🧠 Thinking Process
+          <label htmlFor="thinking-toggle" className="cursor-pointer select-none">
+            🧠 Tactical CoT
           </label>
         </div>
 
         {/* User Switcher / Secure OIDC Identity Display */}
-        <div className="flex items-center gap-2 border-l pl-4">
-          <User className="w-4 h-4 text-gray-500" />
+        <div className="flex items-center gap-2 border-l border-slate-800 pl-4">
+          <User className="w-4 h-4 text-slate-400" />
           {import.meta.env.VITE_ENABLE_OIDC === 'true' ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-gray-700">
-                {currentUser.id} <span className="text-[10px] bg-blue-50 text-blue-600 px-1 rounded border border-blue-200 font-bold">Secure (OIDC)</span>
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs font-semibold text-slate-200">
+                {currentUser.id} <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30 font-bold uppercase tracking-wider">OIDC</span>
               </span>
               <button 
                 onClick={() => {
                   sessionStorage.removeItem('oidc_access_token');
                   window.location.reload();
                 }}
-                className="text-xs bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 px-2 py-1 rounded transition-colors font-medium border"
+                className="text-[11px] bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 px-2 py-1 rounded transition-colors font-medium border border-slate-700"
               >
                 Sign Out
               </button>
@@ -110,10 +101,10 @@ export default function Header({ currentUser, setCurrentUser, selectedModel, set
             <select
               value={currentUser.id}
               onChange={handleUserChange}
-              className="text-sm font-medium text-gray-700 bg-transparent outline-none cursor-pointer"
+              className="text-xs font-medium text-slate-200 bg-slate-800 border border-slate-700 rounded px-2 py-1 outline-none cursor-pointer"
             >
               {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
+                <option key={u.id} value={u.id} className="bg-slate-900 text-slate-200">{u.name}</option>
               ))}
             </select>
           )}

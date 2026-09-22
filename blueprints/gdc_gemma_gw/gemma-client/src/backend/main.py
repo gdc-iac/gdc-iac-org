@@ -1,17 +1,3 @@
-# Copyright 2026 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -21,9 +7,14 @@ from datetime import datetime
 
 from database import db
 from auth import get_current_user
-from models import User, ChatRequest, ChatResponse, ChatSession, Message, FileMetadata
+from models import (
+    User, ChatRequest, ChatResponse, ChatSession, Message, FileMetadata,
+    TelemetryEvent, AnalystRequest, AnalystResponse, RagQueryRequest, RagQueryResponse
+)
 from storage import upload_file_to_gcs, delete_file_from_gcs, get_blob_content
 from chat import generate_chat_response
+from intel_services import execute_analyst_query, execute_rag_search
+import json
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -230,3 +221,119 @@ async def delete_chat(chat_id: str, user: User = Depends(get_current_user)):
         
     await db.execute("DELETE FROM chats WHERE id = $1", chat_id)
     return {"status": "deleted"}
+
+# --- Intelligence & Decision Support (Operation Vanguard Shield) ---
+
+@app.get("/telemetry/events", response_model=List[TelemetryEvent])
+async def get_telemetry_events(
+    domain: Optional[str] = None,
+    limit: int = 50,
+    user: User = Depends(get_current_user)
+):
+    """Retrieve live or historical multi-domain sensor telemetry from Kafka ingestion table."""
+    try:
+        if domain and domain.upper() != "ALL":
+            query = """
+                SELECT id, event_timestamp, domain, sensor_id, sector, threat_level, latitude, longitude, title, summary, raw_payload
+                FROM sensor_telemetry
+                WHERE UPPER(domain) = $1
+                ORDER BY event_timestamp DESC
+                LIMIT $2
+            """
+            rows = await db.fetch_all(query, domain.upper(), limit)
+        else:
+            query = """
+                SELECT id, event_timestamp, domain, sensor_id, sector, threat_level, latitude, longitude, title, summary, raw_payload
+                FROM sensor_telemetry
+                ORDER BY event_timestamp DESC
+                LIMIT $1
+            """
+            rows = await db.fetch_all(query, limit)
+            
+        result = []
+        for r in rows:
+            d = dict(r)
+            if isinstance(d.get("raw_payload"), str):
+                try:
+                    d["raw_payload"] = json.loads(d["raw_payload"])
+                except Exception:
+                    pass
+            result.append(TelemetryEvent(**d))
+        return result
+    except Exception as e:
+        print(f"Error fetching telemetry: {e}")
+        return []
+
+@app.post("/telemetry/ingest")
+async def ingest_telemetry_event(event: TelemetryEvent):
+    """Ingest a sensor telemetry event (called by Kafka consumer or synthetic generator)."""
+    query = """
+        INSERT INTO sensor_telemetry (domain, sensor_id, sector, threat_level, latitude, longitude, title, summary, raw_payload)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+    """
+    payload_json = json.dumps(event.raw_payload) if event.raw_payload else None
+    row = await db.fetch_one(
+        query,
+        event.domain.upper(),
+        event.sensor_id,
+        event.sector,
+        event.threat_level.upper(),
+        event.latitude,
+        event.longitude,
+        event.title,
+        event.summary,
+        payload_json
+    )
+    return {"status": "ingested", "id": str(row["id"])}
+
+@app.post("/telemetry/simulate")
+async def simulate_telemetry_stream(count: int = 5, user: User = Depends(get_current_user)):
+    """Generate a batch of multi-domain sensor events directly into the database for live UI demonstration."""
+    import random
+    domains = ["LAND", "AIR", "SEA", "SPACE", "CYBER"]
+    threats = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    titles = {
+        "LAND": [("Acoustic Sensor Tripwire", "Tracked vehicle signature approaching Waypoint Echo"),
+                 ("UAV Visual Recon", "Bridge at Route 9 under active repair; lane capacity restricted")],
+        "AIR": [("Radar Contact Track 402", "Unidentified fast-moving contact 12,000 ft heading 180 deg"),
+                ("Electronic Warfare Sniffer", "RF jammer burst detected on tactical UHF band")],
+        "SEA": [("AIS Littoral Ping", "Patrol cutter Bravo verifying security of harbor entrance"),
+                ("Sonar Harbor Buoy", "Acoustic signature normal across transit channel")],
+        "SPACE": [("SAR Satellite Pass", "Synthetic aperture radar downlink confirms clear bypass route"),
+                  ("Tactical Downlink Ping", "16th Space Ops antenna locking high-bandwidth uplink")],
+        "CYBER": [("SCADA Anomaly Alert", "Modbus port probe blocked at FOB Alpha fuel pump"),
+                  ("Firewall SYN Flood", "External scanning detected targeting tactical gateway IP")]
+    }
+    
+    inserted = 0
+    for _ in range(count):
+        dom = random.choice(domains)
+        title, summary = random.choice(titles[dom])
+        threat = random.choice(threats)
+        sensor_id = f"{dom}-SNS-{random.randint(100, 999)}"
+        lat = round(36.8 + random.uniform(-0.3, 0.3), 4)
+        lon = round(-115.9 + random.uniform(-0.3, 0.3), 4)
+        payload = json.dumps({"automated_simulation": True, "confidence": round(random.uniform(0.75, 0.99), 2)})
+        
+        await db.execute(
+            """INSERT INTO sensor_telemetry (domain, sensor_id, sector, threat_level, latitude, longitude, title, summary, raw_payload)
+               VALUES ($1, $2, 'Sector 9', $3, $4, $5, $6, $7, $8)""",
+            dom, sensor_id, threat, lat, lon, title, summary, payload
+        )
+        inserted += 1
+        
+    return {"status": "simulated", "count": inserted}
+
+@app.post("/analyst/query", response_model=AnalystResponse)
+async def query_data_analyst(req: AnalystRequest, user: User = Depends(get_current_user)):
+    """Agentic Data Analyst: Translates natural language commander queries into safe read-only SQL."""
+    result = await execute_analyst_query(req.query, user_id=user.id)
+    return AnalystResponse(**result)
+
+@app.post("/rag/query", response_model=RagQueryResponse)
+async def query_all_source_rag(req: RagQueryRequest, user: User = Depends(get_current_user)):
+    """All-Source Intelligence RAG: Searches unstructured SITREPs and debriefs with citations."""
+    result = await execute_rag_search(req.query, sector=req.sector or "Sector 9", user_id=user.id)
+    return RagQueryResponse(**result)
+

@@ -1,5 +1,3 @@
-Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
-
 # GCP Sandbox/Staging Keycloak OIDC Integration & Testing Strategy
 
 > **Version:** 1.1
