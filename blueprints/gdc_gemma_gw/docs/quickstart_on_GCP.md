@@ -824,11 +824,12 @@ kubectl rollout status deployment/gemma-gateway -n gemma-inference
 * **Symptom:** Opening the browser on port 8081 displays an infinite loading spinner stating *"Contacting Secure Identity Gateway..."* and never redirects or loads the chat interface.
 * **The Cause:** The frontend container was built with OIDC enabled (`VITE_ENABLE_OIDC=true`), but the user ran `kubectl port-forward svc/frontend-svc 8081:80`. The `frontend-svc` pod only serves static React assets; it has no reverse-proxy route for `/auth` to reach Keycloak. The browser's redirect handshake falls back to `index.html`, creating an endless reload loop.
 * **The Fix:**
-  - **If testing with Keycloak OIDC (Pathway B):** Port-forward the **Unified Ingress Gateway** (`service/gemma-ingress-gateway`), which reverse-proxies `/auth` to Keycloak:
+  - **If testing with Keycloak OIDC + Gateway API (Pathway B):** Port-forward the **Gateway API L4 Tunnel** (`service/gdc-gateway-tunnel`), which forwards browser requests through `gdc-platform-gateway` (`HTTPRoute/gemma-unified-routes`):
     ```bash
-    pkill -f "port-forward"
-    kubectl port-forward service/gemma-ingress-gateway 8081:80 -n $NAMESPACE
+    pkill -f "port-forward" || true
+    kubectl port-forward service/gdc-gateway-tunnel 8081:80 -n $NAMESPACE
     ```
+    *(Or `kubectl port-forward service/gemma-ingress-gateway 8081:80 -n $NAMESPACE` if using the Section 3.6 NGINX fallback).*
   - **If testing with Mock Auth (Pathway A):** Delete `gemma-client/src/frontend/.env`, rebuild the frontend image (`./gemma-client/scripts/build.sh`), restart the deployment (`kubectl rollout restart deployment/frontend -n $NAMESPACE`), and hard-refresh your browser (`Ctrl+Shift+R` or DevTools `F12` $\rightarrow$ Empty Cache and Hard Reload).
 
 #### Blocker 5: `ErrImagePull / ImagePullBackOff` on Gateway Pod (Baseline Image Placeholder)

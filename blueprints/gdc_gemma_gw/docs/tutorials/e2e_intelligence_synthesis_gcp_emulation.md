@@ -122,10 +122,10 @@ chmod +x scripts/deploy-e2e-solution.sh
 
 ## 5. Guided Demonstration: Testing the 5 Functions
 
-Open a dedicated terminal window and start the Unified Gateway port-forward:
+Open a dedicated terminal window and start the Gateway API L4 Tunnel port-forward:
 ```bash
 pkill -f "port-forward" || true
-kubectl port-forward service/gemma-ingress-gateway 8081:80 -n $NAMESPACE
+kubectl port-forward service/gdc-gateway-tunnel 8081:80 -n $NAMESPACE
 ```
 
 Access the web interface at **`http://localhost:8081`** (or your Workstation Web Preview URL) and sign in as:

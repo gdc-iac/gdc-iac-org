@@ -352,10 +352,12 @@ kubectl apply -f gemma-client/manifests/gcp/keycloak-realm-import-hydrated.yaml 
 # 3. Deploy Keycloak Staging pod (mounting the import volume)
 kubectl apply -f gemma-client/manifests/gcp/keycloak-staging.yaml -n gemma-inference
 
-# 4. Expose the Ingress Reverse Proxy
-kubectl apply -f gemma-client/manifests/gcp/nginx-ingress-staging.yaml -n gemma-inference
+# 4. Deploy the GKE Gateway API (gdc-platform-gateway), Production HTTPRoutes, and L4 Tunnel
+kubectl apply -f gemma-client/manifests/gcp/gateway-api-staging.yaml -n gemma-inference
+kubectl apply -f standalone/manifests/02-gateway-httproute.yaml -n gemma-inference
+kubectl apply -f gemma-client/manifests/gdc/security/production-gateway-routing.yaml -n gemma-inference
 ```
-*(Verify both pods transition to `1/1 Running` status. Keycloak will automatically load and import the master configurations from `/opt/keycloak/data/import` in 6 seconds on boot, pre-loading user personas `alice`/`charlie` immediately!).*
+*(Verify Keycloak transitions to `1/1 Running` status and `gdc-platform-gateway` allocates its Regional Internal Load Balancer VIP, then set `GATEWAY_VIP` on `deployment/gdc-gateway-tunnel` as shown in `quickstart_on_GCP.md`).*
 
 ---
 
@@ -399,15 +401,15 @@ kubectl get pods -n gemma-inference -w
 
 ---
 
-### Step 5: Establish the Port Forward Socket Tunnel
-Expose the unified single-origin Ingress proxy on Port 8081 of the Workstation VM:
+### Step 5: Establish the Port Forward Socket Tunnel (`gdc-gateway-tunnel`)
+Expose the GKE Gateway API Load Balancer (`gdc-platform-gateway`) on Port 8081 of the Workstation VM via the in-cluster L4 TCP bridge (`gdc-gateway-tunnel`):
 
 ```bash
 # 1. Terminate previous loopback locks
-pkill -f "port-forward"
+pkill -f "port-forward" || true
 
-# 2. Open raw socket proxy on unified Port 8081
-kubectl port-forward service/gemma-ingress-gateway 8081:80 -n gemma-inference
+# 2. Open raw socket proxy on unified Port 8081 through the Gateway API L4 tunnel
+kubectl port-forward service/gdc-gateway-tunnel 8081:80 -n gemma-inference
 ```
 
 ---
@@ -437,10 +439,10 @@ To ensure staging runs map correctly to physical target deployment, maintain a s
 
 | Target Dimension | GCP Staging Sandbox VM (Cloud Workstations) | GDC Air-Gapped Physical Production Racks |
 | :--- | :--- | :--- |
-| **Unified Exposure Gateway** | Transient NGINX Reverse Proxy Pod (`gemma-ingress-gateway`) | Platform GDC Hardware Load Balancer & Ingress Controller Gateway |
+| **Unified Exposure Gateway** | **GKE Gateway API (`gdc-platform-gateway`)** via L4 Bridge (`gdc-gateway-tunnel`) | Platform GDC Hardware Load Balancer & Ingress Controller Gateway |
 | **Entrypoint Port** | Port-forwarded unified preview port **Port `8081`** | Native HTTPS **Port `443`** (SSL/TLS terminated natively at platform entry) |
 | **Domain Scope** | Dynamic browser subdomain mapping (`8081-w-...cloudworkstations.dev`) | Secure, Unified Enterprise Domain FQDN (e.g. `https://app.gdc.local`) |
-| **K8s API Standard** | Retired Ingress API controller (`networking.k8s.io/v1`) | Modern GDC standard: **Kubernetes Gateway API** (`gateway.networking.k8s.io`) |
+| **K8s API Standard** | **Kubernetes Gateway API** (`gateway.networking.k8s.io/v1`, `gke-l7-rilb`) | Modern GDC standard: **Kubernetes Gateway API** (`gateway.networking.k8s.io/v1`) |
 | **Namespace Configuration** | Standard Namespace: `gemma-inference` | Standard Unified Namespace: **`gemma-inference`** |
 | **Dynamic Key Resolution** | Internal service mapping on standard namespace | Specialized VPC internal routing utilizing internal KubeDNS records |
 

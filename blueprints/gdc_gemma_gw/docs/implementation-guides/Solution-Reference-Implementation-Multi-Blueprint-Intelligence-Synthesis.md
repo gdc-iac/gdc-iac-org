@@ -90,7 +90,7 @@ The solution supports two interchangeable backend engines. Because the **Gemma I
 | Dimension | Connected Staging Workstation (GKE) | GDC Air-Gapped Production Rack |
 | :--- | :--- | :--- |
 | **Inference Engine** | Ollama (Demo / Testing) | **vLLM Distributed Serving Engine** (or Ollama for lightweight clusters) |
-| **Ingress & Networking** | Lightweight NGINX sidecar (`service/gemma-ingress-gateway`) | Kubernetes Gateway API standard (`gateway.networking.k8s.io/v1`) via Envoy L7 Load Balancer with mutual TLS. |
+| **Ingress & Networking** | Kubernetes Gateway API (`gdc-platform-gateway` + `HTTPRoute` via `service/gdc-gateway-tunnel`) | Kubernetes Gateway API standard (`gateway.networking.k8s.io/v1`) via Envoy L7 Load Balancer with mutual TLS. |
 | **Object Storage** | Google Cloud Storage (GCS) with Workload Identity | GDC Native Object Storage Bucket (S3-compatible API with internal IAM credentials). |
 | **Database Tier** | Ephemeral `pgvector/pgvector:pg16` StatefulSet | GDC Database Service (Managed PostgreSQL High Availability cluster across fault domains). |
 | **Identity Provider** | Keycloak staging with in-memory H2 dev database | Keycloak clustered deployment backed by GDC Managed PostgreSQL, federated with corporate Active Directory / LDAP. |
