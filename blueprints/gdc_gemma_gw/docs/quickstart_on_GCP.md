@@ -85,13 +85,17 @@ gcloud container clusters create $CLUSTER_NAME \
   --tags=gdc-emulation
 
 # 1b. Configure VPC Proxy-Only Subnet & Firewall for GKE Gateway API (gke-l7-rilb)
-gcloud compute networks subnets create gke-gateway-proxy-subnet \
-  --purpose=REGIONAL_MANAGED_PROXY \
-  --role=ACTIVE \
-  --region=${REGION} \
-  --network=default \
-  --range=172.16.0.0/23 \
-  --project=$PROJECT_ID || true
+# Note: Subnet names and CIDRs are global per VPC. We scope the subnet name to ${REGION}
+# and only create it if no REGIONAL_MANAGED_PROXY subnet exists in ${REGION} yet.
+if [ -z "$(gcloud compute networks subnets list --filter="region:${REGION} AND purpose:REGIONAL_MANAGED_PROXY" --format="value(name)" --project="${PROJECT_ID}")" ]; then
+  gcloud compute networks subnets create "gke-gateway-proxy-${REGION}" \
+    --purpose=REGIONAL_MANAGED_PROXY \
+    --role=ACTIVE \
+    --region="${REGION}" \
+    --network=default \
+    --range=172.16.2.0/23 \
+    --project="${PROJECT_ID}"
+fi
 
 gcloud compute firewall-rules create allow-gateway-internal \
   --network=default \
@@ -100,7 +104,7 @@ gcloud compute firewall-rules create allow-gateway-internal \
   --action=ALLOW \
   --rules=tcp:80,tcp:443 \
   --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
-  --project=$PROJECT_ID || true
+  --project="${PROJECT_ID}" || true
 
 # 2. Create standard non-GPU node pool for client/auth apps
 gcloud container node-pools create client-pool \
@@ -450,19 +454,20 @@ export OLLAMA_MODEL_VARIANT="31b" # or "26b"
 To test multi-tenant workflows, session histories, and file uploads, the client backend requires persistence. In standard GKE staging, we emulate GDC PostgreSQL and GCS Object Storage dynamically inside the cluster.
 
 #### 1. Sanity Check Environment Variables
-Ensure your terminal session has the required variables exported (especially if opening a new terminal or resuming after a break):
+Ensure your terminal session has the required variables exported (preserving your cluster `REGION` and Artifact Registry `REPO_REGION` from Step 1):
 ```bash
 export PROJECT_ID=$(gcloud config get-value project)
 export NAMESPACE="gemma-inference"
-export REGION="us-west4" # Match your cluster region (e.g. us-west4 or us-central1)
-export REGISTRY_HOST="${REGION}-docker.pkg.dev/${PROJECT_ID}/gemma-repo"
+export REGION="${REGION:-us-east4}" # Preserves your active cluster REGION from Step 1
+export AR_REGION="${REPO_REGION:-$REGION}"
+export REGISTRY_HOST="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/gemma-repo"
 ```
 
 #### 2. Setup GCS Bucket & Client Workload Identity
 ```bash
 # Create GCS Bucket (Object Storage Emulation)
 export BUCKET_NAME="gs://gemma-client-files-${PROJECT_ID}"
-gcloud storage buckets create ${BUCKET_NAME} --project=${PROJECT_ID} --location=${REGION} --uniform-bucket-level-access
+gcloud storage buckets create ${BUCKET_NAME} --project=${PROJECT_ID} --location=${REGION} --uniform-bucket-level-access || true
 
 export GSA_NAME="gemma-client-sa"
 export KSA_NAME="gemma-client-sa"
@@ -560,21 +565,24 @@ Choose between **two authentication pathways** based on your testing goals:
 > We mirror GDC production in GKE by deploying a native **GKE Gateway** (`gdc-platform-gateway`, `gatewayClassName: gke-l7-rilb`) and the production **HTTPRoutes** (`gemma-unified-routes` for `/auth` $\rightarrow$ Keycloak, `/api` URLRewrite $\rightarrow$ Backend, `/` $\rightarrow$ Frontend, plus `RequestHeaderModifier` for `X-Forwarded-Proto: https`).
 > Because Google Cloud Workstations run inside a Google-managed tenant VPC that cannot route directly to internal load balancer VIPs across VPC peering, we also deploy a lightweight L4 TCP pass-through Service (`gdc-gateway-tunnel`) inside the cluster. Port-forwarding `svc/gdc-gateway-tunnel` on Port `8081` sends browser traffic directly through the real GKE Gateway API Regional Internal Load Balancer (`gdc-platform-gateway`).
 
-1. **Ensure Gateway API & Proxy Subnet are Enabled on Your Cluster:**
-   *(If you already ran Step 1 with `--gateway-api=standard`, skip to step 2; if enabling on an existing cluster, run this once)*:
+1. **Ensure Gateway API & Region-Scoped Proxy Subnet are Enabled on Your Cluster:**
+   *(If you already ran Step 1 with `--gateway-api=standard`, skip to step 2; if enabling on an existing cluster, ensure `REGION` matches your GKE cluster region and run this once)*:
    ```bash
-   gcloud container clusters update $CLUSTER_NAME \
+   gcloud container clusters update "${CLUSTER_NAME}" \
      --gateway-api=standard \
-     --zone $ZONE \
-     --project $PROJECT_ID
+     --zone "${ZONE}" \
+     --project "${PROJECT_ID}"
 
-   gcloud compute networks subnets create gke-gateway-proxy-subnet \
-     --purpose=REGIONAL_MANAGED_PROXY \
-     --role=ACTIVE \
-     --region=${REGION} \
-     --network=default \
-     --range=172.16.0.0/23 \
-     --project=$PROJECT_ID || true
+   # Verify or create the REGIONAL_MANAGED_PROXY subnet in ${REGION} (subnet names & CIDRs are global per VPC)
+   if [ -z "$(gcloud compute networks subnets list --filter="region:${REGION} AND purpose:REGIONAL_MANAGED_PROXY" --format="value(name)" --project="${PROJECT_ID}")" ]; then
+     gcloud compute networks subnets create "gke-gateway-proxy-${REGION}" \
+       --purpose=REGIONAL_MANAGED_PROXY \
+       --role=ACTIVE \
+       --region="${REGION}" \
+       --network=default \
+       --range=172.16.2.0/23 \
+       --project="${PROJECT_ID}"
+   fi
 
    gcloud compute firewall-rules create allow-gateway-internal \
      --network=default \
@@ -583,7 +591,7 @@ Choose between **two authentication pathways** based on your testing goals:
      --action=ALLOW \
      --rules=tcp:80,tcp:443 \
      --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
-     --project=$PROJECT_ID || true
+     --project="${PROJECT_ID}" || true
    ```
 
 2. **Configure Workstation Coordinates & Realm Import:**
