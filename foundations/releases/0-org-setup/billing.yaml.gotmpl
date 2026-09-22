@@ -21,7 +21,7 @@ bases:
 
 helmDefaults:
   createNamespace: false
-  wait: true
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
   kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
 
 releases:

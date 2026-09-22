@@ -4,14 +4,70 @@ This operational playbook guides GDC Hosted administrators through manual execut
 
 ---
 
-## Pre-Flight Checklist
-Before running any manual deployment commands:
+## Prerequisites & Pre-Flight Checklist
+
+Before deploying the foundational stages, complete the following initial bootstrapping and environment setup:
+
+### 1. RBAC Bootstrapping (First Run Only)
+The user running Helmfile (e.g., `fop-iac@example.com`) requires `secret-admin` and `project-iam-admin` privileges on the `iac-root` project to manage Helm state files (release secrets).
+
+Run these commands once to bootstrap permissions:
+
+> [!NOTE]
+> Ensure the `fop-platform-admin@example.com` user has the roles **IAM Org Admin**, **Organization Grafana Viewer**, and **Project Creator** assigned before executing these commands.
+
+```bash
+# Export environment variables 
+export ORG_NAME="org-1"
+export IAC_PROJECT="iac-root"
+export IAC_USER="fop-iac@example.com"
+
+### Create a project to host IaC resources
+gdcloud auth login # (as platform-admin)
+gdcloud projects create $IAC_PROJECT
+
+### Grant IAC_USER required Org roles:
+for role in \
+  organization-iam-admin \
+  project-creator \
+  project-editor \
+  user-cluster-admin \
+; do \
+   gdcloud organizations add-iam-policy-binding "$ORG_NAME" \
+   --member="user:$IAC_USER" \
+   --role="$role";\
+done
+
+### Grant IAC_USER required IAM permissions on IAC_PROJECT:
+for role in \
+  secret-admin \
+; do \
+  gdcloud projects add-iam-policy-binding $IAC_PROJECT \
+  --member=user:$IAC_USER \
+  --role=$role;\
+done
+```
+
+### 2. Authenticate as IaC User
+```bash
+gdcloud auth login # (as fop-iac@example.com)
+```
+
+### 3. Configure Kubernetes Contexts
+Set the correct Kubernetes cluster contexts in `foundations/bases/environments/dev/globals.yaml`:
+```yaml
+gdc_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
+gdc_context_zone: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_zone1_org-1-admin"
+```
+
+### 4. Workstation & Pipeline Validation
 1. Verify your local workstation is prepared as detailed in `WORKSTATION_ONBOARDING.md`.
-2. Execute the validation script to ensure there are no syntax or schema violations:
+2. Ensure all required container images and Helm charts are mirrored to local registries as detailed in `AIRGAP_MIRRORING.md`.
+3. Execute the validation script to ensure there are no syntax or schema violations:
    ```bash
    ./scripts/validate.sh dev
    ```
-3. Ensure all required container images and Helm charts are mirrored to local registries as detailed in `AIRGAP_MIRRORING.md`.
+4. Proceed with deploying the stages below.
 
 ---
 

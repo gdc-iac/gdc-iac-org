@@ -29,7 +29,7 @@ bases:
 
 helmDefaults:
   createNamespace: false
-  wait: true
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
 
 templates:
   policy-template:

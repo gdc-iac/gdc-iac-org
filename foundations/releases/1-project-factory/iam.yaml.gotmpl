@@ -32,7 +32,7 @@ templates:
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: true
-    wait: true
+    wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}

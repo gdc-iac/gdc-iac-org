@@ -21,10 +21,10 @@ helmfiles:
   - path: projects.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
-  - path: service-accounts.yaml.gotmpl
+  - path: iam.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
-  - path: iam.yaml.gotmpl
+  - path: service-accounts.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
   - path: project-network-policies.yaml.gotmpl

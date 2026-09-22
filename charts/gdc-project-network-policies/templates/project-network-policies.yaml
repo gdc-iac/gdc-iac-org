@@ -18,7 +18,7 @@
 apiVersion: networking.global.gdc.goog/v1
 kind: ProjectNetworkPolicy
 metadata:
-  namespace: {{ required "A valid namespace is required" $.Values.namespace }}
+  namespace: {{ default $.Release.Namespace $.Values.namespace }}
   {{- if $policy.name }}
   name: {{ regexReplaceAll "\\W+" $policy.name "-" }}
   {{- else if and $policy.ingress (and $policy.subject $policy.subject.managed_services) }}

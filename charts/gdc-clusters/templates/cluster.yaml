@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- range $cluster := .Values.clusters -}}
+{{- range $cluster := .Values.clusters }}
+---
 apiVersion: cluster.gdc.goog/v1
 kind: Cluster
 metadata:
@@ -50,5 +51,4 @@ spec:
   {{- end }}
   releaseChannel:
     channel: {{ default "UNSPECIFIED" $cluster.releaseChannel }}
----
-{{ end -}}
+{{- end }}

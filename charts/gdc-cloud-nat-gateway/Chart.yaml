@@ -13,10 +13,10 @@
 # limitations under the License.
 
 apiVersion: v2
-name: gdc-cloudnatgateway
+name: gdc-cloud-nat-gateway
 description: A Helm chart to provision GDC Hosted Cloud NAT Gateways using networking.gdc.goog/v1 APIs.
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
 maintainers:
   - name: gdc-iac

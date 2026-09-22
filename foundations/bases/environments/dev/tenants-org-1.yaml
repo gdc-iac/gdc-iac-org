@@ -18,7 +18,7 @@ dev:
     org-1:
       global:
         kube_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
-        kube_context_zonal: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_org-1-admin"
+        kube_context_zonal: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_zone1_org-1-admin"
         admin_subject_name: &admin_subject_name "fop-iac@example.com"
         shared_infra_project_names: &shared_infra_project_names ["mellons-prj"]
         # customroles: # TODO: observed slowness deploying custom roles in sandbox env. Check if this the case in physical GDCag env. Use HELM_WAIT=false to mitigate for now?
@@ -112,7 +112,7 @@ dev:
                   creatorname: *admin_subject_name
               vms:
                 - name: "mellons-frontend-vm"
-                  image_name: "ubuntu-24.04-v20260224-gdch"
+                  image_name: "ubuntu-24.04-v20260601-gdch"
                   image_namespace: "vm-system"
                   boot_disk_size: "20Gi"
                   machine_type: "n3-standard-2-gdc"
@@ -166,7 +166,7 @@ dev:
               podCIDRSize: 21
               serviceCIDRSize: 23
             initialVersion:
-              kubernetesVersion: "1.32.13-gke.100"
+              kubernetesVersion: "1.35.3-gke.400"
             loadBalancer:
               ingressServiceIPSize: 21
             nodePools:
@@ -180,7 +180,7 @@ dev:
               podCIDRSize: 21
               serviceCIDRSize: 23
             initialVersion:
-              kubernetesVersion: "1.32.13-gke.100"
+              kubernetesVersion: "1.35.3-gke.400"
             loadBalancer:
               ingressServiceIPSize: 21
             nodePools:

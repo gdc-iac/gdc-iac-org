@@ -13,8 +13,8 @@
 # limitations under the License.
 
 ---
-gdc_context_global: "global-api-gdch-sandbox-global"
-gdc_context_zone: "zonal-api-gdch-sandbox-zonal"
+gdc_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
+gdc_context_zone: "org-1-infra-zone1-gdch_console-org-1-zone1-google-gdch-test_zone1_org-1-infra"
 # iac_sa: &iac_sa system:serviceaccount:iac-root:iac001-sa
 gdc_release_namespace: "iac-root"
 

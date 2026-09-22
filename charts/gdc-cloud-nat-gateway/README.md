@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# GDC Cloud NAT Gateway Helm Chart (`gdc-cloudnatgateway`)
+# GDC Cloud NAT Gateway Helm Chart (`gdc-cloud-nat-gateway`)
 
 This Helm chart automates the provisioning of **Cloud NAT Gateways** inside Google Distributed Cloud (GDC) Hosted air-gapped environments. It uses GDC's official `networking.gdc.goog/v1` API group to define gateway workloads.
 
@@ -22,7 +22,7 @@ This Helm chart automates the provisioning of **Cloud NAT Gateways** inside Goog
 
 ## Configuration Parameters
 
-The following table lists the configurable parameters of the `gdc-cloudnatgateway` chart and their default values:
+The following table lists the configurable parameters of the `gdc-cloud-nat-gateway` chart and their default values:
 
 | Parameter | Description | Default | Required |
 | :--- | :--- | :--- | :--- |
