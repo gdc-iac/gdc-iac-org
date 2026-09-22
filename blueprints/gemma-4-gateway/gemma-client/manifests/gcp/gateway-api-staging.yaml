@@ -101,10 +101,10 @@ metadata:
   namespace: gemma-inference
 spec:
   default:
-    checkIntervalSec: 5
-    timeoutSec: 5
+    checkIntervalSec: 15
+    timeoutSec: 15
     healthyThreshold: 1
-    unhealthyThreshold: 3
+    unhealthyThreshold: 10
     config:
       type: HTTP
       httpHealthCheck:
@@ -114,6 +114,32 @@ spec:
     group: ""
     kind: Service
     name: backend-svc
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: backend-timeout-policy
+  namespace: gemma-inference
+spec:
+  default:
+    timeoutSec: 300
+  targetRef:
+    group: ""
+    kind: Service
+    name: backend-svc
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: gemma-gateway-timeout-policy
+  namespace: gemma-inference
+spec:
+  default:
+    timeoutSec: 300
+  targetRef:
+    group: ""
+    kind: Service
+    name: gemma-gateway
 ---
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
