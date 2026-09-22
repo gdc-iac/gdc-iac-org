@@ -17,8 +17,21 @@ spec:
       - name: backend
         image: gemma-client-backend:latest
         imagePullPolicy: Always
+        command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
         ports:
         - containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
         env:
         - name: PROJECT_ID
           value: "PROJECT_ID_PLACEHOLDER" # Placeholder

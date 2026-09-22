@@ -37,3 +37,10 @@ gdc:
 # User Cluster workload execution gate (Stage 5: 5-patterns)
 apps:
   enabled: true
+  imageTag: "latest"
+  imagePullPolicy: "IfNotPresent"
+  inputBucket: ""
+  enableOidc: "true"
+  keycloakUrl: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
+  gatewayUrl: "http://gemma-gateway/v1"
+  hostnames: []

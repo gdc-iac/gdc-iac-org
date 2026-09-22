@@ -72,3 +72,92 @@ spec:
     port: 80
     targetPort: 8080
   type: ClusterIP
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: keycloak-healthcheck
+  namespace: gemma-inference
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8080
+        requestPath: /auth/realms/master
+  targetRef:
+    group: ""
+    kind: Service
+    name: keycloak-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: backend-healthcheck
+  namespace: gemma-inference
+spec:
+  default:
+    checkIntervalSec: 15
+    timeoutSec: 15
+    healthyThreshold: 1
+    unhealthyThreshold: 10
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health
+  targetRef:
+    group: ""
+    kind: Service
+    name: backend-svc
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: backend-timeout-policy
+  namespace: gemma-inference
+spec:
+  default:
+    timeoutSec: 300
+  targetRef:
+    group: ""
+    kind: Service
+    name: backend-svc
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: gemma-gateway-timeout-policy
+  namespace: gemma-inference
+spec:
+  default:
+    timeoutSec: 300
+  targetRef:
+    group: ""
+    kind: Service
+    name: gemma-gateway
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: frontend-healthcheck
+  namespace: gemma-inference
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 80
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: frontend-svc

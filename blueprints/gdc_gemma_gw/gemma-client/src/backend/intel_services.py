@@ -9,6 +9,7 @@ Implements:
 import time
 import re
 import json
+import asyncio
 from database import db
 from chat import client, GATEWAY_URL
 from models import Citation
@@ -57,7 +58,8 @@ async def execute_analyst_query(user_query: str, user_id: str = "analyst") -> di
     extra_headers = {"X-User-ID": user_id} if user_id else {}
     
     try:
-        completion = client.chat.completions.create(
+        completion = await asyncio.to_thread(
+            client.chat.completions.create,
             model="gemma4:26b",
             messages=prompt_messages,
             temperature=0.1,
@@ -116,7 +118,8 @@ async def execute_analyst_query(user_query: str, user_id: str = "analyst") -> di
     ]
     
     try:
-        sum_completion = client.chat.completions.create(
+        sum_completion = await asyncio.to_thread(
+            client.chat.completions.create,
             model="gemma4:26b",
             messages=summary_messages,
             temperature=0.3,
@@ -174,10 +177,12 @@ async def execute_rag_search(user_query: str, sector: str = "Sector 9", user_id:
     extra_headers = {"X-User-ID": user_id} if user_id else {}
 
     try:
-        completion = client.chat.completions.create(
+        completion = await asyncio.to_thread(
+            client.chat.completions.create,
             model="gemma4:26b",
             messages=rag_messages,
             temperature=0.4,
+            max_tokens=512,
             extra_headers=extra_headers
         )
         answer = completion.choices[0].message.content

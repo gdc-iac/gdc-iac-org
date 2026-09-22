@@ -56,17 +56,17 @@ spec:
             memory: "512Mi"
         readinessProbe:
           httpGet:
-            path: /auth/health/ready
+            path: /auth/realms/master
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 20
           periodSeconds: 5
           failureThreshold: 10
         livenessProbe:
           httpGet:
-            path: /auth/health/live
+            path: /auth/realms/master
             port: 8080
-          initialDelaySeconds: 90
-          periodSeconds: 5
+          initialDelaySeconds: 60
+          periodSeconds: 10
           failureThreshold: 10
         volumeMounts:
         - name: realm-import-volume

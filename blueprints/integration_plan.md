@@ -37,3 +37,30 @@ Each pattern includes a lightweight Helm chart wrapping its resources into two g
 ### 2. Zero Regression on Standalone `manifests/`
 - All `blueprints/patterns/*/manifests/` directories remain untouched for `kubectl apply -f manifests/`.
 - `blueprints/common-scripts/configure-blueprints.sh` excludes `*/chart/*` and `*/charts/*` paths so `sed` replacements on standalone manifests never mutate Helm templates or `values.yaml`.
+
+---
+
+## 3. Stepping-Stone Validation vs. GDC-ag Confidence Boundaries
+
+### 3.1 Verified on GCP / GKE Stepping-Stone (`gke-l7-rilb` + Dataplane V2)
+- **Kubernetes Gateway API Routing (`gateway.networking.k8s.io/v1`)**: Validated `Gateway/gdc-platform-gateway` (`gke-l7-rilb`), `HTTPRoute/gemma-gateway-route`, and `HTTPRoute/gemma-unified-routes` with `RequestHeaderModifier` (`X-Forwarded-Proto: https`) for edge TLS termination.
+- **Keycloak OIDC SSO (`gdc-rag-realm`)**: Validated RS256 token issuance, `/auth/realms/master` readiness probing on port `8080`, and backend JWT verification.
+- **High-Concurrency RAG & SQL Analyst Resilience**: Configured `Deployment/backend` with 4 Uvicorn workers (`--workers 4`), offloaded synchronous OpenAI client calls via `asyncio.to_thread`, and attached 300s `GCPBackendPolicy` + `/health` `HealthCheckPolicy` definitions to prevent health-check starvation (`503 Service Unavailable`) during multi-document RAG synthesis.
+- **Auto-Initialized Database Schema**: Added idempotent `Database._init_schema()` inside `gemma-client/src/backend/database.py` so all 9 tables (`chats`, `messages`, `files`, `sensor_telemetry`, `military_units`, `equipment_inventory`, `fuel_and_supplies`, `convoy_routes`, `intelligence_reports`) are automatically created on startup even when connected to a fresh GDC `DBCluster`.
+- **Side-by-Side Gemma 4 Inference (`ollama-26b` + `ollama-31b`)**: Validated simultaneous L4 GPU serving and dynamic prompt classification behind `gemma-gateway`.
+
+### 3.2 Remaining GDC-ag Confidence Boundaries (Pre-Flight Checklist for Air-Gapped Cutover)
+Because GKE Stepping-Stone clusters emulate GDC using standard Kubernetes `StatefulSet` (`postgres-0`) and GKE Gateway controllers (`gke-l7-rilb`), operators deploying to physical **GDC Air-Gapped (`GDC-ag`)** environments via `foundations/` (`Helmfile` / `ArgoCD`) must verify the following four boundaries during cutover:
+
+1. **Stage 2 Zonal `DBCluster` Secret Projection (`gemma-client-db-credentials`)**:
+   - *Risk*: On GDC-ag, `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`) is provisioned in Stage 2 (`2-resources` Zonal Management Plane), whereas `gemma-client` deploys in Stage 5 (`5-patterns` User Cluster) and reads `Secret/gemma-client-db-credentials` (key: `connection_string`).
+   - *Mitigation / Check*: Confirm that `p0-dga-factory` (`dga-secret-sync`) or the operator secret-projection workflow populates `Secret/gemma-client-db-credentials` with a valid `connection_string` (`postgresql://<user>:<password>@<dbcluster-vip>:5432/<dbname>`) in the target User Cluster namespace prior to Stage 5 rollout.
+2. **Parent Gateway Namespace & Hostname Binding (`gdc-platform-gateway`)**:
+   - *Risk*: `HTTPRoute/gemma-unified-routes` defaults to `parentRefs: [{name: gdc-platform-gateway, namespace: gemma-inference}]` with wildcard hostname matching (`apps.hostnames: []`).
+   - *Mitigation / Check*: On GDC-ag, if the platform `Gateway` resides in a central ingress namespace or enforces strict hostname matching, set `apps.hostnames: ["app.gdc.local"]` in `values.yaml` and ensure the parent `Gateway` listener sets `allowedRoutes.namespaces.from: All`.
+3. **Harbor Registry Image Paths & Vite Build-Time OIDC Coordinates**:
+   - *Risk*: `configure-blueprints.sh` intentionally skips `*/chart/*` directories so Helm templates remain parameterized via `.Values.global.registry`. In addition, the React frontend (`gemma-client-frontend`) compiles `.env` (`VITE_KEYCLOAK_URL`) into static assets at `docker build` time.
+   - *Mitigation / Check*: Pass `global.registry` (`harbor.gdc.local/<project>`) and `global.imagePullSecrets` via Helmfile environment values, and run `./gemma-client/scripts/configure-keycloak.sh` with the target GDC-ag ingress FQDN (`https://app.gdc.local`) **before** running `./gemma-client/scripts/build.sh` and packaging images for Harbor transfer.
+4. **Operational Demo Dataset Seeding against Managed `DBCluster`**:
+   - *Risk*: While `Database._init_schema()` automatically creates all 9 tables on first connection to an empty `DBCluster`, it does not insert synthetic demo rows unless `scripts/populate-db.sh` is run.
+   - *Mitigation / Check*: If the *Operation Vanguard Shield* demo dataset is required on GDC-ag, execute `psql "${DATABASE_URL}" -f test-data/seed_readiness_db.sql` from an admin pod or workstation with network reachability to the `DBCluster` VIP.

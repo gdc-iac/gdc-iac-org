@@ -13,7 +13,18 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
+          kubernetes.io/metadata.name: gemma-inference
+    - namespaceSelector:
+        matchLabels:
           kubernetes.io/metadata.name: test-project
+    - ipBlock:
+        cidr: 172.16.0.0/12
+    - ipBlock:
+        cidr: 10.0.0.0/8
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    - ipBlock:
+        cidr: 130.211.0.0/22
     ports:
     - protocol: TCP
       port: 8080

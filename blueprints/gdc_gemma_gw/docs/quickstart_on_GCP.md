@@ -102,9 +102,13 @@ gcloud compute firewall-rules create allow-gateway-internal \
   --direction=INGRESS \
   --priority=1000 \
   --action=ALLOW \
-  --rules=tcp:80,tcp:443 \
-  --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
-  --project="${PROJECT_ID}" || true
+  --rules=tcp:80,tcp:443,tcp:8000,tcp:8080 \
+  --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,35.191.0.0/16,130.211.0.0/22 \
+  --project="${PROJECT_ID}" 2>/dev/null || \
+gcloud compute firewall-rules update allow-gateway-internal \
+  --rules=tcp:80,tcp:443,tcp:8000,tcp:8080 \
+  --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,35.191.0.0/16,130.211.0.0/22 \
+  --project="${PROJECT_ID}"
 
 # 2. Create standard non-GPU node pool for client/auth apps
 gcloud container node-pools create client-pool \
@@ -508,6 +512,10 @@ kubectl apply -f gemma-client/manifests/gcp/statefulset-postgres.yaml -n $NAMESP
 # 3. VERIFICATION GATE: Wait for PostgreSQL to reach Running status
 kubectl rollout status statefulset/postgres -n $NAMESPACE --timeout=120s
 kubectl get pods -n $NAMESPACE -l app=postgres
+
+# 4. Seed the Operational Readiness, Sensor Telemetry, and Intelligence RAG tables
+chmod +x scripts/populate-db.sh
+./scripts/populate-db.sh
 ```
 
 ---
@@ -589,9 +597,13 @@ Choose between **two authentication pathways** based on your testing goals:
      --direction=INGRESS \
      --priority=1000 \
      --action=ALLOW \
-     --rules=tcp:80,tcp:443 \
-     --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
-     --project="${PROJECT_ID}" || true
+     --rules=tcp:80,tcp:443,tcp:8000,tcp:8080 \
+     --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,35.191.0.0/16,130.211.0.0/22 \
+     --project="${PROJECT_ID}" 2>/dev/null || \
+   gcloud compute firewall-rules update allow-gateway-internal \
+     --rules=tcp:80,tcp:443,tcp:8000,tcp:8080 \
+     --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,35.191.0.0/16,130.211.0.0/22 \
+     --project="${PROJECT_ID}"
    ```
 
 2. **Configure Workstation Coordinates & Realm Import:**
