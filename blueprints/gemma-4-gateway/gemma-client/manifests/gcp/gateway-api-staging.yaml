@@ -1,0 +1,137 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gdc-platform-gateway
+  namespace: gemma-inference
+  labels:
+    app.kubernetes.io/part-of: gemma-client
+spec:
+  gatewayClassName: gke-l7-rilb
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+---
+# In-cluster L4 TCP pass-through bridge to the GKE Regional Internal Load Balancer VIP (gdc-platform-gateway).
+# Because Google Cloud Workstations run in a peered tenant VPC that does not import internal load balancer routes,
+# port-forwarding svc/gdc-gateway-tunnel 8081:80 forwards browser traffic directly into the real GKE Gateway API VIP.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdc-gateway-tunnel
+  namespace: gemma-inference
+  labels:
+    app: gdc-gateway-tunnel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gdc-gateway-tunnel
+  template:
+    metadata:
+      labels:
+        app: gdc-gateway-tunnel
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: socat-bridge
+        image: alpine/socat:1.8.0.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - "TCP-LISTEN:8080,fork,reuseaddr"
+        - "TCP:$(GATEWAY_VIP):80"
+        env:
+        - name: GATEWAY_VIP
+          value: "GATEWAY_VIP_PLACEHOLDER"
+        ports:
+        - name: http
+          containerPort: 8080
+        resources:
+          requests:
+            cpu: "25m"
+            memory: "32Mi"
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdc-gateway-tunnel
+  namespace: gemma-inference
+spec:
+  selector:
+    app: gdc-gateway-tunnel
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: keycloak-healthcheck
+  namespace: gemma-inference
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8080
+        requestPath: /auth/realms/master
+  targetRef:
+    group: ""
+    kind: Service
+    name: keycloak-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: backend-healthcheck
+  namespace: gemma-inference
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8000
+        requestPath: /health
+  targetRef:
+    group: ""
+    kind: Service
+    name: backend-svc
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: frontend-healthcheck
+  namespace: gemma-inference
+spec:
+  default:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 3
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 80
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: frontend-svc

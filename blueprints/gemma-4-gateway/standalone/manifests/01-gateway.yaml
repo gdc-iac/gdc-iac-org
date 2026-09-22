@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-gateway
+  namespace: gemma-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-gateway
+  template:
+    metadata:
+      labels:
+        app: gemma-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: gateway
+        # Note: Replace this with the local GDC-ag registry image after build
+        image: gemma-gateway:latest 
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ACTIVE_FRAMEWORK
+          value: "vllm"
+        - name: OLLAMA_MODEL_VARIANT
+          value: "26b"
+        - name: GATEWAY_TIMEOUT
+          value: "300.0"
+        - name: MODEL_ROUTING_CONFIG
+          value: '{"gemma4:26b": "http://vllm-26b-vllm-gke-service.gemma-inference.svc.cluster.local:8000", "gemma4:31b": "http://vllm-31b-vllm-gke-service.gemma-inference.svc.cluster.local:8000", "*": "http://vllm-26b-vllm-gke-service.gemma-inference.svc.cluster.local:8000"}'
+        - name: OLLAMA_URL
+          value: "http://ollama:11434"
+        - name: VLLM_URL
+          value: "http://vllm:8000"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-gateway
+  namespace: gemma-inference
+spec:
+  type: ClusterIP # Use LoadBalancer if accessing from outside GDC-ag workstation network
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: gemma-gateway

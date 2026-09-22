@@ -1,0 +1,104 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gemma-inference
+  labels:
+    environment: testing
+    managed-by: local-kubectl
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-gateway
+  namespace: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-gateway
+  template:
+    metadata:
+      labels:
+        app: gemma-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: gateway
+        image: gemma-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ACTIVE_FRAMEWORK
+          value: ollama
+        - name: OLLAMA_MODEL_VARIANT
+          value: 26b
+        - name: GATEWAY_TIMEOUT
+          value: '300.0'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-gateway
+  namespace: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: gemma-gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gemma-gateway-route
+  namespace: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    app.kubernetes.io/part-of: gemma-gateway
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: gdc-platform-gateway
+    namespace: gemma-inference
+  hostnames:
+  - gemma-gateway.shared-services.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: gemma-gateway
+      port: 80
+{{- end }}

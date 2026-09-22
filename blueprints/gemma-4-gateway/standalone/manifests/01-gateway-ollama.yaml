@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-gateway
+  namespace: gemma-inference
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-gateway
+  template:
+    metadata:
+      labels:
+        app: gemma-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: gateway
+        image: gemma-gateway:latest 
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ACTIVE_FRAMEWORK
+          value: "ollama"
+        - name: OLLAMA_MODEL_VARIANT
+          value: "26b"
+        - name: GATEWAY_TIMEOUT
+          value: "300.0"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-gateway
+  namespace: gemma-inference
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: gemma-gateway

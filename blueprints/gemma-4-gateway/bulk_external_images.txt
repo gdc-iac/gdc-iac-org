@@ -1,0 +1,11 @@
+# Consolidated Container Images for Gemma Gateway Air-Gapped Deployment
+
+harbor.gdc.local/gemma-repo/gemma-client-backend:latest
+harbor.gdc.local/gemma-repo/gemma-client-frontend:latest
+harbor.gdc.local/gemma-repo/gemma-proxy:latest
+harbor.gdc.local/gemma-repo/ollama-gemma-26b:latest
+harbor.gdc.local/gemma-repo/ollama-gemma-31b:latest
+harbor.gdc.local/gemma-repo/vllm-gemma-26b:latest
+harbor.gdc.local/gemma-repo/vllm-gemma-31b:latest
+ollama/ollama:latest
+vllm/vllm-openai:latest

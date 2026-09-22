@@ -1,0 +1,201 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  labels:
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: gemma-client-sa
+      containers:
+      - name: backend
+        image: gemma-client-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PROJECT_ID
+          value: PROJECT_ID_PLACEHOLDER
+        - name: INPUT_BUCKET
+          value: gs://INPUT_BUCKET_PLACEHOLDER
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: gemma-client-db-credentials
+              key: connection_string
+        - name: REGION
+          value: us-central1
+        - name: GEMMA_MODEL
+          value: gemma4:26b
+        - name: GATEWAY_URL
+          value: http://gemma-gateway/v1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  labels:
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  labels:
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: gemma-client-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        env:
+        - name: VITE_API_URL
+          value: /api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  labels:
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cross-cluster-gateway-ingress
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  annotations:
+    networking.gdc.goog/internal-loadbalancer: 'true'
+  labels:
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  rules:
+  - host: gemma-gateway.shared-services.gdc.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gemma-gateway
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-tenant-ingress-to-gateway
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  labels:
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: gemma-gateway
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: test-project
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gemma-unified-routes
+  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  labels:
+    app.kubernetes.io/part-of: gemma-client
+    {{- include "gemma-gemma-client.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: gdc-platform-gateway
+    namespace: gemma-inference
+  hostnames:
+  - app.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /auth
+    backendRefs:
+    - name: keycloak-svc
+      port: 8080
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
+    backendRefs:
+    - name: backend-svc
+      port: 8000
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: frontend-svc
+      port: 80
+{{- end }}

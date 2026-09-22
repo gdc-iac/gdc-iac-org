@@ -1,0 +1,11 @@
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: gemini-db
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  version: POSTGRESQL_14
+  availabilityType: ZONAL_HA
+  resources:
+     requests: { cpu: "2", memory: "8Gi" }
+  storage: { size: "50G" }

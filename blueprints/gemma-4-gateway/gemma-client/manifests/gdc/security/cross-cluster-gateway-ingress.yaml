@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cross-cluster-gateway-ingress
+  namespace: test-project # kpt-set: ${namespace}
+  annotations:
+    networking.gdc.goog/internal-loadbalancer: "true"
+spec:
+  rules:
+  - host: gemma-gateway.shared-services.gdc.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gemma-gateway
+            port:
+              number: 80

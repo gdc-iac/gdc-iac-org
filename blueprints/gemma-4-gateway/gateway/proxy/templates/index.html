@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDC Gemma 4 Gateway Control Plane</title>
+    <style>
+        :root {
+            --bg-color: #0f0f11;
+            --card-bg: #18181c;
+            --border-color: #282830;
+            --text-color: #e4e4eb;
+            --text-muted: #8e8e9f;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 30px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 30px;
+        }
+        h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+        .meta { color: var(--text-muted); font-size: 14px; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 25px; }
+        .card { 
+            background: var(--card-bg); padding: 25px; border-radius: 12px; 
+            border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        h2 { font-size: 18px; font-weight: 600; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px; }
+        
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--text-muted); }
+        .form-group input, .form-group select {
+            width: 100%; padding: 10px; background: #09090b; border: 1px solid var(--border-color); 
+            color: white; border-radius: 6px; box-sizing: border-box; font-size: 14px;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: var(--accent); outline: none;
+        }
+        .form-group input[type="range"] { background: transparent; border: none; padding: 0; }
+        .slider-val { font-weight: bold; color: var(--accent); float: right; }
+        
+        .btn {
+            background: var(--accent); color: white; border: none; padding: 12px 20px;
+            border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; width: 100%;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn-danger { background: var(--danger); }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 4px; width: auto; }
+        
+        #status-banner {
+            display: none; padding: 12px; border-radius: 6px; margin-bottom: 25px; font-weight: 600; text-align: center;
+            font-size: 14px;
+        }
+        .success { background-color: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
+        
+        /* Telemetry Dials & Progress Bars */
+        .metrics-panel { display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 20px; }
+        .gauge-wrapper { text-align: center; position: relative; width: 110px; }
+        .gauge-label { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+        .gauge-value { font-size: 16px; font-weight: 700; position: absolute; top: 40px; left: 0; right: 0; text-align: center; }
+        
+        .progress-container { margin-top: 15px; }
+        .progress-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+        .progress-bar-bg { background: #09090b; border-radius: 4px; height: 8px; overflow: hidden; }
+        .progress-bar-fill { background: var(--accent); height: 100%; width: 0%; transition: width 0.5s ease-out; }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; }
+        th { color: var(--text-muted); font-weight: 500; padding: 10px 8px; border-bottom: 1px solid var(--border-color); }
+        td { padding: 12px 8px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+        code { background: #09090b; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+        
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+        .badge-info { background: rgba(59, 130, 246, 0.15); color: var(--accent); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>🧠 Gemma 4 Gateway Control Plane</h1>
+            <div class="meta">GDC Air-Gapped Administration Console</div>
+        </div>
+        <div style="text-align: right;">
+            <div class="meta">Active Framework: <strong style="text-transform: uppercase; color: white;">{{ active_framework }}</strong></div>
+            <div class="meta" style="margin-top: 4px;">Cluster Registry Warm</div>
+        </div>
+    </header>
+
+    <div id="status-banner"></div>
+
+    <div class="grid">
+        <!-- ⚡ Live System Performance -->
+        <div class="card" style="grid-column: span 2;">
+            <h2>⚡ Live System Performance & Telemetry</h2>
+            <div class="metrics-panel">
+                <!-- CPU Load Gauge -->
+                <div class="gauge-wrapper">
+                    <svg width="100" height="100" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="42" stroke="#282830" stroke-width="8" fill="transparent" />
+                        <circle id="cpu-circle" cx="50" cy="50" r="42" stroke="var(--accent)" stroke-width="8" fill="transparent" 
+                                stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round" transform="rotate(-90 50 50)" />
+                    </svg>
+                    <div id="cpu-value" class="gauge-value">0%</div>
+                    <div class="gauge-label">CPU Load</div>
+                </div>
+                
+                <!-- GPU Load Gauge -->
+                <div class="gauge-wrapper">
+                    <svg width="100" height="100" viewBox="0 0 100 100">
+                        <circle cx="50" cy="50" r="42" stroke="#282830" stroke-width="8" fill="transparent" />
+                        <circle id="gpu-circle" cx="50" cy="50" r="42" stroke="var(--success)" stroke-width="8" fill="transparent" 
+                                stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="round" transform="rotate(-90 50 50)" />
+                    </svg>
+                    <div id="gpu-value" class="gauge-value">0%</div>
+                    <div class="gauge-label">GPU Core Load</div>
+                </div>
+
+                <!-- Throughput Badge -->
+                <div style="text-align: center; border-left: 1px solid var(--border-color); padding-left: 25px;">
+                    <div id="tput-val" style="font-size: 32px; font-weight: 700; color: var(--accent);">0.00</div>
+                    <div class="meta" style="margin-top: 5px;">Tokens Out/Sec</div>
+                </div>
+                <div style="text-align: center; border-left: 1px solid var(--border-color); padding-left: 25px;">
+                    <div id="db-conn-val" style="font-size: 32px; font-weight: 700; color: var(--warning);">0</div>
+                    <div class="meta" style="margin-top: 5px;">Active DB Pools</div>
+                </div>
+            </div>
+
+            <!-- GPU VRAM Progress Bar -->
+            <div class="progress-container">
+                <div class="progress-header">
+                    <span>VRAM Consumption</span>
+                    <span id="vram-text">0.0 GB / 0.0 GB (0%)</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div id="vram-fill" class="progress-bar-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Parameters -->
+        <div class="card">
+            <h2>🎛️ Gateway Parameters Override</h2>
+            <div class="form-group">
+                <label>Temperature <span id="temp-val" class="slider-val">{{ state.temperature }}</span></label>
+                <input type="range" id="temperature" min="0" max="2" step="0.1" value="{{ state.temperature }}" 
+                       oninput="document.getElementById('temp-val').innerText = this.value">
+            </div>
+            <div class="form-group">
+                <label>Top-P <span id="top-p-val" class="slider-val">{{ state.top_p }}</span></label>
+                <input type="range" id="top_p" min="0" max="1" step="0.1" value="{{ state.top_p }}" 
+                       oninput="document.getElementById('top-p-val').innerText = this.value">
+            </div>
+            <div class="form-group">
+                <label>Max Vision Tokens (Vision Budgets)</label>
+                <select id="vision_token_budget">
+                    <option value="70" {% if state.vision_token_budget == 70 %}selected{% endif %}>70 Tokens (Low Res)</option>
+                    <option value="140" {% if state.vision_token_budget == 140 %}selected{% endif %}>140 Tokens (Standard)</option>
+                    <option value="280" {% if state.vision_token_budget == 280 %}selected{% endif %}>280 Tokens (HD)</option>
+                    <option value="560" {% if state.vision_token_budget == 560 %}selected{% endif %}>560 Tokens (UHD)</option>
+                    <option value="1120" {% if state.vision_token_budget == 1120 %}selected{% endif %}>1120 Tokens (4K Video)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Model Variant Hot-Swap</label>
+                <select id="model_variant">
+                    <option value="26b" {% if state.model_variant == '26b' %}selected{% endif %}>Gemma 4 26B A4B (MoE)</option>
+                    <option value="31b" {% if state.model_variant == '31b' %}selected{% endif %}>Gemma 4 31B (Dense)</option>
+                </select>
+            </div>
+            <button class="btn" onclick="saveConfiguration()">Save Gateway Configuration</button>
+        </div>
+
+        <!-- 🕵️ Session Oversight & Kill-Switch -->
+        <div class="card" style="grid-column: span 2;">
+            <h2>🕵️ Active User Session Oversight & Kill-Switch</h2>
+            <div style="overflow-x: auto; max-height: 280px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Client IP</th>
+                            <th>Status</th>
+                            <th>Last Active</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessions-tbody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No active user sessions found.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 👥 Administrative Blocklist Panel -->
+        <div class="card">
+            <h2>👥 User Access Blocklist Management</h2>
+            <div class="form-group" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="text" id="block-user-id" placeholder="Enter User ID to Block..." style="flex: 1;">
+                <button class="btn btn-danger btn-sm" onclick="submitBlockUser(true)" style="width: auto; padding: 10px 15px;">Block User</button>
+            </div>
+            <div style="max-height: 200px; overflow-y: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Blocked User ID</th>
+                            <th style="text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocked-users-tbody">
+                        <tr>
+                            <td colspan="2" style="text-align: center; color: var(--text-muted); padding: 15px;">No users are currently blocked.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Set up SVG Circle parameters
+    const CIRCLE_CIRCUMFERENCE = 263.89; // 2 * pi * r (r=42)
+
+    function updateCircularGauge(circleId, valueId, percentage) {
+        const circle = document.getElementById(circleId);
+        const text = document.getElementById(valueId);
+        if (!circle || !text) return;
+
+        const offset = CIRCLE_CIRCUMFERENCE - (percentage / 100) * CIRCLE_CIRCUMFERENCE;
+        circle.style.strokeDashoffset = offset;
+        text.innerText = `${percentage}%`;
+    }
+
+    // Polling System Telemetry and Sessions
+    async function fetchTelemetry() {
+        try {
+            // Fetch system metrics
+            const metricsResponse = await fetch('/api/metrics');
+            if (metricsResponse.ok) {
+                const data = await metricsResponse.json();
+                updateCircularGauge("cpu-circle", "cpu-value", data.cpu_utilization);
+                updateCircularGauge("gpu-circle", "gpu-value", data.gpu_utilization);
+                
+                document.getElementById("tput-val").innerText = data.request_throughput.toFixed(2);
+                document.getElementById("db-conn-val").innerText = data.db_connections;
+
+                // Update VRAM fill bar
+                const fill = document.getElementById("vram-fill");
+                const text = document.getElementById("vram-text");
+                fill.style.width = `${data.vram_percent}%`;
+                text.innerText = `${data.vram_used_gb.toFixed(1)} GB / ${data.vram_total_gb.toFixed(1)} GB (${data.vram_percent}%)`;
+            }
+
+            // Fetch active user sessions
+            const sessionsResponse = await fetch('/api/sessions');
+            if (sessionsResponse.ok) {
+                const sessions = await sessionsResponse.json();
+                const tbody = document.getElementById("sessions-tbody");
+                tbody.innerHTML = "";
+                
+                if (sessions.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No active user sessions found.</td></tr>`;
+                } else {
+                    sessions.forEach(s => {
+                        let badgeClass = "badge-info";
+                        if (s.status === "generating") badgeClass = "badge-success";
+                        if (s.status === "idle") badgeClass = "badge-info";
+                        if (s.status === "killed") badgeClass = "badge-danger";
+
+                        const killBtn = s.status === "generating" 
+                            ? `<button class="btn btn-danger btn-sm" onclick="killSession('${s.session_id}')">Kill Session</button>`
+                            : `<span style="color: var(--text-muted); font-size: 12px;">None (Idle)</span>`;
+
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = `
+                            <td><code>${s.user_id}</code></td>
+                            <td>${s.client_ip}</td>
+                            <td><span class="badge ${badgeClass}">${s.status}</span></td>
+                            <td>${s.last_active}</td>
+                            <td>${killBtn}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+            await refreshBlockedUsers();
+        } catch (error) {
+            console.error("Error polling telemetry:", error);
+        }
+    }
+
+    // Session Kill-Switch invocation
+    async function killSession(sessionId) {
+        if (!confirm(`Are you sure you want to instantly terminate the active completion stream for session ${sessionId}?`)) return;
+        try {
+            const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/kill`, { method: 'POST' });
+            if (response.ok) {
+                showBanner("✅ Active session stream terminated successfully.");
+                fetchTelemetry();
+            }
+        } catch (error) {
+            alert("Network error terminating session.");
+        }
+    }
+
+    // Block / Unblock User Administration
+    async function submitBlockUser(shouldBlock, userToBlock = null) {
+        const userId = userToBlock || document.getElementById("block-user-id").value.trim();
+        if (!userId) return;
+
+        if (shouldBlock && !confirm(`Are you sure you want to completely block user '${userId}'? They will be immediately rejected with a 403 Forbidden at the gateway proxy.`)) return;
+        
+        try {
+            const response = await fetch(`/api/users/${encodeURIComponent(userId)}/block`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blocked: shouldBlock })
+            });
+
+            if (response.ok) {
+                showBanner(`✅ User '${userId}' access state updated successfully.`);
+                document.getElementById("block-user-id").value = "";
+                refreshBlockedUsers();
+                fetchTelemetry();
+            }
+        } catch (error) {
+            alert("Error blocking user.");
+        }
+    }
+
+    // Refresh Blocked Users List on UI
+    async function refreshBlockedUsers() {
+        try {
+            const response = await fetch('/api/users/blocked');
+            if (response.ok) {
+                const blockedUsers = await response.json();
+                const tbody = document.getElementById("blocked-users-tbody");
+                tbody.innerHTML = "";
+                
+                if (blockedUsers.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="2" style="text-align: center; color: var(--text-muted); padding: 15px;">No users are currently blocked.</td></tr>`;
+                } else {
+                    blockedUsers.forEach(user_id => {
+                        const tr = document.createElement("tr");
+                        tr.innerHTML = `
+                            <td><code>${user_id}</code></td>
+                            <td style="text-align: right;">
+                                <button class="btn btn-sm" style="background: var(--success);" onclick="submitBlockUser(false, '${user_id}')">Unblock</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("Error refreshing blocklist:", e);
+        }
+    }
+
+    // Save override configuration
+    async function saveConfiguration() {
+        const payload = {
+            temperature: parseFloat(document.getElementById('temperature').value),
+            top_p: parseFloat(document.getElementById('top_p').value),
+            vision_token_budget: parseInt(document.getElementById('vision_token_budget').value),
+            model_variant: document.getElementById('model_variant').value
+        };
+
+        try {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                showBanner("✅ Gateway Parameters updated successfully! Changes are now active globally.");
+            } else {
+                alert("Error updating configuration.");
+            }
+        } catch (error) {
+            alert("Network error updating parameters.");
+        }
+    }
+
+    function showBanner(msg) {
+        const banner = document.getElementById('status-banner');
+        banner.innerText = msg;
+        banner.className = "success";
+        banner.style.display = "block";
+        setTimeout(() => banner.style.display = "none", 5000);
+    }
+
+    // Start Telemetry Polling Loop (every 2.5 seconds)
+    setInterval(fetchTelemetry, 2500);
+    window.onload = fetchTelemetry;
+</script>
+
+</body>
+</html>

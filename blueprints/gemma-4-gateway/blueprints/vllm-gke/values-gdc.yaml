@@ -1,0 +1,17 @@
+# GDC air-gapped (GDC-ag) Production Values Override
+# Purpose: Enforces strict GDC-ag SAN persistent storage parameters.
+
+persistence:
+  enabled: true
+  storageClassName: "standard-rwx" # Mandatory GDC SAN StorageClass
+  accessModes:
+    - ReadWriteMany
+  size: 120Gi
+
+nodeSelector:
+  pool: gpu-moe # Default to MoE node pool, can be overridden via helm --set nodeSelector.pool=gpu-dense
+
+tolerations:
+- key: "nvidia.com/gpu"
+  operator: "Exists"
+  effect: "NoSchedule"

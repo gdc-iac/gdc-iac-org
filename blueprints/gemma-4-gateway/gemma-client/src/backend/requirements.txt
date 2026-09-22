@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+google-cloud-storage
+asyncpg
+python-multipart
+pydantic
+pypdf
+Pillow
+python-jose[cryptography]
+openai
