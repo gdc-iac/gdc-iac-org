@@ -613,41 +613,49 @@ Choose between **two authentication pathways** based on your testing goals:
    ```
    *When prompted, paste your active Workstation Web Preview URL (e.g. `https://8081-w-<user>-<id>.cluster-<hash>.cloudworkstations.dev` or bare hostname `w-<user>-<id>.cluster-<hash>.cloudworkstations.dev`). This generates `keycloak-realm-import-hydrated.yaml` and `gemma-client/src/frontend/.env` with the `8081-` port prefix.*
 
-3. **Deploy Keycloak Identity Provider & Build/Deploy Client Applications:**
+3. **Deploy Keycloak Identity Provider & Build/Deploy Client Applications (Helm Wrapper Chart Path):**
    ```bash
    kubectl apply -f gemma-client/manifests/gcp/keycloak-realm-import-hydrated.yaml -n $NAMESPACE
    kubectl apply -f gemma-client/manifests/gcp/keycloak-staging.yaml -n $NAMESPACE
    kubectl rollout status deployment/keycloak -n $NAMESPACE --timeout=180s
 
-   # Hydrate and compile images (baking the .env OIDC config into Vite assets)
+   # Build and push the client images (baking the .env OIDC config into Vite assets)
    export AR_REGION="${REPO_REGION:-$REGION}"
    export REGISTRY_HOST="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/gemma-repo"
-   ./configure-blueprints.sh -p ${PROJECT_ID} -n ${NAMESPACE} -r ${REGISTRY_HOST} -d gemma-client
    chmod +x gemma-client/scripts/build.sh
    ./gemma-client/scripts/build.sh -p ${PROJECT_ID} -r ${REGISTRY_HOST}
 
-   # Deploy backend & frontend
-   kubectl apply -f gemma-client/manifests/apps/backend.yaml -n $NAMESPACE
-   kubectl apply -f gemma-client/manifests/apps/frontend.yaml -n $NAMESPACE
+   # Deploy the Inference Gateway Proxy & HTTPRoute via the standalone Helm wrapper chart
+   # (If gemma-gateway was previously created via kubectl apply, delete the stateless objects first so Helm owns managedFields cleanly)
+   kubectl delete deployment/gemma-gateway service/gemma-gateway httproute/gemma-gateway-route -n $NAMESPACE --ignore-not-found
+   helm upgrade --install gemma-standalone ./standalone/chart \
+     --namespace "${NAMESPACE}" \
+     --set global.projectId="${PROJECT_ID}" \
+     --set global.namespace="${NAMESPACE}" \
+     --set global.registry="${REGISTRY_HOST}"
 
-   # Enable cryptographic JWT token validation on backend
-   kubectl set env deployment/backend ENABLE_OIDC="true" KEYCLOAK_URL="http://keycloak-svc:8080/auth/realms/gdc-rag-realm" -n $NAMESPACE
+   # Deploy Backend, Frontend, NetworkPolicy, and HTTPRoute/gemma-unified-routes via the gemma-client Helm wrapper chart
+   helm upgrade --install gemma-client ./gemma-client/chart \
+     --namespace "${NAMESPACE}" \
+     --set global.projectId="${PROJECT_ID}" \
+     --set global.namespace="${NAMESPACE}" \
+     --set global.registry="${REGISTRY_HOST}" \
+     --set apps.inputBucket="${PROJECT_ID}-gemma-input"
 
    kubectl rollout status deployment/backend -n $NAMESPACE
    kubectl rollout status deployment/frontend -n $NAMESPACE
    ```
 
-4. **Deploy Kubernetes Gateway (`gdc-platform-gateway`), Production `HTTPRoute`s, and Workstation L4 Bridge (`gdc-gateway-tunnel`):**
+4. **Deploy Kubernetes Gateway (`gdc-platform-gateway`), HealthCheck/Timeout Policies, and Workstation L4 Bridge (`gdc-gateway-tunnel`):**
    ```bash
    # 1. Remove legacy NGINX ingress pod if present
    kubectl delete -f gemma-client/manifests/gcp/nginx-ingress-staging.yaml -n $NAMESPACE --ignore-not-found
 
-   # 2. Deploy the Kubernetes Gateway (gdc-platform-gateway) and L4 tunnel deployment
+   # 2. Deploy the Kubernetes Gateway (gdc-platform-gateway), HealthCheckPolicies, 300s GCPBackendPolicy, and L4 tunnel deployment
    kubectl apply -f gemma-client/manifests/gcp/gateway-api-staging.yaml -n $NAMESPACE
 
-   # 3. Apply the Production HTTPRoutes (gemma-gateway-route and gemma-unified-routes)
-   kubectl apply -f standalone/manifests/02-gateway-httproute.yaml -n $NAMESPACE
-   kubectl apply -f gemma-client/manifests/gdc/security/production-gateway-routing.yaml -n $NAMESPACE
+   # 3. Ensure HTTPRoutes are active (already managed by the Helm releases above; safe to verify)
+   kubectl get httproute -n $NAMESPACE
 
    # 4. Wait for the GKE Gateway Controller to allocate the Regional Internal Load Balancer VIP (~60-90s)
    echo "Waiting for gdc-platform-gateway VIP allocation..."
