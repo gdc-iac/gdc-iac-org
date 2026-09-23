@@ -60,12 +60,23 @@ gdc_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global
 gdc_context_zone: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_zone1_org-1-admin"
 ```
 
-### 4. Workstation & Pipeline Validation
-1. Verify your local workstation is prepared as detailed in `WORKSTATION_ONBOARDING.md`.
-2. Ensure all required container images and Helm charts are mirrored to local registries as detailed in `AIRGAP_MIRRORING.md`.
+### 4. Chart Resolution Mode Configuration (Dual-Mode)
+Helmfile supports two operational modes configured in `foundations/bases/environments/<env>/charts.yaml`:
+- **Mode 1: Local Filesystem Resolution (Default / Dev)**:
+  Uses relative paths (`../../../charts/<chart>`). Ideal for rapid development and testing directly within the cloned repository.
+- **Mode 2: Air-Gapped OCI Registry Resolution (Enterprise / Prod)**:
+  Pulls packaged, immutable charts from your local Harbor registry (seeded via `./scripts/ingest-airgap-bundle.sh` as detailed in [`AIRGAP_MIRRORING.md`](AIRGAP_MIRRORING.md)). Charts are pinned to exact versions:
+  ```yaml
+  gdc_clusters_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-clusters"
+  gdc_clusters_chart_version: "0.1.3"
+  ```
+
+### 5. Workstation & Pipeline Validation
+1. Verify your local workstation is prepared as detailed in [`WORKSTATION_ONBOARDING.md`](WORKSTATION_ONBOARDING.md).
+2. Ensure all required container images and Helm charts are mirrored to local registries as detailed in [`AIRGAP_MIRRORING.md`](AIRGAP_MIRRORING.md).
 3. Execute the validation script to ensure there are no syntax or schema violations:
    ```bash
-   ./scripts/validate.sh dev
+   ./foundations/scripts/validate.sh dev
    ```
 4. Proceed with deploying the stages below.
 
@@ -196,3 +207,45 @@ helmfile -e dev -l stage=2-resources rollback
 helmfile -e dev -l stage=1-project-factory rollback
 helmfile -e dev -l stage=0-org-setup rollback
 ```
+
+---
+
+## Day-2 Operations: Chart Upgrades & Environment Promotion
+
+When new chart versions or air-gap releases are published, follow this phased progression to promote changes safely across environments:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Admin as Platform Administrator
+    participant Dev as Dev Context
+    participant Stg as Staging Context
+    participant Prd as Production Fleet
+
+    Note over Admin: 1. Ingest new air-gap bundle via ./scripts/ingest-airgap-bundle.sh
+    Admin->>Dev: 2. Update dev/charts.yaml (e.g. gdc_clusters_chart_version: "0.1.4")
+    Admin->>Dev: 3. helmfile -e dev diff (Verify planned CRD mutations)
+    Admin->>Dev: 4. helmfile -e dev apply (Reconcile resources)
+    Note over Dev: Validate Pod health, CRD status, and tenancy isolation
+
+    Admin->>Stg: 5. Promote to Staging: update stg/charts.yaml
+    Admin->>Stg: 6. helmfile -e stg diff && helmfile -e stg apply
+    Note over Stg: Execute integration & performance test suites
+
+    Admin->>Prd: 7. Production Change Advisory Board (CAB) approval
+    Admin->>Prd: 8. Update prd/charts.yaml -> diff -> apply
+```
+
+### Promotion Commands:
+```bash
+# 1. Update charts.yaml in the target environment:
+# foundations/bases/environments/dev/charts.yaml
+# gdc_clusters_chart_version: "0.1.4"
+
+# 2. Inspect differences before applying:
+helmfile -e dev diff
+
+# 3. Apply changes declaratively:
+helmfile -e dev apply
+```
+

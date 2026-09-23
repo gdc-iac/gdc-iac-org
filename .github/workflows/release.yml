@@ -37,6 +37,7 @@ jobs:
     permissions:
       contents: write  # for chart-releaser and releases
       packages: write  # for pushing OCI charts to ghcr.io
+      id-token: write  # for Cosign keyless signing via Sigstore OIDC
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -54,6 +55,9 @@ jobs:
         with:
           version: v3.18.0
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@c56c2d3e59e4281cc41dea2217323ba5694b171e # v3.8.0
+
       - name: Configure Git
         run: |
           git config --global user.name "$GITHUB_ACTOR"
@@ -65,7 +69,7 @@ jobs:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           CR_SKIP_EXISTING: true
 
-      - name: Publish OCI Charts to GHCR
+      - name: Publish and Sign OCI Charts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_ACTOR: ${{ github.actor }}
@@ -76,7 +80,8 @@ jobs:
           for chart in charts/*; do
             if [ -f "$chart/Chart.yaml" ]; then
               chart_name=$(basename "$chart")
-              echo "Packaging $chart_name for OCI..."
+              chart_version=$(grep "^version:" "$chart/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+              echo "Packaging $chart_name ($chart_version) for OCI..."
               helm package "$chart" --destination .oci-packages
             fi
           done
@@ -86,21 +91,75 @@ jobs:
               helm push "$pkg" "oci://ghcr.io/$GH_REPO/charts" || true
             fi
           done
+          for chart in charts/*; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              chart_name=$(basename "$chart")
+              chart_version=$(grep "^version:" "$chart/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+              oci_ref="ghcr.io/$GH_REPO/charts/${chart_name}:${chart_version}"
+              echo "Signing $oci_ref with Cosign..."
+              cosign sign --yes "$oci_ref" || echo "Notice: Keyless Cosign signing skipped for $oci_ref"
+            fi
+          done
 
-      - name: Create Macro Release Tag for Foundations
+      - name: Build Air-Gap Distribution Bundle & SHA256SUMS
+        if: hashFiles('VERSION') != ''
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          BUNDLE_NAME="gdc-iac-airgap-v${VERSION}"
+          DIST_DIR="dist"
+          mkdir -p "$DIST_DIR/$BUNDLE_NAME/charts"
+
+          # 1. Copy packaged charts into bundle
+          cp -r .oci-packages/*.tgz "$DIST_DIR/$BUNDLE_NAME/charts/"
+
+          # 2. Copy foundations, blueprints, policy, scripts, and documentation
+          cp -r foundations "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r blueprints "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r policy "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r scripts "$DIST_DIR/$BUNDLE_NAME/"
+          cp VERSION README.md LICENSE RELEASE_STRATEGY.md "$DIST_DIR/$BUNDLE_NAME/"
+
+          # 3. Generate cryptographic SHA256SUMS inside the bundle
+          cd "$DIST_DIR/$BUNDLE_NAME"
+          find . -type f ! -name "SHA256SUMS" -exec sha256sum {} + | sort -k 2 > SHA256SUMS
+          cd - >/dev/null
+
+          # 4. Create the air-gap archive and outer SHA256 checksum
+          cd "$DIST_DIR"
+          tar -czf "${BUNDLE_NAME}.tar.gz" "${BUNDLE_NAME}"
+          sha256sum "${BUNDLE_NAME}.tar.gz" > "${BUNDLE_NAME}.tar.gz.sha256"
+          cd - >/dev/null
+
+      - name: Generate SPDX 2.3 SBOM
+        if: hashFiles('VERSION') != ''
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
+        with:
+          path: "./dist"
+          format: "spdx-json"
+          output-file: "./dist/gdc-iac-sbom.spdx.json"
+          upload-artifact: false
+
+      - name: Publish Foundations Macro Release & Assets
         if: hashFiles('VERSION') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
           TAG="v${VERSION}"
+          BUNDLE_NAME="gdc-iac-airgap-v${VERSION}"
+
           echo "Checking if release tag $TAG exists on remote..."
-          if [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
-            echo "Tag $TAG already exists on remote. Skipping macro release creation."
-          else
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "Creating macro release tag $TAG..."
             gh release create "$TAG" \
               --title "GDC IaC Foundations $TAG" \
               --notes "Automated release for GDC air-gapped foundations and blueprints ($TAG)."
           fi
+
+          echo "Uploading air-gap release assets to $TAG..."
+          gh release upload "$TAG" \
+            "dist/${BUNDLE_NAME}.tar.gz" \
+            "dist/${BUNDLE_NAME}.tar.gz.sha256" \
+            "dist/gdc-iac-sbom.spdx.json" \
+            --clobber
 
