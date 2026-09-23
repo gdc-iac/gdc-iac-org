@@ -1,0 +1,312 @@
+apiVersion: v1
+entries:
+  gdc-backup-plans:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:36.592819681Z"
+    description: A Helm chart for creating BackupPlan resources in GDCH
+    digest: 710b3ae6426d97fe2203ac6ef13f7dc19f44642d46291a13006594c1b6cb4db2
+    maintainers:
+    - name: gdc-iac
+    name: gdc-backup-plans
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-backup-plans-0.1.1/gdc-backup-plans-0.1.1.tgz
+    version: 0.1.1
+  gdc-backup-repositories:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:36.783160026Z"
+    description: A Helm chart for creating ClusterBackupRepository resources in GDCH
+    digest: 1bb6f37b588d0dffca56c2a6b0f670ec39730750c55e5604fe6df0febccff32c
+    maintainers:
+    - name: gdc-iac
+    name: gdc-backup-repositories
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-backup-repositories-0.1.1/gdc-backup-repositories-0.1.1.tgz
+    version: 0.1.1
+  gdc-billing:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:37.077819998Z"
+    description: A Helm chart for deploying GDC Billing Accounts and Bindings
+    digest: 2ab25c5be286f43c499c38afae5d628a8ab7484533ff73d392036feac1b21ef0
+    maintainers:
+    - name: gdc-iac
+    name: gdc-billing
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-billing-0.1.2/gdc-billing-0.1.2.tgz
+    version: 0.1.2
+  gdc-billing-accounts:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:37.5857085Z"
+    description: A Helm chart for deploying GDC Billing Accounts and Bindings
+    digest: 38db8f9ae47bd574d113d5931997f5c0dfa0f89d3a0dd6e67164407bb1596a05
+    maintainers:
+    - name: gdc-iac
+    name: gdc-billing-accounts
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-billing-accounts-0.1.1/gdc-billing-accounts-0.1.1.tgz
+    version: 0.1.1
+  gdc-billing-bindings:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:38.191655103Z"
+    description: A Helm chart for deploying GDC Billing Accounts and Bindings
+    digest: 8cccff9fe9b1893cab51513f1d1ab5694d8d51d8d25d6efc7dbc1b5a6b7c09c2
+    maintainers:
+    - name: gdc-iac
+    name: gdc-billing-bindings
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-billing-bindings-0.1.1/gdc-billing-bindings-0.1.1.tgz
+    version: 0.1.1
+  gdc-buckets:
+  - apiVersion: v2
+    appVersion: 1.14.6
+    created: "2026-09-23T09:27:38.69294789Z"
+    description: A Helm chart for Google Distributed Cloud organization management
+    digest: 4bbdebc39b8dfae2c02a4ff7f7b53261ac2041c83bed8c2e41d840aa2af05ab0
+    maintainers:
+    - name: gdc-iac
+    name: gdc-buckets
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-buckets-0.1.2/gdc-buckets-0.1.2.tgz
+    version: 0.1.2
+  gdc-cloud-nat-gateway:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:39.225041601Z"
+    description: A Helm chart to provision GDC Hosted Cloud NAT Gateways using networking.gdc.goog/v1
+      APIs.
+    digest: c948e2004d0f97579894106715a08f76d3f729e3ce2c3a2dfe62295f57c705a6
+    maintainers:
+    - name: gdc-iac
+    name: gdc-cloud-nat-gateway
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-cloud-nat-gateway-0.1.1/gdc-cloud-nat-gateway-0.1.1.tgz
+    version: 0.1.1
+  gdc-dashboards:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:39.672053836Z"
+    description: A Helm chart for Google Distributed Cloud Hosted Custom Dashboards
+    digest: 6105e8e6c181e49f951469a7bbf46e795498f06e1630ba21d17559d01eede062
+    maintainers:
+    - name: gdc-iac
+    name: gdc-dashboards
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-dashboards-0.1.1/gdc-dashboards-0.1.1.tgz
+    version: 0.1.1
+  gdc-harbors:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:40.13826574Z"
+    description: A Helm chart for creating GDCH Harbor Instances
+    digest: c7108972db73ae3d2ed53f9f901ebff36309d9e443a34a0541421bf7c2d78ca8
+    maintainers:
+    - name: gdc-iac
+    name: gdc-harbors
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-harbors-0.1.1/gdc-harbors-0.1.1.tgz
+    version: 0.1.1
+  gdc-iac-role-bindings:
+  - apiVersion: v2
+    appVersion: 1.14.6
+    created: "2026-09-23T09:27:40.345236279Z"
+    description: A Helm chart for Google Distributed Cloud organization management
+    digest: af573af8ccf7eb803f23e6db8894a0aeeaa6db0efa46fad56dc95358a6ee60c4
+    maintainers:
+    - name: gdc-iac
+    name: gdc-iac-role-bindings
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-iac-role-bindings-0.1.2/gdc-iac-role-bindings-0.1.2.tgz
+    version: 0.1.2
+  gdc-org-network-policies:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:41.556716573Z"
+    description: A Helm chart for Google Distributed Cloud Organization Network Policies
+    digest: f3ceba31b75125d02d92ee17c219b8d697149626e6caeaac219b4026269f2e6b
+    maintainers:
+    - name: gdc-iac
+    name: gdc-org-network-policies
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-org-network-policies-0.1.1/gdc-org-network-policies-0.1.1.tgz
+    version: 0.1.1
+  gdc-org-policies:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:41.806380473Z"
+    description: A Helm chart for creating Organization Policies (GDCHRestrictedService)
+      in Google Distributed Cloud (GDC) air-gapped environments.
+    digest: 9a516b27b9c35f6b445ffd2f10106f989103449cedad4d3a760f4311c2185e29
+    maintainers:
+    - name: gdc-iac
+    name: gdc-org-policies
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-org-policies-0.1.1/gdc-org-policies-0.1.1.tgz
+    version: 0.1.1
+  gdc-project-bindings:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:42.020321738Z"
+    description: A Helm chart for GDC ProjectBindings
+    digest: fb8310a22f2c7f4c749e0f89b0fe1be8d25277e3f9bf66ce17b7c0e7a05c716b
+    maintainers:
+    - name: gdc-iac
+    name: gdc-project-bindings
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-project-bindings-0.1.0/gdc-project-bindings-0.1.0.tgz
+    version: 0.1.0
+  gdc-project-service-accounts:
+  - apiVersion: v2
+    appVersion: 1.14.6
+    created: "2026-09-23T09:27:42.403554898Z"
+    description: A Helm chart for Google Distributed Cloud organization management
+    digest: 37bdbdf07bdaa722bfea23f7d821db94e2dcfb6d7411104859bf0019382efa8e
+    maintainers:
+    - name: gdc-iac
+    name: gdc-project-service-accounts
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-project-service-accounts-0.1.1/gdc-project-service-accounts-0.1.1.tgz
+    version: 0.1.1
+  gdc-projects:
+  - apiVersion: v2
+    appVersion: 1.14.6
+    created: "2026-09-23T09:27:42.590787234Z"
+    description: A Helm chart for Google Distributed Cloud organization management
+    digest: db60cda8dabca4cf0568952c9a437adb9a2c82c1eebf5f00b79c2fca7f3e4b18
+    maintainers:
+    - name: gdc-iac
+    name: gdc-projects
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-projects-0.1.1/gdc-projects-0.1.1.tgz
+    version: 0.1.1
+  gdc-rbac-role-bindings:
+  - apiVersion: v2
+    appVersion: 1.14.6
+    created: "2026-09-23T09:27:42.82504699Z"
+    description: A Helm chart for Google Distributed Cloud organization management
+    digest: e830d0dc3fff14d4da27bae2571bd243563403273ea5db2b5c7f8be266a159ca
+    maintainers:
+    - name: gdc-iac
+    name: gdc-rbac-role-bindings
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-rbac-role-bindings-0.1.1/gdc-rbac-role-bindings-0.1.1.tgz
+    version: 0.1.1
+  gdc-standard-cluster-baseline-netpols:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:43.072385266Z"
+    description: A Helm chart for standard cluster baseline network policies (default
+      deny, core egress) in Google Distributed Cloud (GDC)
+    digest: 329955536d234dcbfddc46ef918232c307d13c522618101ef26b06db86a747ae
+    maintainers:
+    - name: gdc-iac
+    name: gdc-standard-cluster-baseline-netpols
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-standard-cluster-baseline-netpols-1.0.1/gdc-standard-cluster-baseline-netpols-1.0.1.tgz
+    version: 1.0.1
+  gdc-standard-cluster-external-traffic:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:43.339075928Z"
+    description: A Helm chart for standard cluster external traffic network policies
+      (LB routing, external org IPs) in Google Distributed Cloud (GDC)
+    digest: 22e8704b0cbac6cba30625890afd9e380cbd25956dd20534c2b4da71cf6ae4d1
+    maintainers:
+    - name: gdc-iac
+    name: gdc-standard-cluster-external-traffic
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-standard-cluster-external-traffic-1.0.1/gdc-standard-cluster-external-traffic-1.0.1.tgz
+    version: 1.0.1
+  gdc-standard-clusters:
+  - apiVersion: v2
+    appVersion: 1.26.5
+    created: "2026-09-23T09:27:43.55706725Z"
+    description: A Helm chart for Google Distributed Cloud standard clusters
+    digest: d6e3dcbcf2d2acd5d2dad2d08a30dffaf14e1860fe05d623fbe6b51cc5cba2b6
+    maintainers:
+    - name: gdc-iac
+    name: gdc-standard-clusters
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-standard-clusters-0.1.1/gdc-standard-clusters-0.1.1.tgz
+    version: 0.1.1
+  gdc-standard-clusters-rbac:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:43.790767936Z"
+    description: A Helm chart for managing standard cluster RBAC inside GDCH
+    digest: 07fceed5e4c9ecd95957013617f429b637eb1920e3c9131d51f39719560f00bf
+    maintainers:
+    - name: gdc-iac
+    name: gdc-standard-clusters-rbac
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-standard-clusters-rbac-0.1.1/gdc-standard-clusters-rbac-0.1.1.tgz
+    version: 0.1.1
+  gdc-vm:
+  - apiVersion: v2
+    created: "2026-09-23T09:27:44.033876949Z"
+    description: A Helm chart for managing Virtual Machines on GDC version 1.11+
+    digest: f4d7478c79ab3ee49309c3427b1279040238eb92e4215d171e00d37861bad3d5
+    icon: https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png
+    keywords:
+    - gdc
+    - virtual-machine
+    - vm
+    - gvm
+    - v1.9
+    maintainers:
+    - name: gdc-iac
+    name: gdc-vm
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-vm-0.1.5/gdc-vm-0.1.5.tgz
+    version: 0.1.5
+  gdc-workloads:
+  - apiVersion: v2
+    appVersion: 1.0.0
+    created: "2026-09-23T09:27:44.397860292Z"
+    description: A Helm chart for standard Kubernetes workloads in GDC
+    digest: dc57c466b8712526befde6aef3ce2e4846e04ffcea6a1400c4a1e59021b958d1
+    maintainers:
+    - name: gdc-iac
+    name: gdc-workloads
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-workloads-0.1.0/gdc-workloads-0.1.0.tgz
+    version: 0.1.0
+  gdch-dbs:
+  - apiVersion: v2
+    appVersion: "1.0"
+    created: "2026-09-23T09:27:44.638579343Z"
+    description: A Helm chart for deploying GDCH Database Services (PostgreSQL or
+      Oracle)
+    digest: c7c7ca0711d27b7c66a008c5003f86dfa194ec77188db25cf6094aeeb6479a7c
+    maintainers:
+    - name: gdc-iac
+    name: gdch-dbs
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdch-dbs-0.1.1/gdch-dbs-0.1.1.tgz
+    version: 0.1.1
+generated: "2026-09-23T09:27:44.638590182Z"
