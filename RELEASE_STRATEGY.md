@@ -23,7 +23,8 @@ Because Google Distributed Cloud air-gapped (GDCag) environments operate in clas
 
 ```mermaid
 flowchart TD
-    subgraph Development [Library Repository (main)]
+
+    subgraph Development ["Library Repository (main)"]
         PR[Validated PR Merged] --> Pipeline[Automated Release Pipeline]
     end
 
