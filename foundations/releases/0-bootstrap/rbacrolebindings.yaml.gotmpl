@@ -55,6 +55,9 @@ releases:
   {{- if gt (len $projectBindings) 0 }}
   - name: iac-rbacrolebindings-project
     chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../../charts/gdc-rbac-role-bindings" }}
+    {{- if ($vals | get "gdc_rbac_rolebindings_chart_version" "") }}
+    version: {{ $vals | get "gdc_rbac_rolebindings_chart_version" | quote }}
+    {{- end }}
     labels:
       stage: 0-bootstrap
     inherit:
@@ -67,6 +70,9 @@ releases:
   {{- if gt (len $globalBindings) 0 }}
   - name: iac-rbacrolebindings-global
     chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../../charts/gdc-rbac-role-bindings" }}
+    {{- if ($vals | get "gdc_rbac_rolebindings_chart_version" "") }}
+    version: {{ $vals | get "gdc_rbac_rolebindings_chart_version" | quote }}
+    {{- end }}
     labels:
       stage: 0-bootstrap
     inherit:

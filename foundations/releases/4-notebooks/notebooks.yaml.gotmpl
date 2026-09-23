@@ -41,6 +41,9 @@ releases:
       {{- range $notebook := $tenantConfig.global.notebooks }}
       - name: {{ $notebook.name }}
         chart: {{ $vals | get "gdc_notebooks_chart_path" "../../../charts/gdc-notebooks" }}
+        {{- if ($vals | get "gdc_notebooks_chart_version" "") }}
+        version: {{ $vals | get "gdc_notebooks_chart_version" | quote }}
+        {{- end }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 4-notebooks

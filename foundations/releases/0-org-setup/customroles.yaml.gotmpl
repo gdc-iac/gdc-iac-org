@@ -32,6 +32,9 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "customroles") }}
     - name: {{ $tenantName }}-custom-roles
       chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../../charts/gdc-iam-roles" }}
+      {{- if ($vals | get "gdc_iam_roles_chart_version" "") }}
+      version: {{ $vals | get "gdc_iam_roles_chart_version" | quote }}
+      {{- end }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       installed: true
       labels:

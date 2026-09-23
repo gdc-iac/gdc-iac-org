@@ -41,6 +41,9 @@ releases:
       {{- range $cluster := $tenantConfig.global.clusters }}
       - name: {{ $cluster.name }}
         chart: {{ $vals | get "gdc_clusters_chart_path" "../../../charts/gdc-clusters" }}
+        {{- if ($vals | get "gdc_clusters_chart_version" "") }}
+        version: {{ $vals | get "gdc_clusters_chart_version" | quote }}
+        {{- end }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 3-clusters

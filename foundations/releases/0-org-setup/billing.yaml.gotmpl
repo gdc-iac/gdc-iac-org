@@ -30,6 +30,9 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "billing") }}
     - name: {{ $tenantName }}-billing
       chart: {{ $vals | get "gdc_billing_chart_path" "../../../charts/gdc-billing" }}
+      {{- if ($vals | get "gdc_billing_chart_version" "") }}
+      version: {{ $vals | get "gdc_billing_chart_version" | quote }}
+      {{- end }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
       installed: true

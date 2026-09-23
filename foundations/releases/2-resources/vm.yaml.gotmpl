@@ -42,6 +42,9 @@ releases:
         {{- range $vm := $project.resources.vms }}
         - name: {{ $vm.name }}
           chart: {{ $vals | get "gdc_vm_chart_path" "../../../charts/gdc-vm" }}
+          {{- if ($vals | get "gdc_vm_chart_version" "") }}
+          version: {{ $vals | get "gdc_vm_chart_version" | quote }}
+          {{- end }}
           kubeContext: {{ $tenantZonalContext | quote }}
           labels:
             stage: 2-resources

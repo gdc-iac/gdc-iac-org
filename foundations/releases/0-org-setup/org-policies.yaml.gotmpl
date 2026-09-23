@@ -46,6 +46,9 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_policies") }}
     - name: {{ $tenantName }}-org-policies
       chart: {{ $vals | get "gdc_org_policies_chart_path" "../../../charts/gdc-org-policies" }}
+      {{- if ($vals | get "gdc_org_policies_chart_version" "") }}
+      version: {{ $vals | get "gdc_org_policies_chart_version" | quote }}
+      {{- end }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup
