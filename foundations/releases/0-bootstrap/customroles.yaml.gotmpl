@@ -47,6 +47,9 @@ releases:
   {{- if gt (len $projectRoles) 0 }}
   - name: iac-iam-roles-project
     chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../../charts/gdc-iam-roles" }}
+    {{- if ($vals | get "gdc_iam_roles_chart_version" "") }}
+    version: {{ $vals | get "gdc_iam_roles_chart_version" | quote }}
+    {{- end }}
     labels:
       stage: 0-bootstrap
     inherit:
@@ -58,6 +61,9 @@ releases:
   {{- if gt (len $orgRoles) 0 }}
   - name: iac-iam-roles
     chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../../charts/gdc-iam-roles" }}
+    {{- if ($vals | get "gdc_iam_roles_chart_version" "") }}
+    version: {{ $vals | get "gdc_iam_roles_chart_version" | quote }}
+    {{- end }}
     labels:
       stage: 0-bootstrap
     inherit:

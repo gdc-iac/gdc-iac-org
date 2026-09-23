@@ -13,6 +13,22 @@
 # limitations under the License.
 
 ---
+# ==============================================================================
+# Dual-Mode Chart Resolution:
+#
+# Mode 1 (Default / Development): Local relative filesystem paths
+# When chart versions are omitted, Helmfile resolves charts directly from the
+# local repository directory (e.g. "../../../charts/gdc-<chart>").
+#
+# Mode 2 (Enterprise / Production / OCI Registry): Remote OCI artifacts
+# Downstream consumers pulling packaged charts from an enterprise registry
+# (such as an air-gapped Harbor or GHCR) configure the OCI URL and pinned version:
+#
+# Example OCI configuration:
+#   gdc_clusters_chart_path: "oci://harbor.infra.gdc.example.com/charts/gdc-clusters"
+#   gdc_clusters_chart_version: "0.1.3"
+# ==============================================================================
+
 # Production charts paths parameters definitions
 gdc_backup_plans_chart_path: "../../../charts/gdc-backup-plans"
 gdc_backup_repositories_chart_path: "../../../charts/gdc-backup-repositories"

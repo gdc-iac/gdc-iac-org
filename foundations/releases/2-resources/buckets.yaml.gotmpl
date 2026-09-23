@@ -42,6 +42,9 @@ releases:
         {{- range $bucket := $project.resources.buckets }}
         - name: {{ $bucket.name }}
           chart: {{ $vals | get "gdc_buckets_chart_path" "../../../charts/gdc-buckets" }}
+          {{- if ($vals | get "gdc_buckets_chart_version" "") }}
+          version: {{ $vals | get "gdc_buckets_chart_version" | quote }}
+          {{- end }}
           kubeContext: {{ $tenantZonalContext | quote }}
           labels:
             stage: 2-resources

@@ -83,6 +83,9 @@ releases:
       {{- if or $hasExplicitDashboards (gt (len $dashboards) 0) }}
       - name: {{ $project.name }}-dashboards
         chart: {{ $vals | get "gdc_dashboards_chart_path" "../../../charts/gdc-dashboards" }}
+        {{- if ($vals | get "gdc_dashboards_chart_version" "") }}
+        version: {{ $vals | get "gdc_dashboards_chart_version" | quote }}
+        {{- end }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 2-resources

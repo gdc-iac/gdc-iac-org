@@ -13,13 +13,16 @@
 # limitations under the License.
 
 ## Reference: https://github.com/helm/chart-releaser-action
-name: Chart Publish
+name: Release Automation
 on:
   push:
     branches:
       - main
     paths:
       - "charts/**"
+      - "foundations/**"
+      - "blueprints/**"
+      - "VERSION"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -83,3 +86,21 @@ jobs:
               helm push "$pkg" "oci://ghcr.io/$GH_REPO/charts" || true
             fi
           done
+
+      - name: Create Macro Release Tag for Foundations
+        if: hashFiles('VERSION') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          TAG="v${VERSION}"
+          echo "Checking if release tag $TAG exists on remote..."
+          if [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
+            echo "Tag $TAG already exists on remote. Skipping macro release creation."
+          else
+            echo "Creating macro release tag $TAG..."
+            gh release create "$TAG" \
+              --title "GDC IaC Foundations $TAG" \
+              --notes "Automated release for GDC air-gapped foundations and blueprints ($TAG)."
+          fi
+

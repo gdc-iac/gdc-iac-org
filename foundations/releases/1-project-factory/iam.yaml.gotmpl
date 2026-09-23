@@ -46,6 +46,9 @@ releases:
       {{- end }}
     - name: {{ $project.name }}-iam-rolebindings
       chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
+      {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
+      version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
+      {{- end }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 1-project-factory
