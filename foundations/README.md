@@ -15,32 +15,38 @@ The system groups environment resources and setups into execution layers trigger
 - **`3-clusters/`**: Instantiates and provisions standard Kubernetes clusters with baseline supporting services.
 - **`4-notebooks/`**: Facilitates development or deployment of AI/ML workloads.
 
+## Operational Playbooks & Guides
+- 📖 **[Deployment Manual](DEPLOYMENT_MANUAL.md)**: Step-by-step execution, RBAC bootstrapping, verification, and rollback runbook.
+- 📦 **[Air-Gap Mirroring & Ingestion Guide](AIRGAP_MIRRORING.md)**: Downloading releases, SHA256/Cosign verification, and turnkey Harbor ingestion with `./scripts/ingest-airgap-bundle.sh`.
+- 💻 **[Workstation Onboarding](WORKSTATION_ONBOARDING.md)**: Tooling installation, Helm plugins, and environment setup.
+
+---
+
 ## Architecture Overview
 
 ```text
-foundations/
-├── bases/                  <- Shared base configurations and variables
-│   └── environments/       <- Environment definitions files
-│       ├── dev/
-│       │   ├── globals.yaml
-│       │   ├── charts.yaml
-│       │   ├── iac.yaml
-│       │   ├── tenants-org-1.yaml
-│       │   ├── tenants-org-2.yaml
-│       │   └── overrides.yaml
-│       ├── prd/
-│       └── stg/
-├── charts/                 <- Localized deployment modules definitions
-│   └── gdc-dashboards/     <- Charts configurations structures
-│       └── examples/       <- Default dashboard layout specifications
-│   └── ...
-└── releases/               <- Modular deployment groups scripts
-    ├── 0-bootstrap/        <- Foundations bootstrap stage
-    ├── 0-org-setup/        <- Organization policies setup stage
-    ├── 1-project-factory/  <- Tenant project factory stage
-    ├── 2-resources/        <- Application zonal resources stage
-    ├── 3-clusters/         <- Standard/User clusters stage
-    └── 4-notebooks/        <- AI/ML Jupyter notebooks stage
+gdc-iac-org/
+├── charts/                     <- 30+ canonical Helm charts for GDC Custom Resources
+├── foundations/
+│   ├── bases/                  <- Shared base configurations and variables
+│   │   └── environments/       <- Environment definitions files (dev, stg, prd)
+│   │       ├── dev/
+│   │       │   ├── globals.yaml      <- Cluster contexts & shared variables
+│   │       │   ├── charts.yaml       <- Dual-mode chart paths & version overrides
+│   │       │   ├── iac.yaml          <- Platform IAM & root configurations
+│   │       │   ├── tenants-org-1.yaml <- Tenant specifications & project definitions
+│   │       │   └── overrides.yaml    <- Manual configuration overrides
+│   │       ├── stg/
+│   │       └── prd/
+│   └── releases/               <- Modular Helmfile execution stages
+│       ├── 0-bootstrap/        <- Foundations bootstrap stage
+│       ├── 0-org-setup/        <- Organization policies setup stage
+│       ├── 1-project-factory/  <- Tenant project factory stage
+│       ├── 2-resources/        <- Application zonal resources stage
+│       ├── 3-clusters/         <- Standard/User clusters stage
+│       └── 4-notebooks/        <- AI/ML Jupyter notebooks stage
+└── scripts/
+    └── ingest-airgap-bundle.sh <- Turnkey air-gap bundle ingestion & Harbor sync utility
 ```
 
 ---

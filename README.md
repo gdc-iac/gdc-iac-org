@@ -32,7 +32,7 @@ This repository operates as a **Reusable Helm & Helmfile Blueprint Library**. It
 │   ├── gdc_gemma_gw/          # Self-contained Gemma LLM Gateway (vLLM & Ollama serving)
 │   ├── common-scripts/        # Packaging, building, parameter configuration, and image mirroring scripts
 │   └── docs/                  # In-depth architectural implementation guides
-├── charts/                    # 27 modular Helm charts templating GDCag Custom Resources
+├── charts/                    # 30 modular Helm charts templating GDCag Custom Resources
 ├── tools/                     # Deployment tooling and GitOps orchestration engines
 │   ├── bootstrap/             # Initial root project, service account, and credentials bootstrap
 │   ├── helmfile/              # Declarative, data-driven orchestration using helmfile
@@ -40,8 +40,52 @@ This repository operates as a **Reusable Helm & Helmfile Blueprint Library**. It
 │   ├── config-sync/           # In-cluster continuous GitOps synchronization with Google Config Sync
 │   └── argocd/                # Continuous deployment and GitOps synchronization using ArgoCD
 ├── policy/                    # OPA/Rego policies for security and configuration validation
-└── scripts/                   # CI/CD validation, testing, schema generation, and documentation utilities
+└── scripts/                   # Ingestion, validation, testing, schema generation, and documentation utilities
+    └── ingest-airgap-bundle.sh # Turnkey air-gap bundle verification & Harbor sync utility
 ```
+
+---
+
+## Release Deliverables & Downstream Consumption
+
+This repository operates strictly as a reusable module and blueprint library. It publishes four standardized, cryptographically certified deliverables:
+
+```mermaid
+graph LR
+    subgraph Release Deliverables
+        A["1. OCI Charts\noci://ghcr.io/gdc-iac/gdc-iac-org/charts/*"]
+        B["2. Git Release Tags\nvX.Y.Z for Foundations"]
+        C["3. Air-Gap Bundle\ngdc-iac-airgap-vX.Y.Z.tar.gz"]
+        D["4. Attestation & Provenance\nSPDX 2.3 SBOM + Cosign Signatures"]
+    end
+```
+
+### 1. Air-Gapped High-Side Ingestion (Disconnected Partitions)
+For facilities with zero internet access, official releases provide a standalone archive:
+1. **Download & Verify**:
+   ```bash
+   sha256sum -c gdc-iac-airgap-v0.2.0.tar.gz.sha256
+   ```
+2. **Transfer & Ingest**: Extract the archive on your air-gapped workstation and run the turnkey ingestion utility:
+   ```bash
+   tar -xzf gdc-iac-airgap-v0.2.0.tar.gz
+   cd gdc-iac-airgap-v0.2.0
+
+   ./scripts/ingest-airgap-bundle.sh \
+     --registry harbor.infra.gdc.example.com \
+     --project gdc-iac
+   ```
+3. **Configure Downstream Helmfile**: Point `foundations/bases/environments/<env>/charts.yaml` to your local Harbor registry (`oci://harbor.infra.gdc.example.com/gdc-iac/<chart>`).
+
+👉 **[Complete Air-Gap Ingestion & Mirroring Runbook](foundations/AIRGAP_MIRRORING.md)**
+
+### 2. Connected GitOps Consumption (Staging & Testbeds)
+Downstream GitOps repositories reference versioned foundations releases via Git tags and pull OCI charts directly:
+- **Foundations Stages**: `git::https://github.com/gdc-iac/gdc-iac-org.git//foundations/releases/1-project-factory?ref=v0.2.0`
+- **OCI Charts**: `oci://ghcr.io/gdc-iac/gdc-iac-org/charts/<chart-name>:<version>`
+- **Supply Chain Verification**: Charts are signed keylessly via Sigstore Cosign with SPDX 2.3 SBOMs attached to every release.
+
+👉 **[Enterprise Release Strategy & Architecture](RELEASE_STRATEGY.md)**
 
 ---
 
