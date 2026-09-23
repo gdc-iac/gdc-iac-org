@@ -21,7 +21,7 @@ bases:
 
 helmDefaults:
   createNamespace: false
-  wait: true
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
   kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
 
 templates:
@@ -46,7 +46,7 @@ templates:
 releases:
   {{- if gt (len $projectRoles) 0 }}
   - name: iac-iam-roles-project
-    chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../charts/gdc-iam-roles" }}
+    chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../../charts/gdc-iam-roles" }}
     labels:
       stage: 0-bootstrap
     inherit:
@@ -57,7 +57,7 @@ releases:
 
   {{- if gt (len $orgRoles) 0 }}
   - name: iac-iam-roles
-    chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../charts/gdc-iam-roles" }}
+    chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../../charts/gdc-iam-roles" }}
     labels:
       stage: 0-bootstrap
     inherit:

@@ -56,7 +56,7 @@ releases:
       {{- end }}
 
     - name: {{ $tenantName }}-iam-rolebindings
-      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../charts/gdc-iam-role-bindings" }}
+      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup

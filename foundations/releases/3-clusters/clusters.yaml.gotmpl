@@ -40,7 +40,7 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "clusters") }}
       {{- range $cluster := $tenantConfig.global.clusters }}
       - name: {{ $cluster.name }}
-        chart: {{ $vals | get "gdc_clusters_chart_path" "../../charts/gdc-clusters" }}
+        chart: {{ $vals | get "gdc_clusters_chart_path" "../../../charts/gdc-clusters" }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 3-clusters

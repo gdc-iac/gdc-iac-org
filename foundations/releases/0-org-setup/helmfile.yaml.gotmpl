@@ -21,7 +21,7 @@ helmfiles:
   - path: org-policies.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
-  - path: org-network-plocies.yaml.gotmpl
+  - path: org-network-policies.yaml.gotmpl
     values:
       - {{ toYaml .Values | nindent 8 }}
   - path: billing.yaml.gotmpl

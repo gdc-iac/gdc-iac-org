@@ -232,3 +232,33 @@ flowchart LR
    - Zero branch rollbacks or code alterations are required in this library repository.
 
 ---
+
+## 6. Implementation Roadmap & Execution Status
+
+The release strategy is deployed incrementally across three progressive phases:
+
+### Phase 1: CI Release Pipeline Stabilization (Completed in PR #67)
+- [x] **Helm Setup Pinning**: Integrated `azure/setup-helm` pinned to Helm `v3.18.0` via immutable commit SHA (`dda3372f752e03dde6b3237bc9431cdc2f7a02a2`) in `.github/workflows/release.yml`.
+- [x] **Global Git Attribution**: Added `git config --global user.name` and `user.email` to ensure clean attribution for release commits.
+- [x] **Security Token Hardening**: Removed insecure `x-access-token` injection into repository remote URLs.
+- [x] **Concurrency Serialization**: Added `concurrency: group: release-${{ github.ref }}` to serialize releases and prevent race conditions.
+- [x] **Dual-Mode Chart Distribution**: Enabled native OCI packaging and publishing to GitHub Container Registry (`ghcr.io/gdc-iac/gdc-iac-org/charts`) alongside GitHub Releases.
+
+### Phase 2: Foundations & Chart Version Parameterization (Follow-Up PR)
+- [ ] **Helmfile Version Attribute Support**: Update Helmfile release templates under `foundations/releases/*/*.yaml.gotmpl` to accept both local paths and remote OCI registry references with explicit `version:` attributes:
+  ```yaml
+  chart: {{ $vals | get "gdc_clusters_chart" "../../../charts/gdc-clusters" }}
+  {{- if hasKey $vals "gdc_clusters_version" }}
+  version: {{ $vals.gdc_clusters_version | quote }}
+  {{- end }}
+  ```
+- [ ] **Dual-Mode Environment Definitions**: Update `foundations/bases/environments/*/charts.yaml` to provide dual-mode examples (local relative filesystem paths for development vs `oci://harbor.infra.gdc.example.com/charts` with pinned versions for production).
+- [ ] **Unified Distribution Tagging**: Automate Git macro-tagging (`vMAJOR.MINOR.PATCH`) on `main` when `foundations/` or `blueprints/` change to support remote Helmfile references (`git::https://github.com/gdc-iac/gdc-iac-org.git//foundations/releases/1-project-factory?ref=v1.3.0`).
+
+### Phase 3: Air-Gap Bundling & Supply Chain Attestation (Follow-Up PR)
+- [ ] **Automated Air-Gap Tarball Compilation**: Extend `.github/workflows/release.yml` to package `gdc-iac-airgap-vX.Y.Z.tar.gz` containing all `.tgz` chart packages, foundations templates, blueprints, and `SHA256SUMS`.
+- [ ] **Cosign OCI Signatures**: Sign published OCI charts in GHCR using Cosign keyless or KMS-backed signatures.
+- [ ] **SBOM Generation**: Generate SPDX 2.3 Software Bill of Materials (`gdc-iac-sbom-vX.Y.Z.json`) using Syft/Anchore during the release workflow.
+- [ ] **Air-Gap Ingestion Utility**: Author `foundations/scripts/ingest-airgap-bundle.sh` to provide customers with a turnkey script to verify checksums and seed charts and images into their local air-gapped Harbor registry.
+
+---

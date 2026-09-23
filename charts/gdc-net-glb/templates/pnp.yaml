@@ -1,0 +1,32 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- if and .Values.name (and (eq .Values.loadBalancingScheme "EXTERNAL") .Values.pnp.enabled) }}
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ printf "allow-inbound-external-%s" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+spec:
+  policyType: Ingress
+  subject:
+    subjectType: UserWorkload
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: {{ required "A valid allowedCidr is required (.Values.pnp.allowedCidr)" .Values.pnp.allowedCidr | quote }}
+    ports:
+    - protocol: {{ required "A valid backendService protocol is required (.Values.backendService.protocol)" .Values.backendService.protocol | quote }}
+      port: {{ required "A valid backendService targetPort is required (.Values.backendService.targetPort)" .Values.backendService.targetPort }}
+{{- end }}

@@ -14,16 +14,18 @@
 
 package main
 
-deny[msg] {
+import rego.v1
+
+deny contains msg if {
   input.kind == "ProjectNetworkPolicy"
-  some i, j, k
+  some i, j
   input.spec.ingress[i].from[j].ipBlock.cidr == "0.0.0.0/0"
-  msg = sprintf("ProjectNetworkPolicy '%s' allows ingress from 0.0.0.0/0, which is too permissive.", [input.metadata.name])
+  msg := sprintf("ProjectNetworkPolicy '%s' allows ingress from 0.0.0.0/0, which is too permissive.", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
   input.kind == "ProjectNetworkPolicy"
-  some i, j, k
+  some i, j
   input.spec.egress[i].to[j].ipBlock.cidr == "0.0.0.0/0"
-  msg = sprintf("ProjectNetworkPolicy '%s' allows egress to 0.0.0.0/0, which is too permissive.", [input.metadata.name])
+  msg := sprintf("ProjectNetworkPolicy '%s' allows egress to 0.0.0.0/0, which is too permissive.", [input.metadata.name])
 }

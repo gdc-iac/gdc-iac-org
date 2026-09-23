@@ -32,7 +32,7 @@ templates:
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: true
-    wait: true
+    wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
@@ -45,7 +45,7 @@ releases:
         {{- $iamrolebindings = append $iamrolebindings (dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User")) }}
       {{- end }}
     - name: {{ $project.name }}-iam-rolebindings
-      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../charts/gdc-iam-role-bindings" }}
+      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 1-project-factory

@@ -21,15 +21,16 @@ bases:
 
 helmDefaults:
   createNamespace: false
-  wait: true
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
   kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "billing") }}
     - name: {{ $tenantName }}-billing
-      chart: {{ $vals | get "gdc_billing_chart_path" "../../charts/gdc-billing" }}
-      kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+      chart: {{ $vals | get "gdc_billing_chart_path" "../../../charts/gdc-billing" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
       namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
       installed: true
       labels:

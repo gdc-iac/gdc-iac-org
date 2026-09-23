@@ -1,0 +1,52 @@
+<!--
+Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# GDC Cloud NAT Gateway Helm Chart (`gdc-cloud-nat-gateway`)
+
+This Helm chart automates the provisioning of **Cloud NAT Gateways** inside Google Distributed Cloud (GDC) Hosted air-gapped environments. It uses GDC's official `networking.gdc.goog/v1` API group to define gateway workloads.
+
+---
+
+## Configuration Parameters
+
+The following table lists the configurable parameters of the `gdc-cloud-nat-gateway` chart and their default values:
+
+| Parameter | Description | Default | Required |
+| :--- | :--- | :--- | :--- |
+| `namespace` | Target namespace where resources are deployed | `""` | **Yes** |
+| `name` | Unique identifier name of the Cloud NAT Gateway | `""` | **Yes** |
+| `workloadSelector.matchLabels.app` | Target workload match label to route through the NAT | `""` | **Yes** |
+| `subnetRefs` | List of leaf subnets representing egress IPs allocated for NAT | `[]` | **Yes** |
+| `connectionOptions.nonTCPTimeoutSeconds` | Timeout for non-TCP connections in seconds | `60` | No |
+| `connectionOptions.tcpTimeoutSeconds` | Timeout for established TCP connections in seconds | `600` | No |
+| `connectionOptions.tcpTeardownTimeoutSeconds` | Teardown timeout for TCP connections in seconds | `120` | No |
+| `connectionOptions.tcpEstablishmentTimeoutSeconds` | Establishment timeout for TCP connections in seconds | `20` | No |
+
+---
+
+## Usage Example
+
+```yaml
+# values.yaml
+namespace: "my-project"
+name: "my-cloud-nat"
+workloadSelector:
+  matchLabels:
+    app: "internal-workload"
+subnetRefs:
+  - "nat-ip-subnet-1"
+  - "nat-ip-subnet-2"
+```

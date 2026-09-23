@@ -44,7 +44,7 @@ releases:
       {{- $cleanEnvName := $vals | get "environment_name" "dev" }}
 
       {{- $envPath := $vals | get "gdc_dashboards_env_path" "" }}
-      {{- $examplesDir := $vals | get "gdc_dashboards_examples_path" "../../charts/gdc-dashboards/examples" }}
+      {{- $examplesDir := $vals | get "gdc_dashboards_examples_path" "../../../charts/gdc-dashboards/examples" }}
       
       {{- $envDashboardsDir := "" }}
       {{- if ne $envPath "" }}
@@ -82,7 +82,7 @@ releases:
 
       {{- if or $hasExplicitDashboards (gt (len $dashboards) 0) }}
       - name: {{ $project.name }}-dashboards
-        chart: {{ $vals | get "gdc_dashboards_chart_path" "../../charts/gdc-dashboards" }}
+        chart: {{ $vals | get "gdc_dashboards_chart_path" "../../../charts/gdc-dashboards" }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 2-resources

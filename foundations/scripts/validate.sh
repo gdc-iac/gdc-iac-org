@@ -18,6 +18,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+FOUNDATIONS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${FOUNDATIONS_DIR}"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -32,9 +38,9 @@ echo -e "${BLUE}====================================================${NC}"
 
 # Step 1: Helm Chart Linting
 echo -e "\n${YELLOW}[Step 1/3] Linting Local Custom Charts...${NC}"
-for chart_dir in charts/*; do
-  if [ -d "$chart_dir" ]; then
-    echo -n "Linting $chart_dir... "
+for chart_dir in "${REPO_ROOT}/charts"/*; do
+  if [ -d "$chart_dir" ] && [ -f "$chart_dir/Chart.yaml" ]; then
+    echo -n "Linting $(basename "$chart_dir")... "
     if helm lint "$chart_dir" >/dev/null 2>&1; then
       echo -e "${GREEN}PASSED${NC}"
     else

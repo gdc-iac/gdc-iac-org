@@ -48,7 +48,7 @@ releases:
         {{- $rbacrolebindings = append $rbacrolebindings $resolved }}
       {{- end }}
     - name: {{ $tenantName }}-rbac-rolebindings
-      chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../charts/gdc-rbac-role-bindings" }}
+      chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../../charts/gdc-rbac-role-bindings" }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup

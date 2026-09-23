@@ -14,7 +14,13 @@
 
 ## Reference: https://github.com/helm/chart-testing-action
 name: Linting
-on: pull_request
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -37,7 +43,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
         with:
-          version: v3.10.1 # Also update in publish.yaml
+          version: v3.18.0
 
       - name: Set up python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -65,6 +71,34 @@ jobs:
 
       - name: Run chart-testing (lint)
         run: ct lint --debug --config ./.github/configs/ct-lint.yaml --lint-conf ./.github/configs/lintconf.yaml
+
+      - name: Set up Kube Tools (kubeconform & conftest)
+        uses: yokawasa/action-setup-kube-tools@9d39563c24d4a419d1a8289c34d6da5a6171252c # v0.13.5
+        with:
+          setup-tools: |
+            kubeconform
+            conftest
+          kubeconform: '0.6.7'
+          conftest: '0.56.0'
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.2
+
+      - name: Run Chart Test Suite (test-charts.sh)
+        run: ./scripts/test-charts.sh
+
+      - name: Setup Helmfile
+        uses: helmfile/helmfile-action@614b4cd063ada10b87f668f6ffd35485bce0cac5 # v2.4.8
+        with:
+          helmfile-version: 'v1.2.1'
+          helm-version: 'v3.18.0'
+          helm-plugins: >-
+            https://github.com/databus23/helm-diff,
+            https://github.com/jkroepke/helm-secrets
+          helmfile-args: version
+
+      - name: Run Foundations Validation (validate.sh)
+        run: ./foundations/scripts/validate.sh dev
 
       # - name: Run docs-testing (helm-docs)
       #   id: helm-docs

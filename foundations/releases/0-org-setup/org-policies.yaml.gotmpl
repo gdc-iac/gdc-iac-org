@@ -29,7 +29,7 @@ bases:
 
 helmDefaults:
   createNamespace: false
-  wait: true
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
 
 templates:
   policy-template:
@@ -43,21 +43,9 @@ releases:
     {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
 
     # --- ORG LEVEL POLICIES ---
-    {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_network_policies") }}
-    - name: {{ $tenantName }}-org-netpols
-      chart: {{ $vals | get "gdc_org_network_policies_chart_path" "../../charts/gdc-org-network-policies" }}
-      kubeContext: {{ $tenantGlobalContext | quote }}
-      labels:
-        stage: 0-org-setup
-      inherit:
-        - template: policy-template
-      values:
-        - orgnetworkpolicies: {{ $tenantConfig.global.org_network_policies | toJson }}
-    {{- end }}
-
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_policies") }}
     - name: {{ $tenantName }}-org-policies
-      chart: {{ $vals | get "gdc_org_policies_chart_path" "../../charts/gdc-org-policies" }}
+      chart: {{ $vals | get "gdc_org_policies_chart_path" "../../../charts/gdc-org-policies" }}
       kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup

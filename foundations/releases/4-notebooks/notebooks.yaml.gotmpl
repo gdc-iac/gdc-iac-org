@@ -40,7 +40,7 @@ releases:
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "notebooks") }}
       {{- range $notebook := $tenantConfig.global.notebooks }}
       - name: {{ $notebook.name }}
-        chart: {{ $vals | get "gdc_notebooks_chart_path" "../../charts/gdc-notebooks" }}
+        chart: {{ $vals | get "gdc_notebooks_chart_path" "../../../charts/gdc-notebooks" }}
         kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 4-notebooks

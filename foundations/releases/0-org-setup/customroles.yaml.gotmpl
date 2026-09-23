@@ -28,16 +28,17 @@ templates:
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "customroles") }}
     - name: {{ $tenantName }}-custom-roles
-      chart: {{ $vals | get "gdc_custom_roles_chart_path" "../../charts/gdc-custom-roles" }}
-      kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+      chart: {{ $vals | get "gdc_iam_roles_chart_path" "../../../charts/gdc-iam-roles" }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
       installed: true
       labels:
         stage: 0-org-setup
       inherit:
         - template: customroles-template
       values:
-        - customroles: {{ $tenantConfig.global.customroles | toJson }}
+        - iamroles: {{ $tenantConfig.global.customroles | toJson }}
     {{- end }}
   {{- end }}
