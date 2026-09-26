@@ -19,7 +19,7 @@ tests:
     template: templates/apps/workloads.yaml
     asserts:
       - hasDocuments:
-          count: 4
+          count: 3
       - isKind:
-          of: Namespace
+          of: Deployment
         documentIndex: 0

@@ -19,7 +19,7 @@ Align `blueprints/patterns` (`p1` through `p13`) with the core IaC orchestration
 
 ## Scope
 - **Patterns**: `blueprints/patterns/p*/chart/` (`p1`, `p3`, `p4`, `p5`, `p6`, `p7`, `p8`, `p10`, `p11`, `p12`, `p13`)
-- **Foundations Orchestration**: `foundations/releases/5-patterns/` (`helmfile.yaml.gotmpl`, `patterns.yaml.gotmpl`), `foundations/helmfile.yaml`, `foundations/bases/environments/*/charts.yaml`
+- **Foundations Orchestration**: `foundations/releases/5-workload-factory/` (`helmfile.yaml.gotmpl`, `patterns.yaml.gotmpl`), `foundations/helmfile.yaml`, `foundations/bases/environments/*/charts.yaml`
 - **Validation & Tooling**: `scripts/test-charts.sh`, `blueprints/common-scripts/configure-blueprints.sh`
 - **Documentation**: `blueprints/patterns/p*/README.md`, `blueprints/docs/implementation-guides/*.md`, `foundations/README.md`
 
@@ -28,7 +28,7 @@ Align `blueprints/patterns` (`p1` through `p13`) with the core IaC orchestration
 ### 1. Wrapper Charts (`blueprints/patterns/<pattern>/chart/`)
 Each pattern includes a lightweight Helm chart wrapping its resources into two gated template groups:
 - **User Cluster Workloads (`templates/apps/workloads.yaml`, gated by `apps.enabled: true`)**:
-  Deploys standard Kubernetes resources (`Deployment`, `StatefulSet`, `Service`, `GatewayClass`, `Gateway`, `HTTPRoute`, `CronJob`, `ConfigMap`, `Secret`, `ServiceAccount`, `NetworkPolicy`) to the target User Cluster context in Stage 5 (`5-patterns`).
+  Deploys standard Kubernetes resources (`Deployment`, `StatefulSet`, `Service`, `GatewayClass`, `Gateway`, `HTTPRoute`, `CronJob`, `ConfigMap`, `Secret`, `ServiceAccount`, `NetworkPolicy`) to the target User Cluster context in Stage 5 (`5-workload-factory`).
 - **Zonal GDC Resources (`templates/gdc/resources.yaml`, gated by `gdc.enabled: false`)**:
   In the layered IaC framework, Stage 2 (`2-resources`) provisions Zonal managed databases (`DBCluster`), Virtual Machines (`VirtualMachine`), and Buckets (`Bucket`) via the core `charts/gdc-dbs`, `charts/gdc-vm`, and `charts/gdc-buckets` charts. Consequently, `gdc.enabled` defaults to `false` for Stage 5 User Cluster deployments, while remaining available (`--set gdc.enabled=true`) for operators who want to deploy Zonal CRDs directly from the wrapper chart.
 - **Day-2 Failover Protection (`templates/gdc/failover.yaml`, gated by `gdc.failover.enabled: false`)**:
@@ -53,7 +53,7 @@ Each pattern includes a lightweight Helm chart wrapping its resources into two g
 Because GKE Stepping-Stone clusters emulate GDC using standard Kubernetes `StatefulSet` (`postgres-0`) and GKE Gateway controllers (`gke-l7-rilb`), operators deploying to physical **GDC Air-Gapped (`GDC-ag`)** environments via `foundations/` (`Helmfile` / `ArgoCD`) must verify the following four boundaries during cutover:
 
 1. **Stage 2 Zonal `DBCluster` Secret Projection (`gemma-client-db-credentials`)**:
-   - *Risk*: On GDC-ag, `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`) is provisioned in Stage 2 (`2-resources` Zonal Management Plane), whereas `gemma-client` deploys in Stage 5 (`5-patterns` User Cluster) and reads `Secret/gemma-client-db-credentials` (key: `connection_string`).
+   - *Risk*: On GDC-ag, `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`) is provisioned in Stage 2 (`2-resources` Zonal Management Plane), whereas `gemma-client` deploys in Stage 5 (`5-workload-factory` User Cluster) and reads `Secret/gemma-client-db-credentials` (key: `connection_string`).
    - *Mitigation / Check*: Confirm that `p0-dga-factory` (`dga-secret-sync`) or the operator secret-projection workflow populates `Secret/gemma-client-db-credentials` with a valid `connection_string` (`postgresql://<user>:<password>@<dbcluster-vip>:5432/<dbname>`) in the target User Cluster namespace prior to Stage 5 rollout.
 2. **Parent Gateway Namespace & Hostname Binding (`gdc-platform-gateway`)**:
    - *Risk*: `HTTPRoute/gemma-unified-routes` defaults to `parentRefs: [{name: gdc-platform-gateway, namespace: gemma-inference}]` with wildcard hostname matching (`apps.hostnames: []`).

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-consumer
+  namespace: gemma-inference
+  labels:
+    app: telemetry-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetry-consumer
+  template:
+    metadata:
+      labels:
+        app: telemetry-consumer
+    spec:
+      containers:
+      - name: consumer
+        image: REGISTRY_HOST_PLACEHOLDER/telemetry-consumer:latest
+        imagePullPolicy: Always
+        env:
+        - name: KAFKA_BROKERS
+          value: "kafka-svc.gemma-inference.svc.cluster.local:9092"
+        - name: KAFKA_TOPIC
+          value: "multi-domain-telemetry"
+        - name: DB_CONN
+          value: "dbname=postgres user=postgres password=password host=postgres-svc.gemma-inference.svc.cluster.local port=5432"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "300m"
+            memory: "256Mi"

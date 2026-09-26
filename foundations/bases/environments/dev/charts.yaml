@@ -58,7 +58,7 @@ gdc_rbac_rolebindings_chart_path: "../../../charts/gdc-rbac-role-bindings"
 gdc_standard_clusters_chart_path: "../../../charts/gdc-standard-clusters"
 gdc_vm_chart_path: "../../../charts/gdc-vm"
 
-# GDC Blueprint Pattern Chart Paths (Stage 5: 5-patterns)
+# GDC Blueprint Pattern Chart Paths (Stage 5: 5-workload-factory)
 gdc_patterns_base_path: "../../../blueprints/patterns"
 gdc_pattern_p1_chart_path: "../../../blueprints/patterns/p1-resilient-3-tier-webapp/chart"
 gdc_pattern_p3_chart_path: "../../../blueprints/patterns/p3-legacy-vm-modern-db/chart"

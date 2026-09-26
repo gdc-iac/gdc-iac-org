@@ -307,11 +307,11 @@ For step-by-step instructions on integrating this pattern with the **P12-Keycloa
 
 ## Helm & IaC Orchestrated Deployment
 
-In addition to standalone manifest application (`kubectl apply -f manifests/`), this pattern provides a standardized Helm wrapper chart in [`chart/`](./chart/) integrated with the repository's layered Helmfile orchestration (`foundations/releases/5-patterns`).
+In addition to standalone manifest application (`kubectl apply -f manifests/`), this pattern provides a standardized Helm wrapper chart in [`chart/`](./chart/) integrated with the repository's layered Helmfile orchestration (`foundations/releases/5-workload-factory`).
 
 ### Control-Plane Separation (`gdc.enabled` vs `apps.enabled`)
 - **Zonal Managed Infrastructure (`Stage 2: 2-resources`)**: GDC managed resources (`DBCluster`, `VirtualMachine`, `Bucket`) are provisioned on the Zonal Management API server via the core `charts/gdc-dbs` and `charts/gdc-vm` charts (`gdc.enabled: false` by default in the pattern chart).
-- **User Cluster Workloads (`Stage 5: 5-patterns`)**: Kubernetes application workloads (`Deployment`, `StatefulSet`, `Service`, `Gateway`, `HTTPRoute`, `CronJob`, `NetworkPolicy`) are deployed to the target User Cluster (`apps.enabled: true`).
+- **User Cluster Workloads (`Stage 5: 5-workload-factory`)**: Kubernetes application workloads (`Deployment`, `StatefulSet`, `Service`, `Gateway`, `HTTPRoute`, `CronJob`, `NetworkPolicy`) are deployed to the target User Cluster (`apps.enabled: true`).
 - **Day-2 Triggers**: Any `Failover` CRDs (`fleet.dbadmin.gdc.goog/v1`) are gated behind `gdc.failover.enabled: false` so automated GitOps syncs never trigger unintended failovers.
 
 ### Option A: Orchestrated Deployment via Helmfile (`foundations/`)
@@ -331,8 +331,8 @@ resources:
 Then template or apply Stage 5 from `foundations/`:
 ```bash
 cd foundations
-helmfile -e dev -l stage=5-patterns template
-helmfile -e dev -l stage=5-patterns apply
+helmfile -e dev -l stage=5-workload-factory template
+helmfile -e dev -l stage=5-workload-factory apply
 ```
 
 ### Option B: Direct Helm CLI Deployment

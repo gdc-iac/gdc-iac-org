@@ -165,7 +165,7 @@ dev:
                   namespace: "mellons-prj"
                   registry: "harbor.gdc.local/blueprint-images"
                   # Stage 2 (2-resources) provisions Zonal databases/VMs via charts/gdc-dbs & charts/gdc-vm;
-                  # Stage 5 (5-patterns) deploys User Cluster workloads (deploy_apps: true, deploy_gdc_resources: false).
+                  # Stage 5 (5-workload-factory) deploys User Cluster workloads (deploy_apps: true, deploy_gdc_resources: false).
                   deploy_gdc_resources: false
                   deploy_apps: true
         clusters:

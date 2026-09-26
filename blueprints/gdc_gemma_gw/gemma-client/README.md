@@ -444,6 +444,6 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 
 ## Helm & IaC Orchestrated Deployment (`gdc-iac-org` Integration)
 
-All Gemma Gateway and Gemma Client components include standardized Helm charts (`blueprints/ollama-gke`, `blueprints/vllm-gke`, `standalone/chart`, and `gemma-client/chart`) compatible with the `gdc-iac-org` layered Helmfile orchestration (`foundations/releases/5-patterns`).
+All Gemma Gateway and Gemma Client components include standardized Helm charts (`blueprints/ollama-gke`, `blueprints/vllm-gke`, `standalone/chart`, and `gemma-client/chart`) compatible with the `gdc-iac-org` layered Helmfile orchestration (`foundations/releases/5-workload-factory`).
 - **Zonal Managed Databases (`Stage 2: 2-resources`)**: Provisioned via core `charts/gdc-dbs` (`gdc.enabled: false` by default in `gemma-client/chart`).
-- **User Cluster Workloads (`Stage 5: 5-patterns`)**: Deployed via Helmfile or `helm upgrade --install` with `apps.enabled: true`.
+- **User Cluster Workloads (`Stage 5: 5-workload-factory`)**: Deployed via Helmfile or `helm upgrade --install` with `apps.enabled: true`.
