@@ -41,10 +41,10 @@ releases:
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "patterns") }}
         {{- range $pattern := $project.resources.patterns }}
-          {{- $patternId := $pattern.pattern }}
-          {{- $releaseName := $pattern.name | default (printf "%s-%s" $project.name $patternId) }}
-          {{- $targetContext := $pattern.kube_context_cluster | default $tenantZonalContext }}
-          {{- $chartPath := $pattern.chart_path | default (printf "%s/%s/chart" $patternsBasePath $patternId) }}
+          {{- $patternId := $pattern | get "pattern" "" }}
+          {{- $releaseName := $pattern | get "name" (printf "%s-%s" $project.name $patternId) }}
+          {{- $targetContext := $pattern | get "kube_context_cluster" $tenantZonalContext }}
+          {{- $chartPath := $pattern | get "chart_path" (printf "%s/%s/chart" $patternsBasePath $patternId) }}
       - name: {{ $releaseName | quote }}
         chart: {{ $chartPath | quote }}
         kubeContext: {{ $targetContext | quote }}
@@ -59,8 +59,8 @@ releases:
         values:
           - global:
               projectId: {{ $project.name | quote }}
-              namespace: {{ $pattern.namespace | default $project.name | quote }}
-              registry: {{ $pattern.registry | default ($vals | get "gdc_default_registry" "harbor.gdc.local/blueprint-images") | quote }}
+              namespace: {{ $pattern | get "namespace" $project.name | quote }}
+              registry: {{ $pattern | get "registry" ($vals | get "gdc_default_registry" "harbor.gdc.local/blueprint-images") | quote }}
               commonLabels:
                 tenant: {{ $tenantName | quote }}
                 project: {{ $project.name | quote }}
