@@ -202,7 +202,6 @@ metadata:
   name: gemma-unified-routes
   namespace: {{ include "gemma-gemma-client.namespace" . }}
   labels:
-    app.kubernetes.io/part-of: gemma-client
     {{- include "gemma-gemma-client.labels" . | nindent 4 }}
 spec:
   parentRefs:

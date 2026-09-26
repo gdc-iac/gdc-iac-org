@@ -89,7 +89,6 @@ metadata:
   name: gemma-gateway-route
   namespace: {{ include "gemma-standalone.namespace" . }}
   labels:
-    app.kubernetes.io/part-of: gemma-gateway
     {{- include "gemma-standalone.labels" . | nindent 4 }}
 spec:
   parentRefs:
