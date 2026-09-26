@@ -14,6 +14,7 @@ The system groups environment resources and setups into execution layers trigger
 - **`2-resources/`**: Coordinates deployment instances of application resources (observability dashboards, Harbor image registries, backup plans and repositories, VM instances, Database configurations, Buckets stores).
 - **`3-clusters/`**: Instantiates and provisions standard Kubernetes clusters with baseline supporting services.
 - **`4-notebooks/`**: Facilitates development or deployment of AI/ML workloads.
+- **`5-workload-factory/`**: Orchestrates User Cluster application workloads for GDC Blueprint Patterns (`blueprints/patterns/*/chart`) while relying on Stage 2 (`2-resources`) for Zonal managed databases, VMs, and buckets.
 
 ## Operational Playbooks & Guides
 - 📖 **[Deployment Manual](DEPLOYMENT_MANUAL.md)**: Step-by-step execution, RBAC bootstrapping, verification, and rollback runbook.
@@ -44,7 +45,8 @@ gdc-iac-org/
 │       ├── 1-project-factory/  <- Tenant project factory stage
 │       ├── 2-resources/        <- Application zonal resources stage
 │       ├── 3-clusters/         <- Standard/User clusters stage
-│       └── 4-notebooks/        <- AI/ML Jupyter notebooks stage
+│       ├── 4-notebooks/        <- AI/ML Jupyter notebooks stage
+│       └── 5-workload-factory/         <- GDC Blueprint Patterns workload stage
 └── scripts/
     └── ingest-airgap-bundle.sh <- Turnkey air-gap bundle ingestion & Harbor sync utility
 ```

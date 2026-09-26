@@ -159,6 +159,15 @@ dev:
                   #   backupRepository: "mellons-vm-repo"
                   #   volumeStrategy: "ProvisionerSpecific"
                   #   cronSchedule: "0 0 * * *"
+              patterns:
+                - name: "mellons-p1-webapp"
+                  pattern: "p1-resilient-3-tier-webapp"
+                  namespace: "mellons-prj"
+                  registry: "harbor.gdc.local/blueprint-images"
+                  # Stage 2 (2-resources) provisions Zonal databases/VMs via charts/gdc-dbs & charts/gdc-vm;
+                  # Stage 5 (5-workload-factory) deploys User Cluster workloads (deploy_apps: true, deploy_gdc_resources: false).
+                  deploy_gdc_resources: false
+                  deploy_apps: true
         clusters:
           - name: "mellons-cluster" # This is a standard cluster
             namespace: "platform"

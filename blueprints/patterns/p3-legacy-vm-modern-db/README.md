@@ -270,3 +270,53 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
    ```
 
 5. **Deploy Helm Charts (If Applicable):** Unpack any required software suites from `artifacts/external-dependencies/charts/` using `--untar` and `helm install` them securely referencing your internal registry.
+
+---
+
+## Helm & IaC Orchestrated Deployment
+
+In addition to standalone manifest application (`kubectl apply -f manifests/`), this pattern provides a standardized Helm wrapper chart in [`chart/`](./chart/) integrated with the repository's layered Helmfile orchestration (`foundations/releases/5-workload-factory`).
+
+### Control-Plane Separation (`gdc.enabled` vs `apps.enabled`)
+- **Zonal Managed Infrastructure (`Stage 2: 2-resources`)**: GDC managed resources (`DBCluster`, `VirtualMachine`, `Bucket`) are provisioned on the Zonal Management API server via the core `charts/gdc-dbs` and `charts/gdc-vm` charts (`gdc.enabled: false` by default in the pattern chart).
+- **User Cluster Workloads (`Stage 5: 5-workload-factory`)**: Kubernetes application workloads (`Deployment`, `StatefulSet`, `Service`, `Gateway`, `HTTPRoute`, `CronJob`, `NetworkPolicy`) are deployed to the target User Cluster (`apps.enabled: true`).
+- **Day-2 Triggers**: Any `Failover` CRDs (`fleet.dbadmin.gdc.goog/v1`) are gated behind `gdc.failover.enabled: false` so automated GitOps syncs never trigger unintended failovers.
+
+### Option A: Orchestrated Deployment via Helmfile (`foundations/`)
+Declare the pattern under your tenant project's `resources.patterns` list in `foundations/bases/environments/<env>/tenants-org-<N>.yaml`:
+
+```yaml
+resources:
+  patterns:
+    - name: "my-p3-legacy-vm-modern-db"
+      pattern: "p3-legacy-vm-modern-db"
+      namespace: "my-gdc-project"
+      registry: "harbor.gdc.local/blueprint-images"
+      deploy_gdc_resources: false
+      deploy_apps: true
+```
+
+Then template or apply Stage 5 from `foundations/`:
+```bash
+cd foundations
+helmfile -e dev -l stage=5-workload-factory template
+helmfile -e dev -l stage=5-workload-factory apply
+```
+
+### Option B: Direct Helm CLI Deployment
+```bash
+# Deploy User Cluster workloads (default: apps.enabled=true, gdc.enabled=false)
+helm upgrade --install p3-legacy-vm-modern-db ./blueprints/patterns/p3-legacy-vm-modern-db/chart \
+  --namespace my-gdc-project \
+  --set global.projectId=my-gdc-project \
+  --set global.namespace=my-gdc-project \
+  --set global.registry=harbor.gdc.local/blueprint-images
+
+# Optional: Render/deploy Zonal GDC CRDs directly from the wrapper chart
+helm upgrade --install p3-legacy-vm-modern-db-gdc ./blueprints/patterns/p3-legacy-vm-modern-db/chart \
+  --namespace my-gdc-project \
+  --set gdc.enabled=true \
+  --set apps.enabled=false \
+  --set global.projectId=my-gdc-project \
+  --set global.namespace=my-gdc-project
+```

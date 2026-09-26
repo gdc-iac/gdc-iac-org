@@ -1,5 +1,3 @@
-Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
-
 # 🧠 Gemma 4 Gateway Control Plane & Operations Guide
 
 > **Version:** 1.1
@@ -34,12 +32,12 @@ It is designed specifically for **Google Distributed Cloud air-gapped (GDC-ag)**
 Because GKE standard environments isolate forwarded ports onto distinct web-preview subdomains under strict IAM boundaries, accessing the control plane requires aligning with your testing phase:
 
 ### 🧪 Pathway A: GKE Staging Sandbox (Cloud Workstations)
-To secure browser OIDC redirects and prevent cross-port cookie bans, all components (React Chat UI, FastAPI Backend APIs, and the Keycloak Identity Server) are exposed unified behind a single entry point under Port `8081`:
+To secure browser OIDC redirects and prevent cross-port cookie bans, all components (React Chat UI, FastAPI Backend APIs, and the Keycloak Identity Server) are exposed behind the GKE Gateway API (`gdc-platform-gateway` + `HTTPRoute/gemma-unified-routes`) and bridged to Port `8081` via `service/gdc-gateway-tunnel`:
 
-1.  **Expose Ingress Gateway**: Open a raw socket tunnel targeting the unified NGINX sidecar:
+1.  **Expose Gateway API L4 Tunnel**: Open a socket tunnel targeting `gdc-gateway-tunnel`:
     ```bash
-    pkill -f "port-forward"
-    kubectl port-forward service/gemma-ingress-gateway 8081:80 -n gemma-inference
+    pkill -f "port-forward" || true
+    kubectl port-forward service/gdc-gateway-tunnel 8081:80 -n gemma-inference
     ```
 2.  **Access URL**: Paste your active Workstation Web Preview URL into your browser (do not open in an Incognito window, as Google Workstations will block anonymous access with a `401 Permission Denied` IAM check!):
     *   **Main Chat Interface (Root `/` route)**: 

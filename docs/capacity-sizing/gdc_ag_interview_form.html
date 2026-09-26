@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GDC Air-Gapped (GDC-ag) — Facilitator Interview Guide & Deterministic Capture Form (HTML)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --background: #0b0f19;
+      --foreground: #f1f5f9;
+      --card: #111827;
+      --card-hover: #1e293b;
+      --border: #1e293b;
+      --primary: #3b82f6;
+      --secondary: #1e293b;
+      --muted-foreground: #94a3b8;
+    }
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .spoken-prompt {
+      border-left: 3px solid #10b981;
+      padding-left: 0.75rem;
+      color: #e2e8f0;
+      font-style: italic;
+    }
+    .archetype-card.selected {
+      border-color: #10b981;
+      background-color: rgba(16, 185, 129, 0.12);
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #ffffff !important; color: #000000 !important; }
+      .print-card { border: 1px solid #ccc !important; background: #fff !important; color: #000 !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Top Navigation & Action Bar -->
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[var(--border)] pb-4 no-print">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            100% Aligned with gdc_ag_offline_interview_questionnaire.md
+          </span>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            Two-Layer Architecture: Spoken Plain-English Prompts &rarr; Silent [F-01]–[F-28] Coding
+          </span>
+        </div>
+        <h1 class="text-2xl font-bold tracking-tight mt-1">
+          GDC Air-Gapped (GDC-ag) Facilitator Interview Guide &amp; Capture Form
+        </h1>
+        <p class="text-xs md:text-sm text-[var(--muted-foreground)]">
+          Read the <span class="text-emerald-400 font-semibold">🗣️ Spoken Conversational Prompts</span> aloud to the customer, check the <span class="text-blue-400 font-semibold">Plain-English Archetype Cards &amp; T-Shirt Derivation</span>, and pass the collated <code class="text-emerald-400">customer_intake.json</code> directly to the Sizing Calculator.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="cursor-pointer px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] transition">
+          📂 Resume / Load .JSON
+          <input type="file" id="loadIntakeInput" accept=".json" class="hidden" onchange="loadExistingJson(event)" />
+        </label>
+        <button onclick="loadWorkedExample()" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] hover:bg-[var(--secondary)] transition cursor-pointer">
+          ⚡ Load Section 7 Worked Example (J3 Tactical C2)
+        </button>
+        <button onclick="downloadIntakeJson()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition cursor-pointer shadow">
+          💾 Download Intake JSON
+        </button>
+        <button onclick="openInWebCalculator()" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition cursor-pointer shadow">
+          🚀 Pass to Web Calculator &rarr;
+        </button>
+        <button onclick="window.print()" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border)] hover:bg-[var(--secondary)] transition cursor-pointer">
+          🖨️ Print / PDF
+        </button>
+      </div>
+    </div>
+
+    <!-- Section Jump Stepper -->
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs no-print">
+      <button onclick="scrollToDomain('sec-0')" class="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-left transition cursor-pointer">
+        <div class="font-bold text-blue-400">Section 0: Scope</div>
+        <div class="text-[11px] text-[var(--muted-foreground)]">0.1–0.4 [F-01]–[F-20C]</div>
+      </button>
+      <button onclick="scrollToDomain('sec-1')" class="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-left transition cursor-pointer">
+        <div class="font-bold text-emerald-400">Section 1: Enclave &amp; HA</div>
+        <div class="text-[11px] text-[var(--muted-foreground)]">1.1–1.3 [F-05]–[F-07]</div>
+      </button>
+      <button onclick="scrollToDomain('sec-2')" class="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-left transition cursor-pointer">
+        <div class="font-bold text-purple-400">Section 2: AI &amp; Runtime</div>
+        <div class="text-[11px] text-[var(--muted-foreground)]">2.1–2.3 [F-08]–[F-17]</div>
+      </button>
+      <button onclick="scrollToDomain('sec-3')" class="p-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-left transition cursor-pointer">
+        <div class="font-bold text-amber-300">Section 3: Archetypes</div>
+        <div class="text-[11px] text-amber-200/80">3A BOM or 3B Cards &amp; T-Shirt</div>
+      </button>
+      <button onclick="scrollToDomain('sec-4')" class="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-left transition cursor-pointer">
+        <div class="font-bold text-cyan-400">Section 4: Growth</div>
+        <div class="text-[11px] text-[var(--muted-foreground)]">4.1–4.3 [F-25]–[F-28]</div>
+      </button>
+      <button onclick="scrollToDomain('sec-5')" class="p-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--secondary)] text-left transition cursor-pointer">
+        <div class="font-bold text-rose-400">Section 5 &amp; 6: Close-Out</div>
+        <div class="text-[11px] text-[var(--muted-foreground)]">Sanity Checks &amp; Ledger</div>
+      </button>
+    </div>
+
+    <!-- Main 12-Column Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT COLUMN (8 Cols): Sections 0 through 5 matching gdc_ag_offline_interview_questionnaire.md -->
+      <div class="lg:col-span-8 space-y-6">
+
+        <!-- SECTION 0: Engagement Scope, Confidence & Lifespan -->
+        <div id="sec-0" class="print-card bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div>
+              <h2 class="font-bold text-base text-blue-400">Section 0: Engagement Scope, Confidence &amp; Lifespan (`[AB]`)</h2>
+              <p class="text-xs text-[var(--muted-foreground)]">Matches Section 0 (Questions 0.1 – 0.4) of <code>gdc_ag_offline_interview_questionnaire.md</code></p>
+            </div>
+            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-blue-500/10 text-blue-300">[F-01]–[F-04B], [F-20C]</span>
+          </div>
+
+          <!-- Q 0.1 -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2.5 text-xs">
+            <div class="font-bold text-white">0.1 Mission &amp; Ownership</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "To kick off, what is the name of this project or system, which operational team owns it, and when do you need initial go-live?"
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+              <div>
+                <label class="block font-semibold text-blue-300 mb-1">🔒 [F-01] Project / Namespace ID</label>
+                <input id="f01_project" type="text" value="tactical-c2-prod" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold text-blue-300 mb-1">🔒 [F-02] Sponsoring Directorate</label>
+                <input id="f02_org" type="text" value="J3 Operations Directorate" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40" />
+              </div>
+              <div>
+                <label class="block font-semibold text-blue-300 mb-1">🔒 [F-04] Target Go-Live Date (YYYY-MM)</label>
+                <input id="f04_date" type="text" value="2026-11" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Q 0.2 -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2 text-xs">
+            <div class="font-bold text-white">0.2 Technical Specification Readiness (Track Selector)</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "Do you already have a concrete bill of materials — exact VM shapes, container CPU/memory requests, or vendor hardware sizing sheets — that you trust for this deployment, or would you prefer we size the infrastructure together based on what the application does?"
+            </div>
+            <div>
+              <label class="block font-semibold text-blue-300 mb-1">🔒 [F-03] Sizing Entry Path</label>
+              <select id="f03_path" onchange="toggleSizingTrack(); collateAll();" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                <option value="PATH_B" selected>[PATH_B] Customer knows the operational problem/scale, not the hardware specs (Use Section 3B Archetype Cards)</option>
+                <option value="PATH_A">[PATH_A] Customer has trusted VM/K8s/DB sizing specs (Use Section 3A Direct Bill of Materials)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Q 0.3 & Q 0.4 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2">
+              <div class="font-bold text-white">0.3 Data Source &amp; Sizing Confidence</div>
+              <div class="spoken-prompt">
+                🗣️ "For the usage numbers we discuss today (user counts, data volumes), are these measured from an existing system running today, derived from vendor benchmarks, or early planning estimates?"
+              </div>
+              <label class="block font-semibold text-blue-300 mb-1">🔒 [F-04B] Data Confidence Class (Sets IO Buffer)</label>
+              <select id="f04b_conf" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                <option value="MEASURED">[MEASURED] Exported from live system (+0% IO buffer)</option>
+                <option value="BENCHMARKED">[BENCHMARKED] Vendor / reference benchmark (+5% IO buffer)</option>
+                <option value="DERIVED" selected>[DERIVED] Calculated together today (+10% IO buffer)</option>
+                <option value="ESTIMATED">[ESTIMATED] Early planning estimate / guess (+25% IO buffer)</option>
+              </select>
+            </div>
+
+            <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2">
+              <div class="font-bold text-white">0.4 Workload Lifespan &amp; Operating Schedule</div>
+              <div class="spoken-prompt">
+                🗣️ "Once deployed, does this system run 24×7 year-round, or are parts of it (like test environments or training jobs) only active during business hours or specific exercises where they could be paused/spun down when idle?"
+              </div>
+              <label class="block font-semibold text-blue-300 mb-1">🔒 [F-20C] Operating Lifespan Class</label>
+              <select id="f20c_lifespan" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                <option value="STATIC_24X7" selected>[STATIC_24X7] Runs 24×7×365 continuously</option>
+                <option value="SPINDOWN_ELIGIBLE">[SPINDOWN_ELIGIBLE] Non-Prod / Batch / Dev can spin down outside active shifts (flags reclaimable compute)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 1: Mission Criticality, Security Enclave & Continuity -->
+        <div id="sec-1" class="print-card bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div>
+              <h2 class="font-bold text-base text-emerald-400">Section 1: Mission Criticality, Security Enclave &amp; Continuity (`[AB]`)</h2>
+              <p class="text-xs text-[var(--muted-foreground)]">Keep the conversation focused on operational risk, security rules, and outage tolerance (Questions 1.1 – 1.3).</p>
+            </div>
+            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-emerald-500/10 text-emerald-300">[F-05]–[F-07]</span>
+          </div>
+
+          <!-- Q 1.1 -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2 text-xs">
+            <div class="font-bold text-white">1.1 Security Enclave &amp; Multi-Tenancy Rules</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "Within this air-gapped classification enclave, does your security accreditor allow your application to share foundational building services — like a central login portal and central security vault — with other projects on the same network, or do your accreditation rules mandate physically walled-off infrastructure just for your team?"
+            </div>
+            <label class="block font-semibold text-emerald-300 mb-1">🔒 [F-05] Cluster &amp; Platform Service Tenancy Mode</label>
+            <select id="f05_tenancy" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+              <option value="SHARED_DEFAULT" selected>[SHARED_DEFAULT] Shared Multi-Tenant Enclave (Reuses shared Keycloak P12 &amp; Vault P11; $0 extra control-plane tax)</option>
+              <option value="HYBRID_DEDICATED_SVC">[HYBRID_DEDICATED_SVC] Shared Cluster + Dedicated Project Vault/SSO (+24 vCPU / 96 GiB RAM dedicated quorum tax)</option>
+              <option value="DEDICATED_SINGLE_TENANT">[DEDICATED_SINGLE_TENANT] Isolated Single-Tenant Cluster + Services (+32 Physical vCPU / +128 GiB RAM / +1.05 TiB Raw Ceph quorum tax)</option>
+            </select>
+          </div>
+
+          <!-- Q 1.2 & Q 1.3 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2">
+              <div class="font-bold text-white">1.2 Noisy-Neighbor / Dedicated Core Mandate</div>
+              <div class="spoken-prompt">
+                🗣️ "For your live production environment, does your security accreditor require strict dedicated physical processor cores (so no other project shares the same physical CPU chip at the same time), or is standard cloud resource sharing acceptable?"
+              </div>
+              <label class="block font-semibold text-emerald-300 mb-1">🔒 [F-06] CPU Reservation &amp; Overcommit Policy</label>
+              <select id="f06_overcommit" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                <option value="PROD_1_TO_1" selected>[PROD_1_TO_1] 1:1 Dedicated Physical Cores in Prod; 2:1 Overcommit in Non-Prod (Standard High-Side Default)</option>
+                <option value="ALL_1_TO_1">[ALL_1_TO_1] Strict 1:1 Physical Cores in BOTH Prod and Non-Prod</option>
+                <option value="OVERCOMMIT_2_TO_1">[OVERCOMMIT_2_TO_1] 2:1 vCPU Overcommit Permitted Everywhere (RAM is always 1:1 physical)</option>
+              </select>
+            </div>
+
+            <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2">
+              <div class="font-bold text-white">1.3 Outage Impact &amp; Disaster Recovery</div>
+              <div class="spoken-prompt">
+                🗣️ "What happens to your mission if a server rack loses power or undergoes maintenance? Does the app need to stay online seamlessly without interruption? And if the entire primary facility goes dark, do you need a live copy running at a second Disaster Recovery (DR) site?"
+              </div>
+              <label class="block font-semibold text-emerald-300 mb-1">🔒 [F-07] Fault Domain &amp; Disaster Recovery Topology</label>
+              <select id="f07_ha" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                <option value="ZONAL_HA_ONLY">[ZONAL_HA_ONLY] Seamless Multi-Rack HA inside Primary Site (Min 2–3 nodes + Primary/Standby DB; 1.0x Site Footprint)</option>
+                <option value="ZONAL_HA_PLUS_DR" selected>[ZONAL_HA_PLUS_DR] ZONAL_HA in Primary Site + Active/Warm DR Site (Warning: Multiplies total compute &amp; Ceph storage by 2.0x)</option>
+                <option value="SINGLE_ZONE">[SINGLE_ZONE] Single Fault Domain / Non-HA (Lab / PoC only; hardware maintenance causes downtime)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Per-Service Isolation Overrides -->
+          <div class="p-3 rounded-lg border border-[var(--border)] bg-black/25 space-y-2 text-xs">
+            <div class="font-semibold text-amber-300">Optional Facilitator Override: Dedicated Platform Service Isolation (`[F-15]` / `[F-16]`):</div>
+            <div id="platformServicesContainer" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Plain-English Workload Shape & AI Needs -->
+        <div id="sec-2" class="print-card bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div>
+              <h2 class="font-bold text-base text-purple-400">Section 2: Plain-English Workload Shape &amp; AI Needs (`[AB]`)</h2>
+              <p class="text-xs text-[var(--muted-foreground)]">
+                Never ask the customer to choose an NVIDIA MIG slice (`1g.10gb` vs `3g.40gb`) or inference engine. Ask how their users interact with AI and let the translation rules select the hardware.
+              </p>
+            </div>
+            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-purple-500/10 text-purple-300">[F-08]–[F-17]</span>
+          </div>
+
+          <!-- Q 2.1 Runtime Checklist -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2 text-xs">
+            <div class="font-bold text-white">2.1 Runtime Form (Containers vs. Legacy Servers)</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "Is this a modern cloud/container application, or does it include existing Windows or Linux server software that needs to be lifted and shifted as full virtual machines?"
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 pt-1">
+              <label class="flex items-center gap-1.5 p-2 rounded border border-[var(--border)] bg-black/30"><input type="checkbox" id="f10_gke" checked onchange="collateAll()" /> <span><b>[F-10]</b> GKE Containers</span></label>
+              <label class="flex items-center gap-1.5 p-2 rounded border border-[var(--border)] bg-black/30"><input type="checkbox" id="f11_vm" onchange="collateAll()" /> <span><b>[F-11]</b> VM Runtime</span></label>
+              <label class="flex items-center gap-1.5 p-2 rounded border border-[var(--border)] bg-black/30"><input type="checkbox" id="f12_pg" checked onchange="collateAll()" /> <span><b>[F-12]</b> Managed Postgres</span></label>
+              <label class="flex items-center gap-1.5 p-2 rounded border border-[var(--border)] bg-black/30"><input type="checkbox" id="f13_obj" checked onchange="collateAll()" /> <span><b>[F-13]</b> Object Buckets</span></label>
+              <label class="flex items-center gap-1.5 p-2 rounded border border-[var(--border)] bg-black/30"><input type="checkbox" id="f14_gw" checked onchange="collateAll()" /> <span><b>[F-14]</b> Gateway API</span></label>
+            </div>
+          </div>
+
+          <!-- Q 2.2 AI / Language Model Interaction Mode -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-3 text-xs">
+            <div class="font-bold text-white">2.2 AI / Language Model Interaction Mode</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "Does your application use AI or language models? If so, how do people use it:<br>
+              1. Just searching documents or translating/extracting text in the background?<br>
+              2. Live interactive chat, summarization, or coding assistance where users wait on screen for instant answers?<br>
+              3. Feeding massive 500-page reports, full codebases, or raw sensor captures in a single prompt?"
+            </div>
+
+            <!-- Interactive Facilitator Translation Helper (Matches Section 2.2 bullet rules word-for-word) -->
+            <div class="p-3 rounded-lg border border-purple-500/30 bg-purple-500/10 space-y-2">
+              <div class="font-semibold text-purple-300">🔒 Facilitator Silent Translation Selector (Click Customer's Answer to Auto-Set [F-08] &amp; [F-09]):</div>
+              <select id="ai_translation_helper" onchange="applyAiTranslationHelper(this.value)" class="w-full px-2.5 py-1.5 rounded border border-purple-500/40 bg-[var(--card)] text-white font-medium">
+                <option value="NO_AI">If No AI &rarr; [F-08 = NO_GPU] &amp; [F-09 = ENGINE_NONE]</option>
+                <option value="BG_OCR">If Background OCR / Document Embedding / Small Task (&lt;5 users) &rarr; [F-08 = MIG_1G_10GB] &amp; [F-09 = ENGINE_BATCH_CRON]</option>
+                <option value="LIGHT_CHAT">If Light Chat / Small Model (7B–9B, &lt;10 concurrent users) &rarr; [F-08 = MIG_2G_20GB] &amp; [F-09 = ENGINE_VLLM_PROD]</option>
+                <option value="STD_RAG_SQL" selected>If Standard Enterprise RAG / SQL / Code Assist (Gemma 26B/31B, 10–25 concurrent streams) &rarr; [F-08 = MIG_3G_40GB] &amp; [F-09 = ENGINE_VLLM_PROD]</option>
+                <option value="HIGH_CONC">If High-Concurrency Command Center (&gt;25 streams) or Fine-Tuning (P8) &rarr; [F-08 = MIG_7G_80GB_FULL] &amp; [F-09 = ENGINE_VLLM_PROD]</option>
+                <option value="GEMINI_B300">If Massive Context (100k–1M tokens, 500-page PDFs) or Native Gemini (P9/P10) &rarr; [F-08 = NATIVE_GEMINI_ENDPOINT (NVIDIA B300 288GB ONLY)]</option>
+                <option value="L4_POC">If Single-Tenant Demo / PoC on L4 Workstation/Node &rarr; [F-08 = DEDICATED_L4_WHOLE] &amp; [F-09 = ENGINE_OLLAMA_POC]</option>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block font-semibold text-purple-300 mb-1">🔒 [F-08] Hardware-Isolated NVIDIA MIG / B300 Profile</label>
+                <select id="f08_mig" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium"></select>
+              </div>
+              <div>
+                <label class="block font-semibold text-purple-300 mb-1">🔒 [F-09] AI Serving Engine</label>
+                <select id="f09_engine" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                  <option value="ENGINE_VLLM_PROD" selected>[ENGINE_VLLM_PROD] High-Concurrency vLLM Continuous Batching</option>
+                  <option value="ENGINE_BATCH_CRON">[ENGINE_BATCH_CRON] Background Cron / Async Queue Worker</option>
+                  <option value="ENGINE_OLLAMA_POC">[ENGINE_OLLAMA_POC] Single-User Demo / PoC (Ollama)</option>
+                  <option value="ENGINE_NONE">[ENGINE_NONE] No AI Inference Engine</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="b300InterviewBanner" class="hidden p-3 rounded-lg border border-amber-500/50 bg-amber-500/15 text-xs text-amber-200">
+              <b>⚠️ Hardware SKU Rule (`NATIVE_GEMINI_ENDPOINT`):</b> GDC Native Gemini is delivered via <b>NVIDIA B300 (288GB HBM3e) ONLY</b> (`a4-highgpu-1g-b300-gdc`) and cannot run on A100, H100, or L4 node pools.
+            </div>
+          </div>
+
+          <!-- Q 2.3 Day 0 Software Bundle -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2 text-xs">
+            <div class="font-bold text-white">2.3 Day 0 Software &amp; Model Delivery Bundle</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "Roughly how much software — application containers, operating system images, or AI model files — will your team bring across the air gap on Day 0?"
+            </div>
+            <div class="flex flex-col md:flex-row md:items-center gap-3 pt-1">
+              <div class="w-full md:w-64">
+                <label class="block font-semibold text-purple-300 mb-1">🔒 [F-17] Day 0 Harbor Bundle (GiB)</label>
+                <input id="f17_harbor" type="number" value="180" min="5" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div class="text-[11px] text-[var(--muted-foreground)]">
+                <i>Facilitator Rule: Default = <code>50 GiB</code> (Standard App) + <code>100 GiB</code> per custom LLM weight bundle (e.g. <code>180 GiB</code> for J3 C2).</i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: Workload Sizing Capture (Section 3B Plain-English Archetype Cards & T-Shirt Derivation OR Section 3A Direct BOM) -->
+        <div id="sec-3" class="print-card bg-[var(--card)] border-2 border-amber-500/40 rounded-xl p-5 space-y-5">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div>
+              <h2 class="font-bold text-base text-amber-400">Section 3: Workload Sizing Capture (Section 3B Plain-English Archetype Cards &amp; T-Shirt Derivation)</h2>
+              <p class="text-xs text-[var(--muted-foreground)]">
+                Matches Section 3A (`PATH_A`) and Section 3B (`PATH_B` Plain-English Archetype Cards `[F-18B]` &amp; T-Shirt Scale `[F-19B]`) of <code>gdc_ag_offline_interview_questionnaire.md</code>.
+              </p>
+            </div>
+            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-amber-500/10 text-amber-300">[F-18A]–[F-20B]</span>
+          </div>
+
+          <!-- SECTION 3B PANEL: Plain-English Archetype Cards & T-Shirt Derivation -->
+          <div id="trackBPanel" class="space-y-5">
+
+            <!-- [F-19B] T-Shirt Derivation Selector (Placed at top of 3B so cards show live tier resources!) -->
+            <div class="p-4 rounded-lg border border-amber-500/40 bg-amber-500/10 space-y-2.5 text-xs">
+              <div class="font-bold text-amber-300 text-sm">[F-19B] Select Operational Scale (User &amp; Stream Concurrency T-Shirt Size)</div>
+              <div class="spoken-prompt">
+                🗣️ <b>Spoken Prompt (Read Aloud):</b> "On a busy day at peak shift handover, roughly how many people are actively clicking, searching, or running queries at the exact same moment?"
+              </div>
+              <div class="pt-1">
+                <select id="f19b_tier" onchange="renderArchetypeCards(); collateAll();" class="w-full px-3 py-2 rounded-lg border border-amber-500/50 bg-[var(--card)] text-white font-semibold">
+                  <option value="TIER_S">[TIER_S] Small (Team / Pilot Scale): &lt; 50 active concurrent users | 10 active developers (P13) | &lt; 10 simultaneous AI prompt streams | &lt; 5,000 events/sec (P4)</option>
+                  <option value="TIER_M" selected>[TIER_M] Medium (Department Production): 50 – 250 active concurrent users | 25 active developers (P13) | 10 – 50 simultaneous AI prompt streams | 5k – 25k events/sec (P4)</option>
+                  <option value="TIER_L">[TIER_L] Large (Enterprise / Command Scale): 250 – 1,000+ active concurrent users | 50+ active developers (P13) | 50 – 150+ simultaneous AI prompt streams | 25k – 100k+ events/sec (P4)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- [F-18B] Match Customer Description to GDC Blueprint Archetype(s) -->
+            <div class="space-y-3">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                <div>
+                  <div class="font-bold text-white text-sm">[F-18B] Match Customer Description to GDC Blueprint Archetype(s)</div>
+                  <p class="text-xs text-[var(--muted-foreground)]">
+                    Show/read the <b>🗣️ Plain-English One-Line Test</b> to the customer and check the matching blueprint code(s).
+                  </p>
+                </div>
+                <!-- Fast Code Entry for Paper SCIF Transcription -->
+                <div class="flex gap-1.5 no-print">
+                  <input id="quick_bp_codes" type="text" placeholder="Quick codes: P4, P6, P7" class="px-2 py-1 rounded border border-[var(--border)] bg-black/40 font-mono text-xs w-44" />
+                  <button onclick="applyQuickBpCodes()" class="px-2.5 py-1 rounded bg-amber-600 text-white text-xs font-semibold hover:bg-amber-500 cursor-pointer">Apply</button>
+                </div>
+              </div>
+
+              <!-- 10 Canonical Plain-English Archetype Cards (Rendered by renderArchetypeCards()) -->
+              <div id="interviewBlueprintsGrid" class="grid grid-cols-1 gap-2.5 text-xs"></div>
+            </div>
+
+            <!-- [F-20B] Non-Production Environment Footprint & DB Consolidation -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-2">
+              <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2">
+                <div class="font-bold text-white">[F-20B] Non-Production Environment Footprint</div>
+                <div class="spoken-prompt">
+                  🗣️ "For your Dev and Test environments, is a half-sized environment sufficient, or do you require a full 100% scale replica of Production for load testing?"
+                </div>
+                <select id="f20b_nonprod" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                  <option value="NONPROD_HALF" selected>[NONPROD_HALF] Standard Non-Prod (50% of Prod Compute, Single-Zone DB, 1x MIG Slice, 2:1 Overcommit)</option>
+                  <option value="NONPROD_MIRROR">[NONPROD_MIRROR] Full 100% Production Scale Mirror</option>
+                  <option value="NONPROD_NONE">[NONPROD_NONE] No Non-Prod Environment Required on GDC-ag</option>
+                </select>
+              </div>
+
+              <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2">
+                <div class="font-bold text-white">Section 5.1 De-Duplication: Database Co-Location Policy</div>
+                <div class="spoken-prompt">
+                  🗣️ "When multiple blueprints use PostgreSQL (e.g. P6 RAG + P7 SQL), can they share a consolidated HA PostgreSQL cluster inside your namespace?"
+                </div>
+                <select id="db_consolidation" onchange="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)] font-medium">
+                  <option value="CONSOLIDATED" selected>[CONSOLIDATED] Single Consolidated PostgreSQL HA Cluster (Recommended Default)</option>
+                  <option value="SILOED">[SILOED] Provision Separate Database Clusters per Blueprint</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 3A PANEL: Direct Technical Specification ([F-03] = PATH_A) -->
+          <div id="trackAPanel" class="hidden p-4 rounded-lg border border-blue-500/40 bg-blue-500/10 space-y-3 text-xs">
+            <div class="font-bold text-blue-300 text-sm">SECTION 3A: Direct Technical Specification (`[F-03] = PATH_A`)</div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">Use ONLY when the customer brings a concrete infrastructure Bill of Materials (`[F-18A]` to `[F-24A]`):</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label class="block font-semibold mb-1">[F-18A] Prod Pod vCPU</label>
+                <input id="f18a_cpu" type="number" value="16" min="0" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold mb-1">[F-19A] Prod Pod RAM (GiB)</label>
+                <input id="f18a_ram" type="number" value="64" min="0" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold mb-1">[F-22A/23A] Prod Storage (GiB)</label>
+                <input id="f18a_storage" type="number" value="1000" min="0" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold mb-1">[F-24A] Prod GPU Units</label>
+                <input id="f18a_gpu" type="number" value="2" min="0" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 4: Data Velocity, Retention & 4-Horizon Growth Roadmap -->
+        <div id="sec-4" class="print-card bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div>
+              <h2 class="font-bold text-base text-cyan-400">Section 4: Data Velocity, Retention &amp; 4-Horizon Growth Roadmap (`[AB]`)</h2>
+              <p class="text-xs text-[var(--muted-foreground)]">
+                Physical GDC-ag expansion racks take 9–18 months to manufacture and accredit. If <b>T+12m</b> crosses a rack boundary, IO must submit the hardware order on Day 0.
+              </p>
+            </div>
+            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-cyan-500/10 text-cyan-300">[F-25]–[F-28]</span>
+          </div>
+
+          <!-- Q 4.1 & Q 4.2 -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2.5 text-xs">
+            <div class="font-bold text-white">4.1 Starting Data &amp; Daily Ingestion Velocity + 4.2 Backup Policy</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "How much existing historical data (databases, PDFs, imagery) will you load on Day 0? Once live, roughly how many gigabytes of new data (sensor feeds, daily reports, logs) flow into the system every day, and how many days of daily backup snapshots do you need kept locally?"
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+              <div>
+                <label class="block font-semibold text-cyan-300 mb-1">🔒 [F-25.2] Daily Ingest (GiB/day)</label>
+                <input id="f25_ingest" type="number" value="25" min="0" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold text-cyan-300 mb-1">🔒 [F-25.3] Retention Cap (Days)</label>
+                <input id="f25_retention" type="number" value="730" min="30" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold text-cyan-300 mb-1">🔒 [F-25.5] Local Snapshots (Days)</label>
+                <input id="f25_snapshots" type="number" value="14" min="1" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+              <div>
+                <label class="block font-semibold text-cyan-300 mb-1">🔒 [F-25.7] DR Window (Hours)</label>
+                <input id="f25_dr_win" type="number" value="4" min="1" oninput="collateAll()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-black/40 font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Q 4.3 Rollout Milestones & Step-Function Growth -->
+          <div class="p-3.5 rounded-lg border border-[var(--border)] bg-black/20 space-y-2.5 text-xs">
+            <div class="font-bold text-white">4.3 Rollout Milestones &amp; Step-Function Growth (4-Stage Compute &amp; GPU Ramp-Up Multipliers)</div>
+            <div class="spoken-prompt">
+              🗣️ <b>Read Aloud:</b> "Looking ahead after Day 0 go-live, how does adoption grow at <b>6 months</b>, <b>12 months</b>, and <b>24 months</b>? For example, do additional squadrons, sites, or data feeds onboard that double or triple your user traffic or AI usage?"
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+              <div class="p-2.5 rounded border border-[var(--border)] bg-black/30">
+                <label class="block font-bold text-white mb-1">🔒 [F-26] T+6 Months Ramp (CPUx / GPUx)</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <div><span class="text-[10px] text-[var(--muted-foreground)]">Compute:</span><input id="f26_cpu" type="number" step="0.05" value="1.25" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" /></div>
+                  <div><span class="text-[10px] text-[var(--muted-foreground)]">GPU/AI:</span><input id="f26_gpu" type="number" step="0.1" value="1.5" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" /></div>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded border border-amber-500/50 bg-amber-500/10">
+                <label class="block font-bold text-amber-300 mb-1">🔒 [F-27] T+12m (DAY 0 IO ORDER GATE)</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <div><span class="text-[10px] text-amber-200/80">Compute:</span><input id="f27_cpu" type="number" step="0.1" value="2.0" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-amber-500/40 bg-black/30 font-mono" /></div>
+                  <div><span class="text-[10px] text-amber-200/80">GPU/AI:</span><input id="f27_gpu" type="number" step="0.1" value="2.0" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-amber-500/40 bg-black/30 font-mono" /></div>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded border border-[var(--border)] bg-black/30">
+                <label class="block font-bold text-white mb-1">🔒 [F-28] T+24m (MONTH 6 IO ORDER GATE)</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <div><span class="text-[10px] text-[var(--muted-foreground)]">Compute:</span><input id="f28_cpu" type="number" step="0.1" value="3.0" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" /></div>
+                  <div><span class="text-[10px] text-[var(--muted-foreground)]">GPU/AI:</span><input id="f28_gpu" type="number" step="0.1" value="4.0" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" /></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 5: Facilitator Close-Out Sanity Checks & IO Available Rack Headroom -->
+        <div id="sec-5" class="print-card bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <div>
+              <h2 class="font-bold text-base text-rose-400">Section 5: Automated Facilitator Close-Out Sanity Checks &amp; IO Floor Headroom</h2>
+              <p class="text-xs text-[var(--muted-foreground)]">Automatically enforces the 4 Facilitator Sanity Checks from Section 5 of <code>gdc_ag_offline_interview_questionnaire.md</code>.</p>
+            </div>
+            <span class="px-2 py-0.5 text-[11px] font-mono rounded bg-rose-500/10 text-rose-300">Section 5 Checks</span>
+          </div>
+
+          <!-- Live Automated Section 5 Sanity Check Results -->
+          <div id="section5SanityList" class="space-y-1.5 text-xs"></div>
+
+          <!-- IO Available Rack Headroom -->
+          <div class="pt-2">
+            <div class="text-xs font-bold text-white mb-2">Unallocated IO Physical Rack Headroom (For Step 3 Procurement Deficit Calculation):</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div class="p-2.5 rounded border border-[var(--border)] bg-black/20">
+                <label class="block font-semibold mb-1">Available Physical Cores</label>
+                <input id="io_avail_cpu" type="number" value="96" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+              </div>
+              <div class="p-2.5 rounded border border-[var(--border)] bg-black/20">
+                <label class="block font-semibold mb-1">Available Physical RAM (GiB)</label>
+                <input id="io_avail_ram" type="number" value="384" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+              </div>
+              <div class="p-2.5 rounded border border-[var(--border)] bg-black/20">
+                <label class="block font-semibold mb-1">Available Raw Ceph (TiB)</label>
+                <input id="io_avail_tib" type="number" value="80" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+              </div>
+              <div class="p-2.5 rounded border border-[var(--border)] bg-black/20">
+                <label class="block font-semibold mb-1">Available Physical GPU Cards</label>
+                <input id="io_avail_gpu" type="number" value="3" oninput="collateAll()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-[var(--muted-foreground)] mb-1">Facilitator Session Notes &amp; Sign-Off Remarks:</label>
+            <textarea id="facilitator_notes" rows="2" oninput="collateAll()" placeholder="Record any custom accreditation remarks, hardware PO numbers, or site delivery notes..." class="w-full p-2 rounded border border-[var(--border)] bg-black/30 text-xs"></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN (4 Cols): Section 6 Live Transcription Ledger & Calculator Handoff -->
+      <div class="lg:col-span-4 space-y-5">
+        <div class="sticky top-6 space-y-4">
+
+          <div class="bg-[var(--card)] border-2 border-emerald-500/40 rounded-xl p-5 space-y-4 shadow-lg">
+            <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+              <div>
+                <h2 class="font-bold text-base text-emerald-400">Section 6: Live Transcription Ledger</h2>
+                <p class="text-[11px] text-[var(--muted-foreground)]">Auto-Collated `[F-01]–[F-28]` Payload</p>
+              </div>
+              <span id="collationStatusBadge" class="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                READY
+              </span>
+            </div>
+
+            <!-- Key Collated Summary -->
+            <div id="collatedQuickSummary" class="grid grid-cols-2 gap-2 text-xs bg-black/30 p-3 rounded-lg border border-[var(--border)] font-mono"></div>
+
+            <!-- Action Buttons -->
+            <div class="space-y-2 no-print">
+              <button onclick="openInWebCalculator()" class="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow">
+                <span>🚀 1. Pass Directly to Web Sizing Calculator &rarr;</span>
+              </button>
+
+              <button onclick="downloadIntakeJson()" class="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow">
+                <span>💾 2. Download JSON (<code id="downloadFilenameLabel">tactical-c2-prod_intake.json</code>)</span>
+              </button>
+
+              <button onclick="copyJsonToClipboard()" class="w-full py-2 px-3 rounded-lg border border-[var(--border)] hover:bg-[var(--secondary)] text-xs font-semibold transition cursor-pointer">
+                📋 Copy Section 6 Ledger JSON to Clipboard
+              </button>
+            </div>
+
+            <!-- Offline CLI Command -->
+            <div class="bg-black/40 border border-[var(--border)] rounded-lg p-3 space-y-1 text-[11px] no-print">
+              <div class="font-semibold text-amber-300">Run with Headless Offline CLI:</div>
+              <pre id="cliCommandSnippet" class="p-2 rounded bg-black/70 text-emerald-400 font-mono text-[10px] overflow-x-auto">python3 gdc_ag_sizing_cli.py --input tactical-c2-prod_intake.json</pre>
+            </div>
+
+            <!-- Live JSON Preview -->
+            <div class="space-y-1">
+              <div class="flex justify-between items-center text-[11px] text-[var(--muted-foreground)]">
+                <span class="font-semibold">Section 6 JSON Output (`customer_intake.json`):</span>
+                <span>100% Schema Synced</span>
+              </div>
+              <textarea id="liveJsonOutput" readonly class="w-full h-72 p-2.5 rounded-lg bg-black/60 border border-[var(--border)] font-mono text-[11px] text-emerald-300"></textarea>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // SHARED DECLARATIVE CATALOG (SIZING_CONFIG)
+    // 100% Aligned with gdc_ag_offline_interview_questionnaire.md (Section 3B)
+    // AND gdc_ag_sizing_calculator.html / gdc_ag_sizing_cli.py
+    // ============================================================================
+    const SIZING_CONFIG = {
+      blueprints: {
+        P1_WEB_3TIER: {
+          code: "P1_WEB_3TIER",
+          archetypeName: "Web Portal / Transactional App",
+          oneLineTest: "Users open a web UI or call an API to view dashboards, submit forms, or update database records.",
+          techSummary: "2x n2-standard-4/8/16 + Postgres HA",
+          defaultChecked: false,
+          needsLargeModel: false,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 1.5, podRam: 4,  dbCpu: 2, dbRam: 8,  blockGib: 50,   objGib: 50,   migSlices: 0 },
+            TIER_M: { podCpu: 6,   podRam: 16, dbCpu: 4, dbRam: 16, blockGib: 250,  objGib: 100,  migSlices: 0 },
+            TIER_L: { podCpu: 16,  podRam: 48, dbCpu: 8, dbRam: 32, blockGib: 1024, objGib: 500,  migSlices: 0 }
+          }
+        },
+        P3_LEGACY_VM_DB: {
+          code: "P3_LEGACY_VM_DB",
+          archetypeName: "Legacy Server Lift-and-Shift",
+          oneLineTest: "It is an existing Windows or Linux server application we need to run as-is without rewriting into containers, connected to a database.",
+          techSummary: "GDC VM Runtime + Managed Postgres HA",
+          defaultChecked: false,
+          needsLargeModel: false,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 4,  podRam: 16,  dbCpu: 2, dbRam: 8,  blockGib: 150,  objGib: 0,   migSlices: 0 },
+            TIER_M: { podCpu: 16, podRam: 32,  dbCpu: 4, dbRam: 16, blockGib: 300,  objGib: 50,  migSlices: 0 },
+            TIER_L: { podCpu: 64, podRam: 256, dbCpu: 8, dbRam: 32, blockGib: 2048, objGib: 200, migSlices: 0 }
+          }
+        },
+        P4_KAFKA_EVENT: {
+          code: "P4_KAFKA_EVENT",
+          archetypeName: "Live Sensor / Event Stream Pipeline",
+          oneLineTest: "High-volume data arrives continuously from sensors, radars, logs, or message feeds and must be buffered and processed in real time without drops.",
+          techSummary: "3-Node Kafka Broker Quorum Floor + DB",
+          defaultChecked: true,
+          needsLargeModel: false,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 4,  podRam: 10, dbCpu: 2, dbRam: 8,  blockGib: 250,  objGib: 0,    migSlices: 0 },
+            TIER_M: { podCpu: 6,  podRam: 16, dbCpu: 4, dbRam: 16, blockGib: 538,  objGib: 0,    migSlices: 0 },
+            TIER_L: { podCpu: 28, podRam: 96, dbCpu: 8, dbRam: 32, blockGib: 6144, objGib: 1024, migSlices: 0 }
+          }
+        },
+        P6_RAG_AGENT: {
+          code: "P6_RAG_AGENT",
+          archetypeName: "Document Q&A / Intelligence Search (RAG)",
+          oneLineTest: "Users upload private PDFs, SOPs, SITREPs, or imagery and ask natural-language questions to get cited summaries and answers.",
+          techSummary: "Object Bucket + 15m Cron + pgvector HA DB",
+          defaultChecked: true,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 1.5, podRam: 4,  dbCpu: 4,  dbRam: 16, blockGib: 200,  objGib: 100,  migSlices: 1 },
+            TIER_M: { podCpu: 4,   podRam: 16, dbCpu: 8,  dbRam: 32, blockGib: 500,  objGib: 500,  migSlices: 2 },
+            TIER_L: { podCpu: 12,  podRam: 48, dbCpu: 16, dbRam: 64, blockGib: 2048, objGib: 2048, migSlices: 4 }
+          }
+        },
+        P7_SQL_AGENT: {
+          code: "P7_SQL_AGENT",
+          archetypeName: "Natural Language Database Analyst",
+          oneLineTest: "Commanders or analysts ask questions in plain English against live operational SQL tables (readiness, logistics, inventory) without writing SQL queries.",
+          techSummary: "Read-Only ADK SQL Agent + Postgres HA",
+          defaultChecked: true,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 1, podRam: 2,  dbCpu: 2, dbRam: 8,  blockGib: 100, objGib: 0, migSlices: 1 },
+            TIER_M: { podCpu: 2, podRam: 8,  dbCpu: 4, dbRam: 16, blockGib: 250, objGib: 0, migSlices: 1 },
+            TIER_L: { podCpu: 6, podRam: 16, dbCpu: 8, dbRam: 32, blockGib: 500, objGib: 0, migSlices: 2 }
+          }
+        },
+        P8_MLOPS_LOOP: {
+          code: "P8_MLOPS_LOOP",
+          archetypeName: "AI Model Training & MLOps Lab",
+          oneLineTest: "Data scientists continuously fine-tune or train machine learning models on new air-gapped datasets and push updated models to production.",
+          techSummary: "Dedicated Training + Serving GPUs + MLflow",
+          defaultChecked: false,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 8,  podRam: 32,  dbCpu: 2, dbRam: 8,  blockGib: 100, objGib: 250,  migSlices: 2 },
+            TIER_M: { podCpu: 16, podRam: 64,  dbCpu: 4, dbRam: 16, blockGib: 200, objGib: 500,  migSlices: 2 },
+            TIER_L: { podCpu: 32, podRam: 128, dbCpu: 8, dbRam: 32, blockGib: 500, objGib: 2560, migSlices: 6 }
+          }
+        },
+        P9_P10_NOTEBOOK_CHAT: {
+          code: "P9_P10_NOTEBOOK_CHAT",
+          archetypeName: "Interactive Research Notebook / Chat",
+          oneLineTest: "Researchers organize private source documents into interactive notebooks (NotebookLM style) or use a general multi-turn AI chat interface.",
+          techSummary: "Sovereign Notebook / Gemini GUI + DB",
+          defaultChecked: false,
+          needsLargeModel: true,
+          requiresGeminiB300: true,
+          tiers: {
+            TIER_S: { podCpu: 1, podRam: 2,  dbCpu: 2, dbRam: 8,  blockGib: 100, objGib: 100,  migSlices: 1 },
+            TIER_M: { podCpu: 3, podRam: 8,  dbCpu: 4, dbRam: 16, blockGib: 250, objGib: 250,  migSlices: 2 },
+            TIER_L: { podCpu: 8, podRam: 24, dbCpu: 8, dbRam: 32, blockGib: 524, objGib: 1000, migSlices: 4 }
+          }
+        },
+        P13_GDC_DEV: {
+          code: "P13_GDC_DEV",
+          archetypeName: "Software Developer Cloud Workspaces",
+          oneLineTest: "Software engineers need browser-based coding IDEs, container build tools, and an AI coding assistant inside the air gap.",
+          techSummary: "Scale-to-Zero Dev Pods + 20Gi PVC/dev",
+          defaultChecked: false,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 6.6,  podRam: 13, dbCpu: 2, dbRam: 8,  blockGib: 250,  objGib: 100, migSlices: 1 },
+            TIER_M: { podCpu: 14.1, podRam: 28, dbCpu: 2, dbRam: 8,  blockGib: 625,  objGib: 200, migSlices: 2 },
+            TIER_L: { podCpu: 26.6, podRam: 53, dbCpu: 4, dbRam: 16, blockGib: 1280, objGib: 500, migSlices: 4 }
+          }
+        },
+        P2_P5_AI_GATEWAY: {
+          code: "P2_P5_AI_GATEWAY",
+          archetypeName: "Shared AI Gateway (Standalone)",
+          oneLineTest: "We are standing up a central model-serving API gateway to serve multiple downstream applications.",
+          techSummary: "Standalone gdc_gemma_gw proxy + GPU pool",
+          defaultChecked: false,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 2, podRam: 8,  dbCpu: 0, dbRam: 0, blockGib: 100, objGib: 100, migSlices: 1 },
+            TIER_M: { podCpu: 4, podRam: 16, dbCpu: 0, dbRam: 0, blockGib: 200, objGib: 200, migSlices: 2 },
+            TIER_L: { podCpu: 8, podRam: 32, dbCpu: 0, dbRam: 0, blockGib: 500, objGib: 500, migSlices: 4 }
+          }
+        },
+        P_MULTI_SYNTHESIS: {
+          code: "P_MULTI_SYNTHESIS",
+          archetypeName: "Integrated Command Center (C2 Synthesis)",
+          oneLineTest: "An all-in-one operational command center combining live sensor feeds (Kafka), document intelligence search (RAG), and live database analytics (SQL).",
+          techSummary: "Integrated P4 + P6 + P7 + P5 + P10 + P12",
+          defaultChecked: false,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 12, podRam: 36,  dbCpu: 4,  dbRam: 16, blockGib: 400,  objGib: 300,  migSlices: 2 },
+            TIER_M: { podCpu: 20, podRam: 64,  dbCpu: 8,  dbRam: 32, blockGib: 550,  objGib: 1024, migSlices: 3 },
+            TIER_L: { podCpu: 40, podRam: 128, dbCpu: 16, dbRam: 64, blockGib: 1500, objGib: 3072, migSlices: 6 }
+          }
+        }
+      },
+      gpuProfiles: {
+        NO_GPU:                 { label: "None (CPU Only)",                       gpuSku: "None (CPU Only)",                                      cardVramGb: 0,   vramGb: 0,   slicesPerPhysicalCard: 1, requiresB300: false, friendlyOption: "No AI / GPU Needed (CPU Only)" },
+        MIG_1G_10GB:            { label: "1g.10gb MIG Slice",                     gpuSku: "NVIDIA A100/H100 (80GB HBM)",                          cardVramGb: 80,  vramGb: 10,  slicesPerPhysicalCard: 7, requiresB300: false, friendlyOption: "MIG_1G_10GB — 10GB VRAM slice, A100/H100 80GB (7/card — Background OCR/Embeddings)" },
+        MIG_2G_20GB:            { label: "2g.20gb MIG Slice",                     gpuSku: "NVIDIA A100/H100 (80GB HBM)",                          cardVramGb: 80,  vramGb: 20,  slicesPerPhysicalCard: 3, requiresB300: false, friendlyOption: "MIG_2G_20GB — 20GB VRAM slice, A100/H100 80GB (3/card — Light Chat 7B–9B)" },
+        MIG_3G_40GB:            { label: "3g.40gb MIG Slice",                     gpuSku: "NVIDIA A100/H100 (80GB HBM)",                          cardVramGb: 80,  vramGb: 40,  slicesPerPhysicalCard: 2, requiresB300: false, friendlyOption: "MIG_3G_40GB — 40GB VRAM slice, A100/H100 80GB (2/card — Standard Enterprise RAG/SQL Gemma 26B/31B)", defaultSelected: true },
+        MIG_7G_80GB_FULL:       { label: "7g.80gb Full Card",                     gpuSku: "NVIDIA A100/H100 (80GB HBM)",                          cardVramGb: 80,  vramGb: 80,  slicesPerPhysicalCard: 1, requiresB300: false, friendlyOption: "MIG_7G_80GB_FULL — Full 80GB A100/H100 Card (High-Concurrency >25 streams or P8 Fine-Tuning)" },
+        DEDICATED_L4_WHOLE:     { label: "1x L4 (24GB Full Card)",                gpuSku: "NVIDIA L4 (24GB PCIe)",                                cardVramGb: 24,  vramGb: 24,  slicesPerPhysicalCard: 1, requiresB300: false, friendlyOption: "DEDICATED_L4_WHOLE — Single-Tenant Demo / PoC on NVIDIA L4 24GB (No MIG)" },
+        NATIVE_GEMINI_ENDPOINT: { label: "NVIDIA B300 (Gemini Partition)",        gpuSku: "NVIDIA B300 (288GB HBM3e — Gemini Exclusive)",         cardVramGb: 288, vramGb: 144, slicesPerPhysicalCard: 2, requiresB300: true,  friendlyOption: "NATIVE_GEMINI_ENDPOINT — Dedicated NVIDIA B300 (288GB HBM3e) ONLY (100k–1M Context / Native Gemini)" }
+      },
+      platformServices: {
+        VAULT_P11:    { label: "[F-15] Dedicated HashiCorp Vault (VAULT_DEDICATED)",       vcpu: 12, ram: 48, defaultChecked: false },
+        KEYCLOAK_P12: { label: "[F-16] Dedicated Keycloak Identity SSO (KEYCLOAK_DEDICATED)", vcpu: 12, ram: 48, defaultChecked: false }
+      }
+    };
+
+    // Keep track of selected blueprint codes across re-renders
+    let selectedBlueprintSet = new Set(['P4_KAFKA_EVENT', 'P6_RAG_AGENT', 'P7_SQL_AGENT']);
+
+    function initInterviewCatalog() {
+      // 1. Render GPU Dropdown ([F-08])
+      const migSelect = document.getElementById('f08_mig');
+      migSelect.innerHTML = Object.entries(SIZING_CONFIG.gpuProfiles).map(([key, spec]) => {
+        const sel = spec.defaultSelected ? 'selected' : '';
+        return `<option value="${key}" ${sel}>${spec.friendlyOption}</option>`;
+      }).join('');
+
+      // 2. Render Section 3B Plain-English Archetype Cards ([F-18B])
+      renderArchetypeCards();
+
+      // 3. Render Platform Service Isolation Overrides ([F-15] / [F-16])
+      const svcGrid = document.getElementById('platformServicesContainer');
+      svcGrid.innerHTML = Object.entries(SIZING_CONFIG.platformServices).map(([key, svc]) => {
+        const checked = svc.defaultChecked ? 'checked' : '';
+        return `
+          <label class="flex items-center gap-2 p-2 rounded border border-[var(--border)] bg-black/20 cursor-pointer">
+            <input type="checkbox" value="${key}" ${checked} onchange="collateAll()" class="svc-tax-check" />
+            <span>${svc.label} (<code class="text-amber-300">+${svc.vcpu}c / +${svc.ram}Gi</code>)</span>
+          </label>
+        `;
+      }).join('');
+    }
+
+    function renderArchetypeCards() {
+      const tierKey = document.getElementById('f19b_tier').value || 'TIER_M';
+      const bpGrid = document.getElementById('interviewBlueprintsGrid');
+      bpGrid.innerHTML = Object.entries(SIZING_CONFIG.blueprints).map(([key, bp]) => {
+        const isChecked = selectedBlueprintSet.has(key);
+        const t = bp.tiers[tierKey] || bp.tiers.TIER_M;
+        return `
+          <label class="archetype-card ${isChecked ? 'selected' : ''} flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-lg border border-[var(--border)] bg-black/25 hover:bg-[var(--card-hover)] cursor-pointer transition">
+            <div class="flex items-start gap-3">
+              <input type="checkbox" value="${key}" ${isChecked ? 'checked' : ''} onchange="onArchetypeToggle(this)" class="bp-check mt-1 w-4 h-4" />
+              <div class="space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-bold text-white text-sm">${bp.archetypeName}</span>
+                  <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">🔒 ${bp.code}</span>
+                  <span class="text-[11px] text-[var(--muted-foreground)]">(${bp.techSummary})</span>
+                </div>
+                <div class="spoken-prompt text-xs">
+                  🗣️ <b>Plain-English One-Line Test:</b> "${bp.oneLineTest}"
+                </div>
+              </div>
+            </div>
+            <div class="md:text-right font-mono text-[11px] bg-black/40 p-2 rounded border border-[var(--border)] shrink-0">
+              <div class="text-amber-300 font-bold">${tierKey} Baseline:</div>
+              <div class="text-emerald-300">Pod: ${t.podCpu}c / ${t.podRam}Gi | DB: ${t.dbCpu}c / ${t.dbRam}Gi</div>
+              <div class="text-purple-300">Storage: ${t.blockGib + t.objGib}Gi | GPU Slices: ${t.migSlices}</div>
+            </div>
+          </label>
+        `;
+      }).join('');
+    }
+
+    function onArchetypeToggle(checkbox) {
+      if (checkbox.checked) {
+        selectedBlueprintSet.add(checkbox.value);
+      } else {
+        selectedBlueprintSet.delete(checkbox.value);
+      }
+      renderArchetypeCards();
+      collateAll();
+    }
+
+    function applyAiTranslationHelper(mode) {
+      const migEl = document.getElementById('f08_mig');
+      const engEl = document.getElementById('f09_engine');
+      if (mode === 'NO_AI') { migEl.value = 'NO_GPU'; engEl.value = 'ENGINE_NONE'; }
+      else if (mode === 'BG_OCR') { migEl.value = 'MIG_1G_10GB'; engEl.value = 'ENGINE_BATCH_CRON'; }
+      else if (mode === 'LIGHT_CHAT') { migEl.value = 'MIG_2G_20GB'; engEl.value = 'ENGINE_VLLM_PROD'; }
+      else if (mode === 'STD_RAG_SQL') { migEl.value = 'MIG_3G_40GB'; engEl.value = 'ENGINE_VLLM_PROD'; }
+      else if (mode === 'HIGH_CONC') { migEl.value = 'MIG_7G_80GB_FULL'; engEl.value = 'ENGINE_VLLM_PROD'; }
+      else if (mode === 'GEMINI_B300') { migEl.value = 'NATIVE_GEMINI_ENDPOINT'; engEl.value = 'ENGINE_VLLM_PROD'; }
+      else if (mode === 'L4_POC') { migEl.value = 'DEDICATED_L4_WHOLE'; engEl.value = 'ENGINE_OLLAMA_POC'; }
+      collateAll();
+    }
+
+    function toggleSizingTrack() {
+      const path = document.getElementById('f03_path').value;
+      document.getElementById('trackBPanel').classList.toggle('hidden', path !== 'PATH_B');
+      document.getElementById('trackAPanel').classList.toggle('hidden', path !== 'PATH_A');
+    }
+
+    function applyQuickBpCodes() {
+      const raw = document.getElementById('quick_bp_codes').value.toUpperCase();
+      const tokens = raw.split(/[\s,]+/).filter(Boolean);
+      selectedBlueprintSet.clear();
+      Object.keys(SIZING_CONFIG.blueprints).forEach(key => {
+        const shortPrefix = key.split('_')[0]; // e.g., P1, P3, P4, P6, P7, P8, P9, P13
+        if (tokens.includes(key) || tokens.includes(shortPrefix)) {
+          selectedBlueprintSet.add(key);
+        }
+      });
+      renderArchetypeCards();
+      collateAll();
+    }
+
+    function buildCollatedPayload() {
+      const selectedBps = Array.from(selectedBlueprintSet);
+      const selectedTaxSvcs = Array.from(document.querySelectorAll('.svc-tax-check:checked')).map(cb => cb.value);
+      const migKey = document.getElementById('f08_mig').value;
+
+      // Show/hide B300 warning banner
+      const b300Banner = document.getElementById('b300InterviewBanner');
+      if (b300Banner) {
+        b300Banner.classList.toggle('hidden', migKey !== 'NATIVE_GEMINI_ENDPOINT');
+      }
+
+      // Run Section 5 Automated Facilitator Close-Out Sanity Checks
+      const sanityChecks = [];
+      const dbBps = selectedBps.filter(k => SIZING_CONFIG.blueprints[k] && SIZING_CONFIG.blueprints[k].tiers.TIER_M.dbCpu > 0);
+      if (dbBps.length > 1) {
+        sanityChecks.push(`<div class="p-2 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">✅ <b>Section 5.1 De-Duplication Check:</b> ${dbBps.length} DB-backed blueprints selected (${dbBps.join(', ')}). Calculator will consolidate into a single HA PostgreSQL cluster (<code>${document.getElementById('db_consolidation').value}</code>).</div>`);
+      }
+      const needs40Gb = selectedBps.some(k => SIZING_CONFIG.blueprints[k] && SIZING_CONFIG.blueprints[k].needsLargeModel);
+      if (needs40Gb && (migKey === 'MIG_1G_10GB' || migKey === 'MIG_2G_20GB')) {
+        sanityChecks.push(`<div class="p-2 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300">⚠️ <b>Section 5.2 MIG VRAM Guardrail:</b> Selected blueprint requires Gemma 26B/31B. Override <code>[F-08]</code> from <code>${migKey}</code> to <code>MIG_3G_40GB</code> (40GB VRAM slice) or <code>NATIVE_GEMINI_ENDPOINT</code> (B300).</div>`);
+      } else if (migKey === 'NATIVE_GEMINI_ENDPOINT') {
+        sanityChecks.push(`<div class="p-2 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300">⚠️ <b>Section 5.2 Hardware SKU Rule:</b> <code>NATIVE_GEMINI_ENDPOINT</code> selected — requires dedicated <b>NVIDIA B300 (288GB HBM3e)</b> hardware.</div>`);
+      } else {
+        sanityChecks.push(`<div class="p-2 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">✅ <b>Section 5.2 GPU/VRAM Guardrail:</b> Profile <code>${migKey}</code> satisfies model VRAM requirements.</div>`);
+      }
+
+      const ingestGib = parseFloat(document.getElementById('f25_ingest').value) || 25;
+      const haMode = document.getElementById('f07_ha').value;
+      if (haMode === 'ZONAL_HA_PLUS_DR' && ingestGib >= 20) {
+        sanityChecks.push(`<div class="p-2 rounded bg-blue-500/15 border border-blue-500/40 text-blue-300">ℹ️ <b>Section 5.3 Storage Multiplier Check:</b> <code>ZONAL_HA_PLUS_DR</code> + <code>${ingestGib} GiB/day</code> ingest creates a ~22.2x Raw Ceph disk multiplier across Primary + DR + 3x Ceph replicas.</div>`);
+      }
+      document.getElementById('section5SanityList').innerHTML = sanityChecks.join('');
+
+      const payload = {
+        F01_PROJECT_ID: document.getElementById('f01_project').value.trim() || 'tactical-c2-prod',
+        F02_ORG_UNIT: document.getElementById('f02_org').value.trim() || 'J3 Operations Directorate',
+        F03_ENTRY_PATH: document.getElementById('f03_path').value,
+        F04_GOLIVE_DATE: document.getElementById('f04_date').value.trim() || '2026-11',
+        F04B_CONFIDENCE_LEVEL: document.getElementById('f04b_conf').value,
+        F05_TENANCY_MODE: document.getElementById('f05_tenancy').value,
+        F06_OVERCOMMIT_POLICY: document.getElementById('f06_overcommit').value,
+        F07_HA_DR_TOPOLOGY: document.getElementById('f07_ha').value,
+        F08_GPU_MIG_PROFILE: migKey,
+        F09_INFERENCE_ENGINE: document.getElementById('f09_engine').value,
+        F10_GKE_CLUSTER: document.getElementById('f10_gke').checked,
+        F11_VM_RUNTIME: document.getElementById('f11_vm').checked,
+        F12_MANAGED_POSTGRES: document.getElementById('f12_pg').checked,
+        F13_OBJECT_STORAGE: document.getElementById('f13_obj').checked,
+        F14_GATEWAY_API: document.getElementById('f14_gw').checked,
+        F17_HARBOR_BUNDLE_GIB: parseFloat(document.getElementById('f17_harbor').value) || 180,
+        F18A_PATH_A_COMPUTE_GPU: {
+          prod_vcpu: parseFloat(document.getElementById('f18a_cpu').value) || 16,
+          prod_ram_gib: parseFloat(document.getElementById('f18a_ram').value) || 64,
+          prod_storage_gib: parseFloat(document.getElementById('f18a_storage').value) || 1000,
+          prod_gpu_slices: parseFloat(document.getElementById('f18a_gpu').value) || 2
+        },
+        F18B_BLUEPRINT_PATTERNS: selectedBps,
+        F19B_TSHIRT_TIER: document.getElementById('f19b_tier').value,
+        F20B_NONPROD_POLICY: document.getElementById('f20b_nonprod').value,
+        F20C_LIFESPAN_CLASS: document.getElementById('f20c_lifespan').value,
+        DB_CONSOLIDATION_POLICY: document.getElementById('db_consolidation').value,
+        ISOLATED_PLATFORM_SERVICES: selectedTaxSvcs,
+        F25_STORAGE_PARAMS: {
+          daily_ingest_gib: ingestGib,
+          retention_days: parseFloat(document.getElementById('f25_retention').value) || 730,
+          snapshot_days: parseFloat(document.getElementById('f25_snapshots').value) || 14,
+          dr_window_hours: parseFloat(document.getElementById('f25_dr_win').value) || 4
+        },
+        F26_RAMP_M6_COMPUTE_GPU: [
+          parseFloat(document.getElementById('f26_cpu').value) || 1.25,
+          parseFloat(document.getElementById('f26_gpu').value) || 1.5
+        ],
+        F27_RAMP_M12_COMPUTE_GPU: [
+          parseFloat(document.getElementById('f27_cpu').value) || 2.0,
+          parseFloat(document.getElementById('f27_gpu').value) || 2.0
+        ],
+        F28_RAMP_M24_COMPUTE_GPU: [
+          parseFloat(document.getElementById('f28_cpu').value) || 3.0,
+          parseFloat(document.getElementById('f28_gpu').value) || 4.0
+        ],
+        IO_AVAILABLE_RACK_HEADROOM: {
+          physical_vcpu: parseFloat(document.getElementById('io_avail_cpu').value) || 96,
+          physical_ram_gib: parseFloat(document.getElementById('io_avail_ram').value) || 384,
+          raw_ceph_tib: parseFloat(document.getElementById('io_avail_tib').value) || 80,
+          physical_gpu_cards: parseFloat(document.getElementById('io_avail_gpu').value) || 3
+        },
+        FACILITATOR_NOTES: document.getElementById('facilitator_notes').value
+      };
+      return payload;
+    }
+
+    function collateAll() {
+      const payload = buildCollatedPayload();
+      const jsonStr = JSON.stringify(payload, null, 2);
+      document.getElementById('liveJsonOutput').value = jsonStr;
+
+      const filename = `${payload.F01_PROJECT_ID}_intake.json`;
+      document.getElementById('downloadFilenameLabel').textContent = filename;
+      document.getElementById('cliCommandSnippet').textContent = `python3 gdc_ag_sizing_cli.py --input ${filename}`;
+
+      const gpuInfo = SIZING_CONFIG.gpuProfiles[payload.F08_GPU_MIG_PROFILE] || SIZING_CONFIG.gpuProfiles.NO_GPU;
+      document.getElementById('collatedQuickSummary').innerHTML = `
+        <div>Project: <b class="text-white">${payload.F01_PROJECT_ID}</b></div>
+        <div>Track: <b class="text-blue-400">${payload.F03_ENTRY_PATH}</b></div>
+        <div>Archetypes: <b class="text-emerald-400">${payload.F18B_BLUEPRINT_PATTERNS.length} checked</b></div>
+        <div>T-Shirt Tier: <b class="text-amber-300">${payload.F19B_TSHIRT_TIER}</b></div>
+        <div class="col-span-2">GPU SKU: <b class="${gpuInfo.requiresB300 ? 'text-amber-300' : 'text-purple-300'}">${gpuInfo.gpuSku}</b></div>
+      `;
+
+      try {
+        localStorage.setItem('GDC_AG_COLLATED_INTAKE_JSON', jsonStr);
+      } catch (e) {}
+    }
+
+    function downloadIntakeJson() {
+      const payload = buildCollatedPayload();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${payload.F01_PROJECT_ID}_intake.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function openInWebCalculator() {
+      collateAll();
+      const jsonStr = document.getElementById('liveJsonOutput').value;
+      const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+      window.location.href = `gdc_ag_sizing_calculator.html?autoload=intake#intake=${b64}`;
+    }
+
+    function copyJsonToClipboard() {
+      collateAll();
+      navigator.clipboard.writeText(document.getElementById('liveJsonOutput').value);
+      const badge = document.getElementById('collationStatusBadge');
+      badge.textContent = 'COPIED!';
+      setTimeout(() => { badge.textContent = 'READY'; }, 2000);
+    }
+
+    function loadExistingJson(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          populateFormFromJson(data);
+        } catch (err) {
+          alert('Invalid Intake JSON file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function populateFormFromJson(data) {
+      if (!data) return;
+      if (data.F01_PROJECT_ID) document.getElementById('f01_project').value = data.F01_PROJECT_ID;
+      if (data.F02_ORG_UNIT) document.getElementById('f02_org').value = data.F02_ORG_UNIT;
+      if (data.F03_ENTRY_PATH) document.getElementById('f03_path').value = data.F03_ENTRY_PATH;
+      if (data.F04_GOLIVE_DATE) document.getElementById('f04_date').value = data.F04_GOLIVE_DATE;
+      if (data.F04B_CONFIDENCE_LEVEL) document.getElementById('f04b_conf').value = data.F04B_CONFIDENCE_LEVEL;
+      if (data.F05_TENANCY_MODE) document.getElementById('f05_tenancy').value = data.F05_TENANCY_MODE;
+      if (data.F06_OVERCOMMIT_POLICY) document.getElementById('f06_overcommit').value = data.F06_OVERCOMMIT_POLICY;
+      if (data.F07_HA_DR_TOPOLOGY) document.getElementById('f07_ha').value = data.F07_HA_DR_TOPOLOGY;
+      if (data.F08_GPU_MIG_PROFILE) document.getElementById('f08_mig').value = data.F08_GPU_MIG_PROFILE;
+      if (data.F09_INFERENCE_ENGINE) document.getElementById('f09_engine').value = data.F09_INFERENCE_ENGINE;
+      if (data.F17_HARBOR_BUNDLE_GIB !== undefined) document.getElementById('f17_harbor').value = data.F17_HARBOR_BUNDLE_GIB;
+      if (data.F19B_TSHIRT_TIER) document.getElementById('f19b_tier').value = data.F19B_TSHIRT_TIER;
+      if (data.F20B_NONPROD_POLICY) document.getElementById('f20b_nonprod').value = data.F20B_NONPROD_POLICY;
+      if (data.F20C_LIFESPAN_CLASS) document.getElementById('f20c_lifespan').value = data.F20C_LIFESPAN_CLASS;
+      if (data.DB_CONSOLIDATION_POLICY) document.getElementById('db_consolidation').value = data.DB_CONSOLIDATION_POLICY;
+
+      if (Array.isArray(data.F18B_BLUEPRINT_PATTERNS)) {
+        selectedBlueprintSet = new Set(data.F18B_BLUEPRINT_PATTERNS);
+        renderArchetypeCards();
+      }
+      if (data.F25_STORAGE_PARAMS && data.F25_STORAGE_PARAMS.daily_ingest_gib !== undefined) {
+        document.getElementById('f25_ingest').value = data.F25_STORAGE_PARAMS.daily_ingest_gib;
+      }
+      if (Array.isArray(data.F26_RAMP_M6_COMPUTE_GPU)) {
+        document.getElementById('f26_cpu').value = data.F26_RAMP_M6_COMPUTE_GPU[0];
+        document.getElementById('f26_gpu').value = data.F26_RAMP_M6_COMPUTE_GPU[1];
+      }
+      if (Array.isArray(data.F27_RAMP_M12_COMPUTE_GPU)) {
+        document.getElementById('f27_cpu').value = data.F27_RAMP_M12_COMPUTE_GPU[0];
+        document.getElementById('f27_gpu').value = data.F27_RAMP_M12_COMPUTE_GPU[1];
+      }
+      if (Array.isArray(data.F28_RAMP_M24_COMPUTE_GPU)) {
+        document.getElementById('f28_cpu').value = data.F28_RAMP_M24_COMPUTE_GPU[0];
+        document.getElementById('f28_gpu').value = data.F28_RAMP_M24_COMPUTE_GPU[1];
+      }
+      if (data.IO_AVAILABLE_RACK_HEADROOM) {
+        const hr = data.IO_AVAILABLE_RACK_HEADROOM;
+        if (hr.physical_vcpu !== undefined) document.getElementById('io_avail_cpu').value = hr.physical_vcpu;
+        if (hr.physical_ram_gib !== undefined) document.getElementById('io_avail_ram').value = hr.physical_ram_gib;
+        if (hr.raw_ceph_tib !== undefined) document.getElementById('io_avail_tib').value = hr.raw_ceph_tib;
+        if (hr.physical_gpu_cards !== undefined) document.getElementById('io_avail_gpu').value = hr.physical_gpu_cards;
+      }
+      toggleSizingTrack();
+      collateAll();
+    }
+
+    function loadWorkedExample() {
+      populateFormFromJson({
+        F01_PROJECT_ID: "tactical-c2-prod",
+        F02_ORG_UNIT: "J3 Operations Directorate",
+        F03_ENTRY_PATH: "PATH_B",
+        F04_GOLIVE_DATE: "2026-11",
+        F04B_CONFIDENCE_LEVEL: "DERIVED",
+        F05_TENANCY_MODE: "SHARED_DEFAULT",
+        F06_OVERCOMMIT_POLICY: "PROD_1_TO_1",
+        F07_HA_DR_TOPOLOGY: "ZONAL_HA_PLUS_DR",
+        F08_GPU_MIG_PROFILE: "MIG_3G_40GB",
+        F09_INFERENCE_ENGINE: "ENGINE_VLLM_PROD",
+        F17_HARBOR_BUNDLE_GIB: 180,
+        F18B_BLUEPRINT_PATTERNS: ["P4_KAFKA_EVENT", "P6_RAG_AGENT", "P7_SQL_AGENT"],
+        F19B_TSHIRT_TIER: "TIER_M",
+        F20B_NONPROD_POLICY: "NONPROD_HALF",
+        F20C_LIFESPAN_CLASS: "STATIC_24X7",
+        DB_CONSOLIDATION_POLICY: "CONSOLIDATED",
+        F25_STORAGE_PARAMS: { daily_ingest_gib: 25, retention_days: 730, snapshot_days: 14, dr_window_hours: 4 },
+        F26_RAMP_M6_COMPUTE_GPU: [1.25, 1.5],
+        F27_RAMP_M12_COMPUTE_GPU: [2.0, 2.0],
+        F28_RAMP_M24_COMPUTE_GPU: [3.0, 4.0],
+        IO_AVAILABLE_RACK_HEADROOM: {
+          physical_vcpu: 96,
+          physical_ram_gib: 384,
+          raw_ceph_tib: 80,
+          physical_gpu_cards: 3
+        }
+      });
+    }
+
+    function scrollToDomain(id) {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initInterviewCatalog();
+      toggleSizingTrack();
+      collateAll();
+    });
+  </script>
+</body>
+</html>

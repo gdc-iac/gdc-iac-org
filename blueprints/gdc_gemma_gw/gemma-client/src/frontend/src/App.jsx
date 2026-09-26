@@ -1,29 +1,18 @@
-/**
- * Copyright 2026 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
+import NavigationTabs from './components/NavigationTabs';
+import TelemetryDashboard from './components/TelemetryDashboard';
+import RagIntelligenceView from './components/RagIntelligenceView';
+import ReadinessAuditView from './components/ReadinessAuditView';
 import api from './api';
 import { decodeJwt, exchangeCodeForTokens, redirectToLogin } from './oidc';
 import { Loader2 } from 'lucide-react';
 
 function App() {
   const isOidcEnabled = import.meta.env.VITE_ENABLE_OIDC === 'true';
+  const isIntelConsoleEnabled = import.meta.env.VITE_ENABLE_INTEL_CONSOLE !== 'false';
   const authority = import.meta.env.VITE_OIDC_AUTHORITY || (window.location.origin + '/auth/realms/gdc-rag-realm');
   const clientId = import.meta.env.VITE_OIDC_CLIENT_ID || 'rag-frontend';
 
@@ -45,6 +34,7 @@ function App() {
   const [chats, setChats] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [activeTab, setActiveTab] = useState('telemetry');
 
   // OIDC Handshake Hook
   useEffect(() => {
@@ -80,6 +70,9 @@ function App() {
           const tokenData = await exchangeCodeForTokens(authority, clientId, code, state);
           const accessToken = tokenData.access_token;
           sessionStorage.setItem('oidc_access_token', accessToken);
+          if (tokenData.refresh_token) {
+            sessionStorage.setItem('oidc_refresh_token', tokenData.refresh_token);
+          }
           
           // Wipe authorization code query strings from browser URL preview bar
           window.history.replaceState({}, document.title, window.location.pathname);
@@ -168,7 +161,7 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white text-gray-900 font-sans">
+    <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans">
       <Header 
         currentUser={currentUser} 
         setCurrentUser={setCurrentUser}
@@ -176,33 +169,45 @@ function App() {
         setSelectedModel={setActiveModel} // Update activeModel on switcher click
         isThinkingEnabled={isThinkingEnabled}
         setIsThinkingEnabled={setIsThinkingEnabled}
+        isIntelConsoleEnabled={isIntelConsoleEnabled}
       />
       
+      {isIntelConsoleEnabled && (
+        <NavigationTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+      )}
+
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar 
-          currentUser={currentUser}
-          files={files}
-          setFiles={setFiles}
-          selectedFiles={selectedFiles}
-          setSelectedFiles={setSelectedFiles}
-          chats={chats}
-          setChats={setChats}
-          currentChatId={currentChatId}
-          setCurrentChatId={setCurrentChatId}
-          loadChat={setCurrentChatId}
-        />
-        
-        <ChatArea 
-          messages={messages}
-          setMessages={setMessages}
-          selectedFiles={selectedFiles}
-          selectedModel={selectedModel} // Always send generic gemma4 to API
-          setSelectedModel={setActiveModel} // Update activeModel badge on API response
-          isThinkingEnabled={isThinkingEnabled}
-          currentChatId={currentChatId}
-          setCurrentChatId={setCurrentChatId}
-          refreshChats={fetchChats}
-        />
+        {isIntelConsoleEnabled && activeTab === 'telemetry' && <TelemetryDashboard />}
+        {isIntelConsoleEnabled && activeTab === 'rag' && <RagIntelligenceView />}
+        {isIntelConsoleEnabled && activeTab === 'audit' && <ReadinessAuditView />}
+        {(!isIntelConsoleEnabled || activeTab === 'chat') && (
+          <>
+            <Sidebar 
+              currentUser={currentUser}
+              files={files}
+              setFiles={setFiles}
+              selectedFiles={selectedFiles}
+              setSelectedFiles={setSelectedFiles}
+              chats={chats}
+              setChats={setChats}
+              currentChatId={currentChatId}
+              setCurrentChatId={setCurrentChatId}
+              loadChat={setCurrentChatId}
+            />
+            
+            <ChatArea 
+              messages={messages}
+              setMessages={setMessages}
+              selectedFiles={selectedFiles}
+              selectedModel={selectedModel} // Always send generic gemma4 to API
+              setSelectedModel={setActiveModel} // Update activeModel badge on API response
+              isThinkingEnabled={isThinkingEnabled}
+              currentChatId={currentChatId}
+              setCurrentChatId={setCurrentChatId}
+              refreshChats={fetchChats}
+            />
+          </>
+        )}
       </div>
     </div>
   );
