@@ -97,3 +97,18 @@ If target GDC Project ID, Harbor container registry URL, or Kubernetes namespace
    ./common-scripts/configure-blueprints.sh -p <NEW_PROJECT_ID> -r <NEW_REGISTRY_URL> -n <NEW_NAMESPACE>
    ```
 2. This script reads previous parameters from `.configure_state` and dynamically updates all Project IDs, Registry URL hostnames, and Namespace definitions across all K8s YAMLs, Helm values, and deployment scripts without requiring re-building from source.
+
+---
+
+## GDC-ag Helm/IaC Confidence Boundaries & Pre-Flight Checklist
+
+While the end-to-end runtime stack (`Gateway/gdc-platform-gateway`, `HTTPRoute/gemma-unified-routes`, Keycloak OIDC, FastAPI 4-worker backend, PostgreSQL 9-table schema, and side-by-side `ollama-26b` + `ollama-31b` GPU inference) has been stress-tested on GKE Stepping-Stone clusters, operators deploying via the **Helm wrapper charts (`chart/`) and `foundations/` IaC pipeline on physical GDC Air-Gapped (`GDC-ag`) hardware** must verify four GDC-specific boundaries:
+
+1. **`DBCluster` Connection Secret Contract (`gemma-client-db-credentials`)**:
+   - Stage 2 (`2-resources`) provisions managed PostgreSQL via `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`), whereas `gemma-client` (`5-workload-factory`) expects `Secret/gemma-client-db-credentials` containing `connection_string`. Ensure `dga-secret-sync` (or an explicit `Secret`) maps the `DBCluster` endpoint credentials into `connection_string` in the target User Cluster namespace before `backend` starts.
+2. **Automatic Schema Creation vs. Demo Seed Data**:
+   - `gemma-client` (`database.py`) automatically runs `CREATE TABLE IF NOT EXISTS` for all 9 application and readiness tables (`chats`, `messages`, `files`, `sensor_telemetry`, `military_units`, `equipment_inventory`, `fuel_and_supplies`, `convoy_routes`, `intelligence_reports`) on first connection to a managed `DBCluster`. To populate the synthetic *Operation Vanguard Shield* demo records on a managed `DBCluster`, run `psql "${DATABASE_URL}" -f test-data/seed_readiness_db.sql`.
+3. **Frontend OIDC Build-Time Endpoint (`VITE_KEYCLOAK_URL`)**:
+   - Because `configure-blueprints.sh` excludes `*/chart/*` paths to preserve Helm parameterization (`global.registry`, `global.projectId`), ensure `global.registry` (`harbor.gdc.local/...`) is passed via Helmfile values and run `./gemma-client/scripts/configure-keycloak.sh` with the target GDC-ag ingress URL (`https://app.gdc.local`) prior to building and archiving the `gemma-client-frontend` image for Harbor transfer.
+4. **Cross-Namespace Gateway Attachment (`gdc-platform-gateway`)**:
+   - Verify that the parent `Gateway/gdc-platform-gateway` on GDC-ag permits route attachment from the application namespace (`allowedRoutes.namespaces.from: All`) and set `apps.hostnames: ["app.gdc.local"]` in `gemma-client/chart/values.yaml` if strict hostname matching is required.

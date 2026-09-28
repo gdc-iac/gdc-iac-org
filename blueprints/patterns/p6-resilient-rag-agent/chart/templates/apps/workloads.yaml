@@ -1,0 +1,216 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-frontend:v7
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: frontend
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: LoadBalancer
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: doc-ingest
+  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+spec:
+  schedule: '*/15 * * * *'
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: rag-sa
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: ingest
+            image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-ingest:v7
+            imagePullPolicy: Always
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop:
+                - ALL
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+            env:
+            - name: INPUT_BUCKET
+              value: gs://raw-docs-{{ include "p6-resilient-rag-agent.projectId" . }}
+            - name: DB_NAME
+              value: postgres
+            - name: LLM_PROVIDER
+              value: gemma
+            - name: LLM_GATEWAY_URL
+              value: http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1
+            - name: GEMINI_ENDPOINT
+              value: http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1
+            - name: GEMINI_MODEL
+              value: gemma-2-27b-it
+            - name: EMBEDDING_MODEL
+              value: text-embedding-004
+            - name: PROJECT_ID
+              value: your-project-id
+            - name: AO_PROJECT_ID
+              value: projects/{{ include "p6-resilient-rag-agent.projectId" . }}
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-secrets
+                  key: api-key
+                  optional: true
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: rag-db-credentials
+                  key: host
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rag-db-credentials
+                  key: username
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rag-db-credentials
+                  key: password
+          restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: query-service
+  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: query-service
+  template:
+    metadata:
+      labels:
+        app: query-service
+    spec:
+      serviceAccountName: rag-sa
+      containers:
+      - name: query-service
+        image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-query:v7
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: rag-db-credentials
+              key: host
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: rag-db-credentials
+              key: username
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: rag-db-credentials
+              key: password
+        - name: DB_NAME
+          value: postgres
+        - name: LLM_PROVIDER
+          value: gemma
+        - name: LLM_GATEWAY_URL
+          value: http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1
+        - name: GEMINI_ENDPOINT
+          value: http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1
+        - name: GEMINI_MODEL
+          value: gemma-2-27b-it
+        - name: EMBEDDING_MODEL
+          value: text-embedding-004
+        - name: PROJECT_ID
+          value: your-project-id
+        - name: AO_PROJECT_ID
+          value: projects/{{ include "p6-resilient-rag-agent.projectId" . }}
+        - name: INPUT_BUCKET
+          value: gs://raw-docs-{{ include "p6-resilient-rag-agent.projectId" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: query-service
+  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: query-service
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rag-sa
+  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+{{- end }}

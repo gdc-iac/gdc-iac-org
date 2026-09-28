@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GDC Air-Gapped (GDC-ag) Workload Sizing & IO Procurement — Executive Slide Deck</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #0f172a;
+      --foreground: #f8fafc;
+      --card: #1e293b;
+      --border: #334155;
+      --muted-foreground: #94a3b8;
+    }
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      overflow-x: hidden;
+    }
+    .slide {
+      display: none;
+      min-height: calc(100vh - 88px);
+    }
+    .slide.active {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      animation: fadeIn 0.25s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .slide {
+        display: flex !important;
+        page-break-after: always;
+        min-height: 100vh;
+      }
+    }
+  </style>
+</head>
+<body class="antialiased select-none">
+
+  <!-- Top Navigation Bar -->
+  <header class="no-print h-14 border-b border-[var(--border)] bg-[var(--card)]/90 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <span class="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">GDC Air-Gapped SME Deck</span>
+      <span class="font-bold text-sm md:text-base">Workload Sizing, MIG Partitioning & IO Procurement Architecture</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition shadow flex items-center gap-1.5">
+        <span>🧮 Open Interactive Sizing Calculator</span>
+      </a>
+      <button onclick="window.print()" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border)] hover:bg-slate-700 transition">
+        🖨️ Print / Export PDF
+      </button>
+      <div class="flex items-center gap-1 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-[var(--border)] text-xs font-mono">
+        <button onclick="prevSlide()" class="px-2 py-0.5 hover:text-blue-400 font-bold">&larr;</button>
+        <span id="slideCounter">1 / 7</span>
+        <button onclick="nextSlide()" class="px-2 py-0.5 hover:text-blue-400 font-bold">&rarr;</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Slide Container -->
+  <main class="max-w-7xl mx-auto px-6 py-6">
+
+    <!-- ==================== SLIDE 1: THE PROBLEM STATEMENT ==================== -->
+    <section class="slide active" data-title="The Air-Gapped Sizing Paradox">
+      <div class="space-y-6">
+        <div class="border-l-4 border-blue-500 pl-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-blue-400">Slide 1 of 7 &bull; Executive Problem Statement</div>
+          <h1 class="text-2xl md:text-4xl font-extrabold mt-1">Why Traditional Cloud Sizing Fails in Disconnected SCIF Enclaves</h1>
+          <p class="text-sm md:text-base text-[var(--muted-foreground)] mt-1">
+            Public cloud assumes infinite elasticity and 30-second API provisioning. Google Distributed Cloud Air-Gapped (GDC-ag) operates under strict physical, security, and supply-chain constraints.
+          </p>
+        </div>
+
+        <!-- 3 Core Failure Modes -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
+          <div class="bg-[var(--card)] border border-red-500/30 rounded-xl p-5 space-y-3 shadow-lg">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 text-xs font-bold rounded bg-red-500/15 text-red-400">FAILURE MODE 1</span>
+              <span class="text-2xl">🗣️</span>
+            </div>
+            <h3 class="text-lg font-bold">Customer Intimidation & Guesswork BOMs</h3>
+            <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              End customers fall into two distinct groups: <b>Track A</b> (technical teams with exact VM/pod BOMs) and <b>Track B</b> (mission owners who know their operational problem but freeze when asked for Kubernetes vCPUs, pgvector RAM, or FP16 KV-cache VRAM).
+            </p>
+            <div class="p-2.5 rounded bg-black/30 border border-[var(--border)] text-xs text-red-300 font-mono">
+              Result: Arbitrary hardware guesses that either waste millions or crash on Day 1.
+            </div>
+          </div>
+
+          <div class="bg-[var(--card)] border border-amber-500/30 rounded-xl p-5 space-y-3 shadow-lg">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 text-xs font-bold rounded bg-amber-500/15 text-amber-400">FAILURE MODE 2</span>
+              <span class="text-2xl">💾</span>
+            </div>
+            <h3 class="text-lg font-bold">The Hidden 22.2x Storage & Overhead Trap</h3>
+            <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              Naive sizing only counts raw database files. In GDC-ag, <b>1 GiB of baseline data</b> requires <b>22.2 GiB of physical Ceph disk</b> when accounting for HNSW indexes (+20%), active DR site mirroring (&times;2), 14-day local snapshots (&times;3.7), and 3-way Ceph replication (&times;3).
+            </p>
+            <div class="p-2.5 rounded bg-black/30 border border-[var(--border)] text-xs text-amber-300 font-mono">
+              Result: Racks run out of physical disk 90 days into production.
+            </div>
+          </div>
+
+          <div class="bg-[var(--card)] border border-purple-500/30 rounded-xl p-5 space-y-3 shadow-lg">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 text-xs font-bold rounded bg-purple-500/15 text-purple-400">FAILURE MODE 3</span>
+              <span class="text-2xl">⏳</span>
+            </div>
+            <h3 class="text-lg font-bold">The 9–18 Month Procurement Blind Spot</h3>
+            <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              Infrastructure Operators (IOs) allocate Day 0 (<b>T0</b>) capacity from existing racks without visibility into Month 12 (<b>T+12m</b>) growth. Because physical rack delivery, TEMPEST inspection, and SCIF accreditation take <b>9 to 18 months</b>, waiting until racks fill up guarantees an outage.
+            </p>
+            <div class="p-2.5 rounded bg-black/30 border border-[var(--border)] text-xs text-purple-300 font-mono">
+              Result: IO teams must trigger Month 12 Purchase Orders ON DAY 0.
+            </div>
+          </div>
+        </div>
+
+        <!-- Solution Summary Banner -->
+        <div class="bg-gradient-to-r from-blue-900/40 via-indigo-900/40 to-emerald-900/40 border border-blue-500/40 rounded-xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div class="text-xs font-bold uppercase text-emerald-400">The GDC-ag Unified Sizing & Procurement Solution</div>
+            <div class="text-sm md:text-base font-semibold">
+              A Two-Layer SCIF Intake Process + Deterministic Calculation Engine that translates plain-English mission interviews into exact 4-Horizon IO Purchase Orders and Hardware-Isolated NVIDIA MIG topologies.
+            </div>
+          </div>
+          <button onclick="nextSlide()" class="shrink-0 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow">
+            View Process Flowchart &rarr;
+          </button>
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>GDC Air-Gapped Workload Sizing Framework</span>
+        <span>Use Left/Right Arrow Keys to Navigate</span>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 2: END-TO-END PROCESS FLOWCHART ==================== -->
+    <section class="slide" data-title="End-to-End Architecture & Process Flowchart">
+      <div class="space-y-4">
+        <div class="border-l-4 border-emerald-500 pl-4 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-emerald-400">Slide 2 of 7 &bull; End-to-End Architecture Flowchart</div>
+            <h1 class="text-2xl md:text-3xl font-extrabold mt-0.5">How SCIF Interviews Transform into IO Hardware Procurement Gates</h1>
+          </div>
+          <span class="text-xs font-mono px-3 py-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+            4-Stage Deterministic Pipeline
+          </span>
+        </div>
+
+        <!-- High-Resolution Visual SVG Flowchart -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 overflow-x-auto shadow-xl">
+          <svg viewBox="0 0 1150 500" class="w-full h-auto min-w-[900px]">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#60a5fa" />
+              </marker>
+              <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+              </marker>
+              <marker id="arrow-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" />
+              </marker>
+            </defs>
+
+            <!-- STAGE 1: INSIDE SCIF -->
+            <rect x="15" y="15" width="250" height="470" rx="12" fill="#0f172a" stroke="#3b82f6" stroke-width="2" />
+            <rect x="15" y="15" width="250" height="38" rx="10" fill="#1d4ed8" />
+            <text x="140" y="39" fill="#ffffff" font-size="13" font-weight="bold" text-anchor="middle">STAGE 1: SCIF INTAKE (OFFLINE)</text>
+
+            <!-- Customer Start -->
+            <rect x="35" y="70" width="210" height="48" rx="8" fill="#1e293b" stroke="#60a5fa" />
+            <text x="140" y="92" fill="#f8fafc" font-size="12" font-weight="bold" text-anchor="middle">Customer Enters SCIF Interview</text>
+            <text x="140" y="108" fill="#94a3b8" font-size="10" text-anchor="middle">(Zero Laptops / Paper Booklet Only)</text>
+
+            <!-- Track A vs Track B Split -->
+            <path d="M 90 118 L 90 155" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrow)" />
+            <path d="M 190 118 L 190 155" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrow)" />
+
+            <rect x="28" y="160" width="105" height="95" rx="8" fill="#1e1b4b" stroke="#818cf8" />
+            <text x="80" y="182" fill="#a5b4fc" font-size="11" font-weight="bold" text-anchor="middle">Track A Persona</text>
+            <text x="80" y="198" fill="#e2e8f0" font-size="10" text-anchor="middle">Knows Exact BOM</text>
+            <text x="80" y="216" fill="#94a3b8" font-size="9" text-anchor="middle">&bull; Direct vCPU/RAM</text>
+            <text x="80" y="230" fill="#94a3b8" font-size="9" text-anchor="middle">&bull; Known DB GiB</text>
+            <text x="80" y="244" fill="#94a3b8" font-size="9" text-anchor="middle">&bull; Direct GPU Count</text>
+
+            <rect x="145" y="160" width="110" height="95" rx="8" fill="#064e3b" stroke="#34d399" />
+            <text x="200" y="182" fill="#6ee7b7" font-size="11" font-weight="bold" text-anchor="middle">Track B Persona</text>
+            <text x="200" y="198" fill="#e2e8f0" font-size="10" text-anchor="middle">Mission Problem</text>
+            <text x="200" y="216" fill="#94a3b8" font-size="9" text-anchor="middle">&bull; Plain-English Q&amp;A</text>
+            <text x="200" y="230" fill="#94a3b8" font-size="9" text-anchor="middle">&bull; Blueprints P1–P13</text>
+            <text x="200" y="244" fill="#94a3b8" font-size="9" text-anchor="middle">&bull; Shift Concurrency</text>
+
+            <path d="M 80 255 L 140 305" stroke="#818cf8" stroke-width="2" marker-end="url(#arrow)" />
+            <path d="M 200 255 L 140 305" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)" />
+
+            <!-- Section 6 Tear-Off Ledger -->
+            <rect x="35" y="310" width="210" height="150" rx="8" fill="#1e293b" stroke="#fbbf24" stroke-width="2" />
+            <text x="140" y="334" fill="#fbbf24" font-size="12" font-weight="bold" text-anchor="middle">Section 6 Tear-Off Ledger</text>
+            <text x="140" y="352" fill="#f8fafc" font-size="10" text-anchor="middle">Silent Facilitator Translation</text>
+            <text x="48" y="374" fill="#cbd5e1" font-size="10" font-family="monospace">&bull; [F-03] PATH_A vs PATH_B</text>
+            <text x="48" y="392" fill="#cbd5e1" font-size="10" font-family="monospace">&bull; [F-04B] Confidence Buffer</text>
+            <text x="48" y="410" fill="#cbd5e1" font-size="10" font-family="monospace">&bull; [F-05] Tenancy Mode Tax</text>
+            <text x="48" y="428" fill="#cbd5e1" font-size="10" font-family="monospace">&bull; [F-07] ZONAL_HA_PLUS_DR</text>
+            <text x="48" y="446" fill="#cbd5e1" font-size="10" font-family="monospace">&bull; [F-08] MIG_3G_40GB Profile</text>
+
+            <!-- Arrow Stage 1 -> Stage 2 -->
+            <path d="M 245 385 L 295 385 L 295 120 L 315 120" stroke="#fbbf24" stroke-width="3" fill="none" marker-end="url(#arrow-amber)" />
+
+            <!-- STAGE 2: DETERMINISTIC ENGINE -->
+            <rect x="315" y="15" width="275" height="470" rx="12" fill="#0f172a" stroke="#8b5cf6" stroke-width="2" />
+            <rect x="315" y="15" width="275" height="38" rx="10" fill="#6d28d9" />
+            <text x="452" y="39" fill="#ffffff" font-size="13" font-weight="bold" text-anchor="middle">STAGE 2: SIZING &amp; MIG ENGINE</text>
+
+            <!-- CLI / Web Intake -->
+            <rect x="335" y="70" width="235" height="55" rx="8" fill="#1e293b" stroke="#a78bfa" />
+            <text x="452" y="92" fill="#f8fafc" font-size="12" font-weight="bold" text-anchor="middle">CLI / Web Visualizer Engine</text>
+            <text x="452" y="110" fill="#c4b5fd" font-size="10" font-family="monospace" text-anchor="middle">gdc_ag_sizing_cli.py | index.html</text>
+
+            <path d="M 452 125 L 452 155" stroke="#a78bfa" stroke-width="2" marker-end="url(#arrow)" />
+
+            <!-- Compute Math Box -->
+            <rect x="335" y="160" width="235" height="90" rx="8" fill="#1e293b" stroke="#38bdf8" />
+            <text x="452" y="182" fill="#38bdf8" font-size="11" font-weight="bold" text-anchor="middle">1. Physical Node Pool Engine</text>
+            <text x="348" y="200" fill="#e2e8f0" font-size="10">&bull; 22% Kubelet/System Reserve</text>
+            <text x="348" y="216" fill="#e2e8f0" font-size="10">&bull; Active DR Site Mirror (&times;2.0 Compute)</text>
+            <text x="348" y="232" fill="#e2e8f0" font-size="10">&bull; N+1 Zonal HA Anti-Affinity Floor</text>
+
+            <!-- Storage Math Box -->
+            <rect x="335" y="265" width="235" height="100" rx="8" fill="#1e293b" stroke="#fbbf24" />
+            <text x="452" y="287" fill="#fbbf24" font-size="11" font-weight="bold" text-anchor="middle">2. 22.2x Raw Ceph Storage Engine</text>
+            <text x="348" y="305" fill="#e2e8f0" font-size="10">&bull; Vector/DB Index Overhead (&times;1.20)</text>
+            <text x="348" y="321" fill="#e2e8f0" font-size="10">&bull; Active DR Site Replication (&times;2.0)</text>
+            <text x="348" y="337" fill="#e2e8f0" font-size="10">&bull; 14d Snapshots + 2 Full Backups (&times;3.7)</text>
+            <text x="348" y="353" fill="#e2e8f0" font-size="10">&bull; 3-Way Ceph OSD Replication (&times;3.0)</text>
+
+            <!-- GPU MIG Math Box -->
+            <rect x="335" y="380" width="235" height="90" rx="8" fill="#1e293b" stroke="#34d399" />
+            <text x="452" y="402" fill="#34d399" font-size="11" font-weight="bold" text-anchor="middle">3. Hardware MIG GPU Bin-Packer</text>
+            <text x="348" y="420" fill="#e2e8f0" font-size="10">&bull; Enforces 40GB MIG for Gemma 26B/31B</text>
+            <text x="348" y="436" fill="#e2e8f0" font-size="10">&bull; Hardware-Isolated Namespace Slices</text>
+            <text x="348" y="452" fill="#e2e8f0" font-size="10">&bull; Calculates Physical 80GB Cards</text>
+
+            <!-- Arrow Stage 2 -> Stage 3 -->
+            <path d="M 570 250 L 620 250" stroke="#34d399" stroke-width="3" marker-end="url(#arrow-green)" />
+
+            <!-- STAGE 3: 4-HORIZON SCHEDULE -->
+            <rect x="620" y="15" width="230" height="470" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+            <rect x="620" y="15" width="230" height="38" rx="10" fill="#047857" />
+            <text x="735" y="39" fill="#ffffff" font-size="13" font-weight="bold" text-anchor="middle">STAGE 3: 4-HORIZON MATRIX</text>
+
+            <rect x="638" y="75" width="194" height="85" rx="8" fill="#064e3b" stroke="#34d399" stroke-width="2" />
+            <text x="735" y="97" fill="#6ee7b7" font-size="12" font-weight="bold" text-anchor="middle">T0 (Day 0 Go-Live)</text>
+            <text x="735" y="116" fill="#ffffff" font-size="11" font-family="monospace" text-anchor="middle">12 Nodes (96c / 384Gi)</text>
+            <text x="735" y="133" fill="#ffffff" font-size="11" font-family="monospace" text-anchor="middle">54.60 TiB Raw Ceph</text>
+            <text x="735" y="150" fill="#ffffff" font-size="11" font-family="monospace" text-anchor="middle">5 MIG Slices &rarr; 3 GPUs</text>
+
+            <rect x="638" y="175" width="194" height="80" rx="8" fill="#1e293b" stroke="#64748b" />
+            <text x="735" y="197" fill="#cbd5e1" font-size="12" font-weight="bold" text-anchor="middle">T+6m (Month 6 Ramp)</text>
+            <text x="735" y="215" fill="#94a3b8" font-size="10" font-family="monospace" text-anchor="middle">13 Nodes (104c / 416Gi)</text>
+            <text x="735" y="231" fill="#fbbf24" font-size="10" font-family="monospace" text-anchor="middle">183.38 TiB Raw Ceph (!)</text>
+            <text x="735" y="247" fill="#94a3b8" font-size="10" font-family="monospace" text-anchor="middle">7 MIG Slices &rarr; 4 GPUs</text>
+
+            <rect x="638" y="270" width="194" height="95" rx="8" fill="#451a03" stroke="#f59e0b" stroke-width="2" />
+            <text x="735" y="292" fill="#fcd34d" font-size="12" font-weight="bold" text-anchor="middle">T+12m (DAY 0 PO GATE)</text>
+            <text x="735" y="310" fill="#ffffff" font-size="11" font-family="monospace" text-anchor="middle">16 Nodes (128c / 512Gi)</text>
+            <text x="735" y="327" fill="#fbbf24" font-size="11" font-family="monospace" text-anchor="middle">315.73 TiB Raw Ceph</text>
+            <text x="735" y="344" fill="#ffffff" font-size="11" font-family="monospace" text-anchor="middle">9 MIG Slices &rarr; 5 GPUs</text>
+            <text x="735" y="358" fill="#fca5a5" font-size="9" font-weight="bold" text-anchor="middle">Must Order on Day 0 (9-18m Lead)</text>
+
+            <rect x="638" y="380" width="194" height="85" rx="8" fill="#2e1065" stroke="#c084fc" />
+            <text x="735" y="402" fill="#e9d5ff" font-size="12" font-weight="bold" text-anchor="middle">T+24m (MONTH 6 PO GATE)</text>
+            <text x="735" y="420" fill="#e2e8f0" font-size="10" font-family="monospace" text-anchor="middle">20 Nodes (160c / 640Gi)</text>
+            <text x="735" y="436" fill="#e2e8f0" font-size="10" font-family="monospace" text-anchor="middle">576.87 TiB Raw Ceph</text>
+            <text x="735" y="452" fill="#e2e8f0" font-size="10" font-family="monospace" text-anchor="middle">17 MIG Slices &rarr; 9 GPUs</text>
+
+            <!-- Arrows Stage 3 -> Stage 4 -->
+            <path d="M 832 115 L 885 115" stroke="#34d399" stroke-width="2.5" marker-end="url(#arrow-green)" />
+            <path d="M 832 315 L 885 275" stroke="#fbbf24" stroke-width="2.5" marker-end="url(#arrow-amber)" />
+            <path d="M 832 425 L 885 415" stroke="#c084fc" stroke-width="2.5" marker-end="url(#arrow)" />
+
+            <!-- STAGE 4: IO & PA EXECUTION -->
+            <rect x="885" y="15" width="250" height="470" rx="12" fill="#0f172a" stroke="#f59e0b" stroke-width="2" />
+            <rect x="885" y="15" width="250" height="38" rx="10" fill="#b45309" />
+            <text x="1010" y="39" fill="#ffffff" font-size="13" font-weight="bold" text-anchor="middle">STAGE 4: IO &amp; PA EXECUTION</text>
+
+            <!-- Action 1: Day 0 Rack Allocation -->
+            <rect x="902" y="70" width="216" height="110" rx="8" fill="#064e3b" stroke="#34d399" stroke-width="2" />
+            <text x="1010" y="92" fill="#6ee7b7" font-size="11" font-weight="bold" text-anchor="middle">1. Day 0 Rack Allocation (T0)</text>
+            <text x="1010" y="110" fill="#ffffff" font-size="10" text-anchor="middle">Compare T0 vs Available Headroom:</text>
+            <text x="1010" y="126" fill="#a7f3d0" font-size="10" font-family="monospace" text-anchor="middle">(96c / 384Gi / 80TiB / 3 GPUs)</text>
+            <text x="1010" y="146" fill="#34d399" font-size="11" font-weight="bold" text-anchor="middle">&check; APPROVE DAY 0 ALLOCATION</text>
+            <text x="1010" y="164" fill="#cbd5e1" font-size="9" text-anchor="middle">PA applies generated Cluster YAML</text>
+
+            <!-- Action 2: Day 0 Emergency PO -->
+            <rect x="902" y="205" width="216" height="135" rx="8" fill="#450a0a" stroke="#f87171" stroke-width="2" />
+            <text x="1010" y="227" fill="#fca5a5" font-size="11" font-weight="bold" text-anchor="middle">2. DAY 0 EMERGENCY HARDWARE PO</text>
+            <text x="1010" y="245" fill="#ffffff" font-size="10" text-anchor="middle">Compare T+12m vs Available Headroom:</text>
+            <text x="915" y="265" fill="#fecaca" font-size="10" font-family="monospace">&bull; Order +4 Compute Nodes (+32c)</text>
+            <text x="915" y="282" fill="#fecaca" font-size="10" font-family="monospace">&bull; Order +235.7 TiB Raw Ceph</text>
+            <text x="915" y="299" fill="#fecaca" font-size="10" font-family="monospace">&bull; Order +2 Physical 80GB GPUs</text>
+            <text x="1010" y="324" fill="#fde047" font-size="9" font-weight="bold" text-anchor="middle">Issued Day 0 to beat 9-18m Lead Time!</text>
+
+            <!-- Action 3: Month 6 Scheduled PO -->
+            <rect x="902" y="360" width="216" height="105" rx="8" fill="#1e1b4b" stroke="#a78bfa" />
+            <text x="1010" y="382" fill="#c4b5fd" font-size="11" font-weight="bold" text-anchor="middle">3. Month 6 Scheduled PO (T+24m)</text>
+            <text x="915" y="402" fill="#e2e8f0" font-size="10" font-family="monospace">&bull; Order +4 Nodes (+32c/128Gi)</text>
+            <text x="915" y="418" fill="#e2e8f0" font-size="10" font-family="monospace">&bull; Order +261.1 TiB Raw Ceph</text>
+            <text x="915" y="434" fill="#e2e8f0" font-size="10" font-family="monospace">&bull; Order +4 Physical 80GB GPUs</text>
+            <text x="1010" y="452" fill="#94a3b8" font-size="9" text-anchor="middle">Arrives Month 18 for Year 2 Ramp</text>
+          </svg>
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>Stage 1 (SCIF) &rarr; Stage 2 (Engine) &rarr; Stage 3 (4-Horizon Matrix) &rarr; Stage 4 (IO Procurement Gates)</span>
+        <span>Slide 2 of 7</span>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 3: THE TWO-LAYER ARCHITECTURE ==================== -->
+    <section class="slide" data-title="Two-Layer Intake Architecture">
+      <div class="space-y-6">
+        <div class="border-l-4 border-indigo-500 pl-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-indigo-400">Slide 3 of 7 &bull; Dual-Persona Intake Design</div>
+          <h1 class="text-2xl md:text-3xl font-extrabold mt-1">The Two-Layer Architecture: Friendly Outside, Deterministic Inside</h1>
+          <p class="text-sm text-[var(--muted-foreground)] mt-1">
+            How we accommodate non-technical mission owners without sacrificing engineering precision for Infrastructure Operators.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Left Layer: Customer-Facing -->
+          <div class="bg-[var(--card)] border-2 border-emerald-500/40 rounded-xl p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-300">LAYER 1 &bull; SPOKEN IN SCIF</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">Zero Technical Jargon</span>
+            </div>
+            <h3 class="text-xl font-bold text-emerald-400">Plain-English Conversational Prompts</h3>
+            <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              Designed for agency directors, intelligence officers, and program managers who understand mission outcomes but do not know Kubernetes or storage math.
+            </p>
+            <div class="space-y-2.5 text-xs">
+              <div class="p-3 rounded-lg bg-black/30 border border-[var(--border)]">
+                <div class="font-bold text-white">&ldquo;If a server rack loses power, does your mission require instant failover plus a live copy at a secondary site?&rdquo;</div>
+                <div class="text-[var(--muted-foreground)] mt-1">&rarr; Customer answers: <i>&ldquo;Yes, we cannot lose SITREP feeds if a primary rack fails.&rdquo;</i></div>
+              </div>
+              <div class="p-3 rounded-lg bg-black/30 border border-[var(--border)]">
+                <div class="font-bold text-white">&ldquo;Will analysts ask questions over classified PDFs or query readiness databases in plain English?&rdquo;</div>
+                <div class="text-[var(--muted-foreground)] mt-1">&rarr; Customer answers: <i>&ldquo;Both—and around 100 people log in at shift change.&rdquo;</i></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Layer: Facilitator Coded -->
+          <div class="bg-[var(--card)] border-2 border-purple-500/40 rounded-xl p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="px-3 py-1 text-xs font-bold rounded-full bg-purple-500/20 text-purple-300">LAYER 2 &bull; SILENT TRANSLATION</span>
+              <span class="text-xs font-mono text-[var(--muted-foreground)]">Section 6 Tear-Off Ledger</span>
+            </div>
+            <h3 class="text-xl font-bold text-purple-400">Deterministic Field Codes (`[F-01]`–`[F-28]`)</h3>
+            <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              Every conversational answer maps 1:1 to a strict mathematical constant on the Facilitator's tear-off ledger sheet.
+            </p>
+            <div class="space-y-2.5 text-xs font-mono">
+              <div class="p-3 rounded-lg bg-black/30 border border-purple-500/30">
+                <div class="text-purple-300 font-bold">[F-07] = ZONAL_HA_PLUS_DR</div>
+                <div class="text-[var(--muted-foreground)] text-[11px] mt-1">Injects 2.0x Active DR Site Multiplier + 3x Ceph Replication + 3-Zone Node Floor.</div>
+              </div>
+              <div class="p-3 rounded-lg bg-black/30 border border-purple-500/30">
+                <div class="text-purple-300 font-bold">[F-18B] = ["P4_KAFKA", "P6_RAG", "P7_SQL"] &bull; [F-19B] = TIER_M</div>
+                <div class="text-[var(--muted-foreground)] text-[11px] mt-1">Enforces 40GB Hardware MIG (`MIG_3G_40GB`) for Gemma 26B/31B + 1,788 GiB baseline storage.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>Both Web Calculator and Paper Questionnaire support instant switching between Layer 1 and Layer 2</span>
+        <span>Slide 3 of 7</span>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 4: MULTI-TENANT MIG & ISOLATION TAX ==================== -->
+    <section class="slide" data-title="GPU MIG Isolation & Tenancy Tax">
+      <div class="space-y-6">
+        <div class="border-l-4 border-amber-500 pl-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-amber-400">Slide 4 of 7 &bull; Security &amp; Hardware Architecture</div>
+          <h1 class="text-2xl md:text-3xl font-extrabold mt-1">Multi-Tenant Isolation Taxes (`[F-05]`) &amp; Hardware NVIDIA MIG (`[F-08]`)</h1>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Tenancy Tax Table -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-3">
+            <h3 class="text-base font-bold text-blue-400">Platform Service Tenancy Options (`[F-05]`)</h3>
+            <p class="text-xs text-[var(--muted-foreground)]">
+              By default, workloads share enclave Keycloak (`P12`) and Vault (`P11`) services (`$0` tax). Dedicated isolation injects exact physical quorum overhead:
+            </p>
+            <table class="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+                  <th class="py-2">Tenancy Mode</th>
+                  <th class="py-2">Isolation Tax Injected</th>
+                  <th class="py-2">Use Case</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[var(--border)] font-mono">
+                <tr>
+                  <td class="py-2.5 font-bold text-emerald-400">SHARED_DEFAULT</td>
+                  <td class="py-2.5">+0 vCPU / +0 GiB</td>
+                  <td class="py-2.5 font-sans">Standard multi-tenant enclave</td>
+                </tr>
+                <tr>
+                  <td class="py-2.5 font-bold text-amber-400">HYBRID_DEDICATED</td>
+                  <td class="py-2.5">+24 vCPU / +96 GiB</td>
+                  <td class="py-2.5 font-sans">Dedicated Vault/SSO pods</td>
+                </tr>
+                <tr>
+                  <td class="py-2.5 font-bold text-red-400">SINGLE_TENANT</td>
+                  <td class="py-2.5">+32 vCPU / +128 GiB<br>+1.05 TiB Raw Ceph</td>
+                  <td class="py-2.5 font-sans">Physically walled-off cluster (3x control plane quorum)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Visual Hardware MIG Card Partitioning -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-3">
+            <h3 class="text-base font-bold text-emerald-400">Hardware-Level NVIDIA MIG (`A100/H100`) vs. Native Gemini (`B300 Only`)</h3>
+            <p class="text-xs text-[var(--muted-foreground)]">
+              Self-hosted open-weights (`Gemma 4`) use hardware MIG on <b>80GB A100/H100</b> cards, whereas <b>GDC Native Gemini (`NATIVE_GEMINI_ENDPOINT`) is delivered exclusively via NVIDIA B300 (`288GB HBM3e`)</b> and cannot run on A100/H100/L4:
+            </p>
+            <div class="p-3 rounded-lg bg-black/40 border border-[var(--border)] space-y-2">
+              <div class="text-xs font-mono font-bold text-slate-300 flex justify-between">
+                <span>PHYSICAL GPU CARD #1 (NVIDIA A100/H100 80GB — Self-Hosted Gemma)</span>
+                <span class="text-emerald-400">2x Hardware MIG Slices</span>
+              </div>
+              <div class="p-2.5 rounded border border-emerald-500/60 bg-emerald-500/15 flex justify-between items-center text-xs">
+                <div>
+                  <div class="font-bold text-emerald-300">Slot #1: nvidia.com/mig-3g.40gb (40GB VRAM)</div>
+                  <div class="text-[11px] text-emerald-200/80">Gemma 4 26B/31B Weights + FP16 KV-Cache</div>
+                </div>
+                <span class="px-2 py-0.5 rounded bg-black/40 font-mono text-[10px] text-emerald-300">ns: tactical-c2-prod</span>
+              </div>
+              <div class="p-2.5 rounded border border-amber-500/60 bg-amber-500/15 flex justify-between items-center text-xs">
+                <div>
+                  <div class="font-bold text-amber-300">GDC Native Gemini API: NVIDIA B300 (288GB HBM3e) ONLY</div>
+                  <div class="text-[11px] text-amber-200/80">1M Context / P9-P10 Gemini GUI — Requires Dedicated B300 Appliance</div>
+                </div>
+                <span class="px-2 py-0.5 rounded bg-black/40 font-mono text-[10px] text-amber-300">SKU: B300 Exclusive</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>Guardrail: Selecting Native Gemini enforces NVIDIA B300 (288GB); Gemma 26B/31B enforces &gt;= 40GB MIG</span>
+        <span>Slide 4 of 7</span>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 5: THE 22.2X STORAGE MULTIPLIER ==================== -->
+    <section class="slide" data-title="The 22.2x Storage Multiplier">
+      <div class="space-y-6">
+        <div class="border-l-4 border-amber-500 pl-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-amber-400">Slide 5 of 7 &bull; Storage Engineering Math</div>
+          <h1 class="text-2xl md:text-3xl font-extrabold mt-1">Anatomy of the 22.2x Raw Physical Ceph Storage Multiplier</h1>
+          <p class="text-sm text-[var(--muted-foreground)] mt-1">
+            Why <b>1,908 GiB (1.86 TiB)</b> of baseline application &amp; container data requires <b>54.60 TiB</b> of physical Ceph disk on Day 0.
+          </p>
+        </div>
+
+        <!-- Waterfall Progression -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 space-y-2">
+            <div class="text-[var(--muted-foreground)] font-mono">STEP 1 &bull; BASELINE</div>
+            <div class="text-xl font-bold font-mono text-white">1.86 TiB</div>
+            <div class="text-emerald-400 font-semibold">1,908 GiB Raw Data</div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">
+              Kafka (`538 GiB`) + RAG (`1,000 GiB`) + SQL (`250 GiB`) + Harbor Sideload Bundle (`120 GiB`).
+            </p>
+          </div>
+
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 space-y-2">
+            <div class="text-[var(--muted-foreground)] font-mono">STEP 2 &bull; INDEXES (&times;1.2)</div>
+            <div class="text-xl font-bold font-mono text-blue-400">2.24 TiB</div>
+            <div class="text-blue-300 font-semibold">+20% Index Overhead</div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">
+              HNSW vector embeddings (`pgvector`), PostgreSQL WAL logs, and B-Tree index structures.
+            </p>
+          </div>
+
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 space-y-2">
+            <div class="text-[var(--muted-foreground)] font-mono">STEP 3 &bull; DR + CONF (&times;2.2)</div>
+            <div class="text-xl font-bold font-mono text-purple-400">4.92 TiB</div>
+            <div class="text-purple-300 font-semibold">Usable Capacity</div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">
+              Active DR Site Mirror (`&times;2.0`) + `DERIVED` Data Confidence Contingency Buffer (`&times;1.10`).
+            </p>
+          </div>
+
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4 space-y-2">
+            <div class="text-[var(--muted-foreground)] font-mono">STEP 4 &bull; SNAPSHOTS (&times;3.7)</div>
+            <div class="text-xl font-bold font-mono text-amber-400">18.20 TiB</div>
+            <div class="text-amber-300 font-semibold">With Local Backups</div>
+            <p class="text-[11px] text-[var(--muted-foreground)]">
+              14 days of snapshots at 5%/day change (`0.7x`) + 2 base full backups (`2.0x`) = `+2.7x` backup pool.
+            </p>
+          </div>
+
+          <div class="bg-amber-500/10 border-2 border-amber-500 rounded-xl p-4 space-y-2">
+            <div class="text-amber-300 font-mono font-bold">STEP 5 &bull; CEPH (&times;3.0)</div>
+            <div class="text-2xl font-extrabold font-mono text-amber-400">54.60 TiB</div>
+            <div class="text-white font-bold">IO Raw Ceph OSD Disk</div>
+            <p class="text-[11px] text-amber-200/80">
+              3-way physical Ceph replication across failure domains. <b>(29.3x raw-to-baseline ratio)</b>.
+            </p>
+          </div>
+        </div>
+
+        <!-- Master Equation Box -->
+        <div class="p-4 rounded-xl bg-black/40 border border-[var(--border)] font-mono text-xs md:text-sm text-center text-slate-200">
+          Raw Ceph TiB = [ (Baseline + Harbor + DailyIngest &times; Days) &times; 1.20 (Index) &times; 2.0 (DR) &times; 1.10 (Confidence) ] &times; 3.70 (Snapshots) &times; 3.0 (Ceph 3x)
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>Without this formula, every 25 GiB/day sensor stream silently consumes 555 GiB/day of physical Ceph disk</span>
+        <span>Slide 5 of 7</span>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 6: DEFEATING THE 9-18M LEAD TIME CLIFF ==================== -->
+    <section class="slide" data-title="9-18 Month IO Hardware Procurement Gate">
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="px-3 py-1 rounded-full text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+            06 / 4-HORIZON IO PROCUREMENT GATE LEDGER
+          </span>
+          <span class="text-xs text-[var(--muted-foreground)] font-mono">Defeating the 9–18 Month Supply Chain Lead Time</span>
+        </div>
+
+        <h2 class="text-2xl md:text-3xl font-extrabold">Back-Calculating Hardware Purchase Orders from Future Ramp-Up Gates</h2>
+        <p class="text-xs md:text-sm text-[var(--muted-foreground)]">
+          Because accredited GDC-ag racks take <b>9–18 months</b> to deliver, the calculator compares <b>Month 12 (`T+12m`)</b> demand against <b>Day 0 (`T0`)</b> rack headroom to trigger immediate Day 0 Purchase Orders:
+        </p>
+
+        <div class="overflow-x-auto bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+          <table class="w-full text-xs text-left border-collapse font-mono">
+            <thead>
+              <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)] font-sans">
+                <th class="py-2.5 pr-3">Horizon Milestone</th>
+                <th class="py-2.5 px-3">Physical Compute (`n2-std-8`)</th>
+                <th class="py-2.5 px-3">3x Raw Ceph (`TiB`)</th>
+                <th class="py-2.5 px-3">MIG Slices &rarr; Physical GPUs</th>
+                <th class="py-2.5 pl-3">Automated IO Procurement Gate Verdict (vs `96c / 80TiB / 3 GPU` Rack)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--border)]">
+              <tr>
+                <td class="py-3 pr-3 font-sans font-bold text-emerald-400">T0: Day 0 Go-Live</td>
+                <td class="py-3 px-3">96 vCPU / 384 GiB (12 Nodes)</td>
+                <td class="py-3 px-3">54.58 TiB</td>
+                <td class="py-3 px-3">5 Slices &rarr; <b>3 GPUs</b></td>
+                <td class="py-3 pl-3 font-sans"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">APPROVE DAY 0 ALLOCATION</span> (Fits within `96c / 80TiB / 3 GPU`)</td>
+              </tr>
+              <tr>
+                <td class="py-3 pr-3 font-sans font-semibold text-slate-300">T+6 Months</td>
+                <td class="py-3 px-3">104 vCPU / 416 GiB (13 Nodes)</td>
+                <td class="py-3 px-3">183.37 TiB</td>
+                <td class="py-3 px-3">7 Slices &rarr; <b>4 GPUs</b></td>
+                <td class="py-3 pl-3 font-sans text-amber-300">Storage &amp; Compute exceed initial rack at ~Month 4.5 (Covered by Day 0 PO)</td>
+              </tr>
+              <tr class="bg-red-500/10">
+                <td class="py-3 pr-3 font-sans font-bold text-red-400">T+12m (DAY 0 ORDER GATE)</td>
+                <td class="py-3 px-3 font-bold">128 vCPU / 512 GiB (16 Nodes)</td>
+                <td class="py-3 px-3 font-bold">315.72 TiB</td>
+                <td class="py-3 px-3 font-bold">9 Slices &rarr; <b>5 GPUs</b></td>
+                <td class="py-3 pl-3 font-sans"><span class="px-2 py-0.5 rounded bg-red-500/25 text-red-300 font-bold">TRIGGER PO ON DAY 0:</span> <b>+4 Nodes (+32c) | +235.73 TiB Ceph | +2 GPUs</b></td>
+              </tr>
+              <tr class="bg-purple-500/10">
+                <td class="py-3 pr-3 font-sans font-bold text-purple-400">T+24m (MONTH 6 ORDER GATE)</td>
+                <td class="py-3 px-3 font-bold">160 vCPU / 640 GiB (20 Nodes)</td>
+                <td class="py-3 px-3 font-bold">576.86 TiB</td>
+                <td class="py-3 px-3 font-bold">17 Slices &rarr; <b>9 GPUs</b></td>
+                <td class="py-3 pl-3 font-sans"><span class="px-2 py-0.5 rounded bg-purple-500/25 text-purple-300 font-bold">TRIGGER PO AT MONTH 6:</span> <b>+4 Nodes (+32c) | +261.14 TiB Ceph | +4 GPUs</b></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>Lead-Time Offset Formula: Order Date = Target Exhaustion Horizon - 12 Months</span>
+        <span>Slide 6 of 7</span>
+      </div>
+    </section>
+
+    <!-- ==================== SLIDE 7: COMPLETE TOOLCHAIN SUMMARY ==================== -->
+    <section class="slide">
+      <div class="space-y-5">
+        <div class="flex items-center justify-between">
+          <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            07 / COMPLETE REPOSITORY TOOLCHAIN
+          </span>
+          <span class="text-xs text-[var(--muted-foreground)] font-mono">docs/capacity-sizing/</span>
+        </div>
+
+        <h2 class="text-2xl md:text-3xl font-extrabold">Ready-to-Use Sizing &amp; Procurement Toolchain</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-2">
+            <div class="text-xs font-mono text-blue-400">1. docs/capacity-sizing/gdc_ag_offline_interview_questionnaire.md</div>
+            <h3 class="text-lg font-bold">Two-Layer Printable SCIF Interview Guide</h3>
+            <p class="text-xs text-[var(--muted-foreground)]">
+              Printable booklet for electronic-free SCIF interviews. Contains plain-English prompts on the left, silent `[F-01]`–`[F-28]` translation rules on the right, Section 6 Tear-Off Ledger, and Section 7 Worked Example.
+            </p>
+          </div>
+
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-2">
+            <div class="text-xs font-mono text-emerald-400">2. docs/capacity-sizing/index.html</div>
+            <h3 class="text-lg font-bold">Interactive Web Sizing &amp; MIG/B300 Visualizer</h3>
+            <p class="text-xs text-[var(--muted-foreground)]">
+              Browser-based calculator with live Plain-English &harr; Coded Mode toggle, dynamic NVIDIA B300 (288GB Gemini) vs A100/H100 (80GB MIG) card visualizer, and built-in <code>🛠️ Maintain / Add Service</code> editor.
+            </p>
+          </div>
+
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-2">
+            <div class="text-xs font-mono text-amber-400">3. docs/capacity-sizing/gdc_ag_sizing_cli.py</div>
+            <h3 class="text-lg font-bold">Zero-Dependency CLI Procurement Engine</h3>
+            <p class="text-xs text-[var(--muted-foreground)]">
+              Command-line automation tool supporting <code>--catalog custom.json</code> and <code>--dump-catalog</code> for zero-code service additions, plus formatted ASCII Executive IO Purchase Order reports.
+            </p>
+          </div>
+
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-2">
+            <div class="text-xs font-mono text-purple-400">4. docs/capacity-sizing/MAINTENANCE.md</div>
+            <h3 class="text-lg font-bold">Zero-Rewrite Catalog Maintenance Guide (`SIZING_CONFIG`)</h3>
+            <p class="text-xs text-[var(--muted-foreground)]">
+              Step-by-step guide for adding new application blueprints (`P14+`), platform service taxes, or GPU SKUs (`NVIDIA B300` for Gemini) via a single declarative <code>SIZING_CONFIG</code> block without HTML or formula edits.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex justify-center pt-2">
+          <a href="index.html" class="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg flex items-center gap-2">
+            <span>🧮 Launch Interactive Sizing &amp; MIG Calculator (`index.html`)</span>
+          </a>
+        </div>
+      </div>
+      <div class="text-xs text-[var(--muted-foreground)] flex justify-between pt-4 border-t border-[var(--border)]">
+        <span>GDC Air-Gapped Workload Sizing Framework</span>
+        <span>Slide 7 of 7</span>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+    const counter = document.getElementById('slideCounter');
+
+    function showSlide(idx) {
+      slides[currentSlide].classList.remove('active');
+      currentSlide = (idx + slides.length) % slides.length;
+      slides[currentSlide].classList.add('active');
+      counter.textContent = `${currentSlide + 1} / ${slides.length}`;
+    }
+
+    function nextSlide() { showSlide(currentSlide + 1); }
+    function prevSlide() { showSlide(currentSlide - 1); }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        prevSlide();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Global context parameters injected by the GDC IaC framework (Helmfile / ArgoCD)
+global:
+  projectId: "test-project"
+  namespace: "test-project"
+  registry: "harbor.gdc.local/blueprint-images"
+  imagePullSecrets: []
+  commonLabels: {}
+  commonAnnotations: {}
+
+# Fallback top-level namespace/registry for direct helm install
+namespace: ""
+registry: ""
+
+# Control-plane execution gates:
+# - Stage 2 (2-resources) provisions Zonal databases/VMs via core charts/gdc-dbs & charts/gdc-vm,
+#   so gdc.enabled defaults to false for Stage 5 (5-workload-factory) User Cluster deployments.
+# - Set gdc.enabled=true only when deploying GDC CRDs directly from this wrapper chart to a Zonal context.
+gdc:
+  enabled: false
+  failover:
+    enabled: false # Day-2 manual failover trigger; must remain false during normal sync
+
+# User Cluster workload execution gate (Stage 5: 5-workload-factory)
+apps:
+  enabled: true
+
+# Pattern 11 Vault configuration overrides (passed when deploying upstream Vault chart)
+vault:
+  replicas: 3
+  serviceAccountName: "vault-kms-sa"
+  storageClass: "standard"

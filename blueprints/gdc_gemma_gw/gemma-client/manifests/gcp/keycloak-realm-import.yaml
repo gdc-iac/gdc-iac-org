@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm-import
+  namespace: gemma-inference
+  labels:
+    app: keycloak
+data:
+  gdc-rag-realm.json: |
+    {
+      "id": "gdc-rag-realm",
+      "realm": "gdc-rag-realm",
+      "enabled": true,
+      "accessTokenLifespan": 3600,
+      "ssoSessionIdleTimeout": 28800,
+      "ssoSessionMaxLifespan": 86400,
+      "roles": {
+        "realm": [
+          {
+            "name": "user",
+            "description": "Standard tenant user role"
+          },
+          {
+            "name": "admin",
+            "description": "Administrator tenant user role"
+          }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "rag-frontend",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": true,
+          "directAccessGrantsEnabled": true,
+          "rootUrl": "https://WORKSTATION_FQDN_PLACEHOLDER",
+          "baseUrl": "/auth/realms/gdc-rag-realm",
+          "redirectUris": [
+            "https://WORKSTATION_FQDN_PLACEHOLDER/*",
+            "http://localhost:8081/*"
+          ],
+          "webOrigins": [
+            "https://WORKSTATION_FQDN_PLACEHOLDER",
+            "http://localhost:8081"
+          ]
+        }
+      ],
+      "users": [
+        {
+          "username": "alice",
+          "enabled": true,
+          "realmRoles": [
+            "user"
+          ],
+          "credentials": [
+            {
+              "type": "password",
+              "value": "password",
+              "temporary": false
+            }
+          ]
+        },
+        {
+          "username": "charlie",
+          "enabled": true,
+          "realmRoles": [
+            "admin"
+          ],
+          "credentials": [
+            {
+              "type": "password",
+              "value": "password",
+              "temporary": false
+            }
+          ]
+        }
+      ]
+    }

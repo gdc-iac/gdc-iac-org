@@ -1,0 +1,508 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdc-dev-ai-config
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: ai-integration
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+data:
+  AI_ENABLED: 'true'
+  OPENAI_API_BASE_URL: http://gemma-gateway.gemma-inference.svc.cluster.local/v1
+  AI_DEFAULT_MODEL: gemma4:26b
+  AI_CODER_MODEL: gemma4:31b
+  AI_VISION_TOKEN_BUDGET: '280'
+  AI_REQUEST_TIMEOUT: '300'
+  NO_PROXY: '*.gemma-inference.svc.cluster.local,*.gemma-inference,*.svc.cluster.local,localhost,127.0.0.1'
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gdc-dev-tls-cert
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: phase3-pki
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  secretName: gdc-dev-tls-secret
+  duration: 2160h
+  renewBefore: 360h
+  dnsNames:
+  - dev.gdc.local
+  - '*.dev.gdc.local'
+  issuerRef:
+    name: gdc-ca-issuer
+    kind: ClusterIssuer
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: gdc-dev-gateway-class
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gdc-dev-gateway
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+  annotations:
+    networking.gke.io/load-balancer-type: Internal
+spec:
+  gatewayClassName: gdc-dev-gateway-class
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: Same
+  - name: https-selfsigned
+    protocol: HTTPS
+    port: 443
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - name: gdc-dev-selfsigned-cert-secret
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gdc-dev-host-route
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - name: gdc-dev-gateway
+    namespace: {{ include "p13-gdc-dev.namespace" . }}
+  hostnames:
+  - dev.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: gdc-dev-landing-page
+      port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gdc-dev-session-route
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - name: gdc-dev-gateway
+    namespace: {{ include "p13-gdc-dev.namespace" . }}
+  hostnames:
+  - dev.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /instances
+    backendRefs:
+    - name: gdc-dev-session-service
+      port: 3000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdc-dev-agent-config
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: ai-agentic-phase3
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+data:
+  AI_ENABLED: 'true'
+  AI_AGENT_MODE: agentic
+  AI_APPROVAL_POLICY: selective
+  AI_MAX_TURNS: '10'
+  AI_REQUEST_TIMEOUT: '300'
+  AI_SWARM_ENABLED: 'true'
+  AI_SWARM_ROLES: architect,coder,reviewer
+  AI_DEFAULT_ROLE: swarm
+  AI_PROVIDER: gemma
+  OPENAI_API_BASE_URL: http://gemma-gateway.gemma-inference.svc.cluster.local/v1
+  AI_TIER1_MODEL: gemma4:26b
+  AI_GEMINI_TIER1_MODEL: gemini-2.0-flash
+  AI_CODER_MODEL: gemma4:31b
+  AI_DEFAULT_MODEL: gemma4:31b
+  AI_GEMINI_TIER2_MODEL: gemini-2.0-pro
+  AI_VISION_TOKEN_BUDGET: '280'
+  NO_PROXY: '*.gemma-inference.svc.cluster.local,*.gemma-inference,*.svc.cluster.local,localhost,127.0.0.1'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gdc-dev-operator-sa
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gdc-dev-operator-role
+  labels:
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  - services
+  - configmaps
+  - secrets
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gdc-dev-operator-binding
+  labels:
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: gdc-dev-operator-sa
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: gdc-dev-operator-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdc-dev-operator
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev-operator
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gdc-dev-operator
+  template:
+    metadata:
+      labels:
+        app: gdc-dev-operator
+    spec:
+      serviceAccountName: gdc-dev-operator-sa
+      containers:
+      - name: operator
+        image: {{ include "p13-gdc-dev.registry" . }}/gdc-dev-operator:latest
+        imagePullPolicy: Always
+        env:
+        - name: AUTH_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: gdc-dev-mock-auth-config
+              key: AUTH_MODE
+        - name: MOCK_USER_ID
+          valueFrom:
+            configMapKeyRef:
+              name: gdc-dev-mock-auth-config
+              key: MOCK_USER_ID
+        ports:
+        - containerPort: 3000
+          name: session
+        - containerPort: 8080
+          name: health
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdc-dev-landing-page
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev-landing-page
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gdc-dev-landing-page
+  template:
+    metadata:
+      labels:
+        app: gdc-dev-landing-page
+    spec:
+      serviceAccountName: gdc-dev-operator-sa
+      containers:
+      - name: landing-page
+        image: {{ include "p13-gdc-dev.registry" . }}/gdc-dev-landing-page:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: gdc-dev-mock-auth-config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdc-dev-landing-page
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: gdc-dev-landing-page
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdc-dev-session-service
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: gdc-dev-operator
+  ports:
+  - port: 3000
+    targetPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdc-dev-loadbalancer
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: ingress-loadbalancer
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+  annotations:
+    networking.gke.io/load-balancer-type: Internal
+spec:
+  type: LoadBalancer
+  selector:
+    app: gdc-dev-landing-page
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 8080
+    protocol: TCP
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gdc-dev
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gdc-dev-to-gemma-netpol
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: ai-integration
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - gdc-dev-landing-page
+      - gdc-dev-operator
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: platform
+    ports:
+    - protocol: TCP
+      port: 8080
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: gemma-inference
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gdc-dev-netpol
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: phase3-hardening
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - gdc-dev-landing-page
+      - gdc-dev-operator
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: gdc-gateway-system
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-operator
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 3000
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: my-gdc-project
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 8080
+  - to:
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-operator
+    ports:
+    - protocol: TCP
+      port: 3000
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdc-dev-oidc-auth-config
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+data:
+  AUTH_MODE: oidc
+  HEADER_USER_KEY: X-Forwarded-User
+  OIDC_AUTHORITY: https://keycloak.gdc.local/realms/gdc-dev-realm
+  OIDC_CLIENT_ID: gdc-dev-client
+  OIDC_REDIRECT_URI: https://dev.gdc.local/auth/callback
+{{- end }}

@@ -1,18 +1,4 @@
 #!/bin/bash
-# Copyright 2026 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 # Dynamic Staging Configuration & Hydration Script for Keycloak OIDC
 # Automatically detects loopbacks and workstation subdomains, and pre-packs dynamic environments.
 
@@ -48,11 +34,11 @@ fi
 WORKSTATION_URL="${WORKSTATION_URL%/}"
 
 # 2. Extract base cluster domain mapping
-# Matches "80-w-username.cluster-hash.cloudworkstations.dev" or "w-username.cluster-hash..."
+# Matches "https://80-w-username.cluster-hash.cloudworkstations.dev" or bare "w-username.cluster-hash..."
 # And converts to the standard Port 8081 preview domain
-if [[ "$WORKSTATION_URL" =~ http[s]?://([0-9]+-)?(w-[a-zA-Z0-9-]+)\.(.+)$ ]]; then
-    VM_HOSTNAME="${BASH_REMATCH[2]}"
-    BASE_DOMAIN="${BASH_REMATCH[3]}"
+if [[ "$WORKSTATION_URL" =~ ^(http[s]?://)?([0-9]+-)?(w-[a-zA-Z0-9-]+)\.(.+)$ ]]; then
+    VM_HOSTNAME="${BASH_REMATCH[3]}"
+    BASE_DOMAIN="${BASH_REMATCH[4]}"
     DYNAMIC_FQDN="8081-${VM_HOSTNAME}.${BASE_DOMAIN}"
     echo ""
     echo "🎯 Dynamic Identity Target Coordinates Discovered:"
@@ -94,5 +80,5 @@ echo ""
 echo "To deploy this pre-configured identity perimeter inside GKE sandbox:"
 echo "1. Run: kubectl apply -f gemma-client/manifests/gcp/keycloak-realm-import-hydrated.yaml -n gemma-inference"
 echo "2. Run: kubectl apply -f gemma-client/manifests/gcp/keycloak-staging.yaml -n gemma-inference"
-echo "3. Rollout restart the deployments and rebuild standard client images!"
+echo "3. Build & deploy backend.yaml and frontend.yaml, then apply gemma-client/manifests/gcp/nginx-ingress-staging.yaml!"
 echo ""

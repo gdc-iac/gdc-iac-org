@@ -1,17 +1,3 @@
-# Copyright 2026 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import os
 import asyncpg
 import uuid
@@ -41,6 +27,104 @@ class Database:
     async def connect(self):
         if not self.pool:
             self.pool = await asyncpg.create_pool(DATABASE_URL)
+            await self._init_schema()
+
+    async def _init_schema(self):
+        schema_sql = """
+        CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        CREATE TABLE IF NOT EXISTS chats (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id VARCHAR(255) NOT NULL,
+            title TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
+            role VARCHAR(50) NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS files (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id VARCHAR(255),
+            filename VARCHAR(255) NOT NULL,
+            gcs_path TEXT NOT NULL,
+            file_size_bytes BIGINT,
+            content_type VARCHAR(100),
+            uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            is_shared BOOLEAN DEFAULT FALSE
+        );
+        CREATE TABLE IF NOT EXISTS sensor_telemetry (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            event_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            domain VARCHAR(50) NOT NULL,
+            sensor_id VARCHAR(100) NOT NULL,
+            sector VARCHAR(50) DEFAULT 'Sector 9',
+            threat_level VARCHAR(20) NOT NULL,
+            latitude NUMERIC(10, 6),
+            longitude NUMERIC(10, 6),
+            title VARCHAR(255) NOT NULL,
+            summary TEXT,
+            raw_payload JSONB
+        );
+        CREATE TABLE IF NOT EXISTS military_units (
+            unit_id VARCHAR(50) PRIMARY KEY,
+            unit_name VARCHAR(150) NOT NULL,
+            branch VARCHAR(50) NOT NULL,
+            sector VARCHAR(50) NOT NULL,
+            base_location VARCHAR(100) NOT NULL,
+            readiness_rating VARCHAR(10) NOT NULL,
+            commander VARCHAR(100) NOT NULL,
+            personnel_count INT NOT NULL,
+            operational_status VARCHAR(50) NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS equipment_inventory (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            unit_id VARCHAR(50) REFERENCES military_units(unit_id) ON DELETE CASCADE,
+            equipment_type VARCHAR(100) NOT NULL,
+            total_assigned INT NOT NULL,
+            operational_count INT NOT NULL,
+            in_repair_count INT NOT NULL,
+            readiness_percentage NUMERIC(5,2) GENERATED ALWAYS AS (ROUND((operational_count::NUMERIC / total_assigned::NUMERIC) * 100, 2)) STORED
+        );
+        CREATE TABLE IF NOT EXISTS fuel_and_supplies (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            base_location VARCHAR(100) NOT NULL,
+            sector VARCHAR(50) NOT NULL,
+            fuel_gallons_jp8 INT NOT NULL,
+            days_of_supply INT NOT NULL,
+            ammunition_pallets INT NOT NULL,
+            medical_kits INT NOT NULL,
+            resupply_status VARCHAR(50) NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS convoy_routes (
+            route_id VARCHAR(50) PRIMARY KEY,
+            route_name VARCHAR(100) NOT NULL,
+            sector VARCHAR(50) NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            threat_assessment TEXT,
+            last_scouted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            chokepoints INT DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS intelligence_reports (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            report_id VARCHAR(100) UNIQUE NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            classification VARCHAR(50) DEFAULT 'UNCLASSIFIED',
+            sector VARCHAR(50) DEFAULT 'Sector 9',
+            source_agency VARCHAR(100) NOT NULL,
+            published_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            content TEXT NOT NULL,
+            summary TEXT
+        );
+        """
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(schema_sql)
+        except Exception as e:
+            print(f"Schema init notice: {e}")
 
     async def disconnect(self):
         if self.pool:

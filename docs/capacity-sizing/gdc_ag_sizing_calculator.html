@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GDC-ag Workload Sizing, MIG Partitioning & IO Procurement Calculator (v2.0)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #0f172a;
+      --foreground: #f8fafc;
+      --card: #1e293b;
+      --border: #334155;
+      --muted-foreground: #94a3b8;
+      --secondary: #334155;
+    }
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 md:p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Header Banner -->
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">GDC Air-Gapped v1.15.1+</span>
+          <span id="activeModeBadge" class="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+            🗣️ Active View: Customer-Friendly (Plain English)
+          </span>
+        </div>
+        <h1 class="text-xl md:text-2xl font-bold mt-2">GDC-ag Unified Workload Sizing, MIG Partitioning & IO Procurement Engine</h1>
+        <p class="text-xs md:text-sm text-[var(--muted-foreground)] mt-1">
+          Click the mode button on the right to toggle all questions, dropdown options, and blueprint cards between <b>Plain-English Workshop Mode</b> and <b>Facilitator Coded Mode (`[F-01]`–`[F-28]`)</b>.
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Slide Deck Link -->
+        <a href="presentation.html" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-500 transition shadow-md cursor-pointer flex items-center gap-1">
+          📊 Slide Deck &amp; Flowchart
+        </a>
+        <!-- Mode Toggle -->
+        <button id="modeToggleBtn" onclick="toggleUiMode()" class="px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition shadow-md cursor-pointer ring-2 ring-emerald-400/40">
+          🔄 Switch to Coded Mode ([F-01]–[F-28])
+        </button>
+        <a href="gdc_ag_interview_form.html" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition cursor-pointer">
+          📝 HTML Interview Form
+        </a>
+        <label class="cursor-pointer px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition">
+          📂 Load Intake JSON
+          <input type="file" id="jsonFileInput" accept=".json" class="hidden" onchange="handleJsonFileUpload(event)" />
+        </label>
+        <button onclick="downloadCurrentIntakeJson()" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-500/50 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition cursor-pointer">
+          💾 Save Intake JSON
+        </button>
+        <button onclick="toggleModal('importModal')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition cursor-pointer">
+          Import / Export [F-01]–[F-28]
+        </button>
+        <button onclick="toggleModal('maintenanceModal')" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 transition cursor-pointer">
+          🛠️ Maintain / Add Service
+        </button>
+      </div>
+    </div>
+
+    <!-- Guardrail / Validation Alert Banner -->
+    <div id="guardrailAlert" class="hidden rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs md:text-sm space-y-1">
+      <div class="font-bold text-amber-400 flex items-center gap-2">
+        <span>⚠️ SME Architectural &amp; Hardware SKU Guardrail Advisories</span>
+      </div>
+      <ul id="guardrailList" class="list-disc list-inside text-[var(--foreground)] space-y-1"></ul>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT COLUMN: Inputs (7 cols) -->
+      <div class="lg:col-span-7 space-y-5">
+
+        <!-- Section 1: Mission, Security Enclave & Resilience -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base" data-friendly="1. Mission Ownership, Data Confidence & Security Rules" data-coded="1. Tenancy, Confidence & Resilience Boundaries ([F-01]–[F-07])">
+              1. Mission Ownership, Data Confidence &amp; Security Rules
+            </h2>
+            <span class="text-xs text-[var(--muted-foreground)]" data-friendly="Plain-English Intake" data-coded="Codes [F-01] to [F-07]">Plain-English Intake</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Project / System Name" data-coded="[F-01] Project / Namespace ID">Project / System Name</label>
+              <input id="f01_project" type="text" value="tactical-c2-prod" oninput="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Data Source Confidence" data-coded="[F-04B] Confidence Class (IO Buffer)">Data Source Confidence</label>
+              <select id="f04b_conf" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="MEASURED" data-friendly="Measured from live system (+0% buffer)" data-coded="[1] MEASURED — Live Telemetry (1.00x)">Measured from live system (+0% buffer)</option>
+                <option value="BENCHMARKED" data-friendly="Vendor benchmark (+5% IO buffer)" data-coded="[2] BENCHMARKED — Vendor Specs (1.05x)">Vendor benchmark (+5% IO buffer)</option>
+                <option value="DERIVED" selected data-friendly="Derived together today (+10% IO buffer)" data-coded="[3] DERIVED — Workshop Sizing (1.10x)">Derived together today (+10% IO buffer)</option>
+                <option value="ESTIMATED" data-friendly="Early estimate / guess (+25% IO buffer)" data-coded="[4] ESTIMATED — Rough Guess (1.25x)">Early estimate / guess (+25% IO buffer)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="How will we size this today?" data-coded="[F-03] Sizing Entry Path">How will we size this today?</label>
+              <select id="f03_path" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="PATH_B" selected data-friendly="Describe what the app does (Track B)" data-coded="[PATH_B] Blueprint T-Shirt Derivation">Describe what the app does (Track B)</option>
+                <option value="PATH_A" data-friendly="We have exact VM / K8s specs (Track A)" data-coded="[PATH_A] Direct VM / K8s BOM Input">We have exact VM / K8s specs (Track A)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Can app share enclave login & vault?" data-coded="[F-05] Cluster & Platform Service Sharing">Can app share enclave login &amp; vault?</label>
+              <select id="f05_tenancy" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="SHARED_DEFAULT" selected data-friendly="Yes — Share Enclave Services ($0 Tax)" data-coded="[1] SHARED_DEFAULT — Multi-Tenant ($0 Tax)">Yes — Share Enclave Services ($0 Tax)</option>
+                <option value="HYBRID_DEDICATED_SVC" data-friendly="Shared Cluster + Dedicated Vault/SSO (+24c)" data-coded="[2] HYBRID_DEDICATED_SVC — Isolated Vault/SSO (+24c)">Shared Cluster + Dedicated Vault/SSO (+24c)</option>
+                <option value="DEDICATED_SINGLE_TENANT" data-friendly="No — Physically Walled-Off Cluster (+32c Tax)" data-coded="[3] DEDICATED_SINGLE_TENANT — Dedicated Cluster (+32c)">No — Physically Walled-Off Cluster (+32c Tax)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Dedicated physical CPU chip required?" data-coded="[F-06] CPU Overcommit Policy">Dedicated physical CPU chip required?</label>
+              <select id="f06_overcommit" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="PROD_1_TO_1" selected data-friendly="Yes in Prod (1:1); Share in Non-Prod (2:1)" data-coded="[1] PROD_1_TO_1 — 1:1 Prod / 2:1 Non-Prod">Yes in Prod (1:1); Share in Non-Prod (2:1)</option>
+                <option value="ALL_1_TO_1" data-friendly="Strict 1:1 Dedicated in Prod & Non-Prod" data-coded="[2] ALL_1_TO_1 — Strict 1:1 Dedicated All">Strict 1:1 Dedicated in Prod &amp; Non-Prod</option>
+                <option value="OVERCOMMIT_2_TO_1" data-friendly="Standard Cloud Sharing (2:1 Everywhere)" data-coded="[3] OVERCOMMIT_2_TO_1 — 2:1 vCPU Overcommit">Standard Cloud Sharing (2:1 Everywhere)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Outage & Disaster Recovery (DR) Need" data-coded="[F-07] Fault Domain & DR Topology">Outage &amp; Disaster Recovery (DR) Need</label>
+              <select id="f07_ha" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="ZONAL_HA_ONLY" data-friendly="Survive Rack Failure in Primary Site" data-coded="[1] ZONAL_HA_ONLY — 3-Zone Primary Site">Survive Rack Failure in Primary Site</option>
+                <option value="ZONAL_HA_PLUS_DR" selected data-friendly="Survive Rack Failure + Live DR Site Copy (2x)" data-coded="[2] ZONAL_HA_PLUS_DR — Active DR Mirror (2x)">Survive Rack Failure + Live DR Site Copy (2x)</option>
+                <option value="SINGLE_ZONE" data-friendly="Single Rack Lab / Pilot (Outage OK)" data-coded="[3] SINGLE_ZONE — Single Rack Non-HA">Single Rack Lab / Pilot (Outage OK)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs pt-1">
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Operating Schedule" data-coded="[F-20C] Lifespan Class">Operating Schedule</label>
+              <select id="f20c_lifespan" onchange="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="STATIC_24X7" selected data-friendly="Runs 24x7 Continuously" data-coded="[1] STATIC_24X7 — Continuous 24x7">Runs 24x7 Continuously</option>
+                <option value="SPINDOWN_ELIGIBLE" data-friendly="Can Pause Non-Prod Outside Shifts" data-coded="[2] SPINDOWN_ELIGIBLE — Reclaimable Off-Shift">Can Pause Non-Prod Outside Shifts</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Dev/Test Environment Size" data-coded="[F-20B] Non-Prod Policy">Dev/Test Environment Size</label>
+              <select id="f20b_nonprod" onchange="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="NONPROD_HALF" selected data-friendly="Half-Size Dev/Test (50%)" data-coded="[1] NONPROD_HALF — 50% Staging Pool">Half-Size Dev/Test (50%)</option>
+                <option value="NONPROD_MIRROR" data-friendly="Full 100% Prod Mirror" data-coded="[2] NONPROD_MIRROR — 100% Prod Mirror">Full 100% Prod Mirror</option>
+                <option value="NONPROD_NONE" data-friendly="None (Prod Only)" data-coded="[3] NONPROD_NONE — Production Only">None (Prod Only)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Day 0 Software Delivery Size (GiB)" data-coded="[F-17] Harbor Sideload Bundle (GiB)">Day 0 Software Delivery Size (GiB)</label>
+              <input id="f17_harbor" type="number" value="120" min="5" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Combine Databases?" data-coded="DB Co-Location Policy">Combine Databases?</label>
+              <select id="db_consolidation" onchange="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="CONSOLIDATED" selected data-friendly="Yes — Shared HA Postgres" data-coded="[CONSOLIDATED] Shared HA CloudNativePG">Yes — Shared HA Postgres</option>
+                <option value="SILOED" data-friendly="No — Separate DB per App" data-coded="[SILOED] Dedicated DB Instance per App">No — Separate DB per App</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: AI Interaction & Hardware MIG / B300 Isolation -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base" data-friendly="2. How Users Interact with AI & Language Models" data-coded="2. Hardware GPU SKU, MIG Profile & AI Engine ([F-08]–[F-09])">
+              2. How Users Interact with AI &amp; Language Models
+            </h2>
+            <span class="text-xs text-emerald-400 font-medium" data-friendly="Gemma = A100/H100 MIG | Gemini = B300 Only" data-coded="A100/H100 MIG vs B300 Gemini Enforced">Gemma = A100/H100 MIG | Gemini = B300 Only</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <div>
+              <label class="block font-medium mb-1" data-friendly="What kind of AI tasks does the system perform?" data-coded="[F-08] Project Namespace Hardware MIG / B300 Profile">What kind of AI tasks does the system perform?</label>
+              <!-- Populated dynamically from SIZING_CONFIG.gpuProfiles -->
+              <select id="f08_mig" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="MIG_3G_40GB" selected data-friendly="Live Chat / Document Q&A / SQL Assistant (Gemma 26B/31B -> A100/H100 MIG 3g.40gb 40GB)" data-coded="[MIG_3G_40GB] 40GB Hardware MIG Slice (A100/H100 80GB, 2/GPU)">Live Chat / Document Q&amp;A / SQL Assistant (Gemma 26B/31B -&gt; A100/H100 MIG 3g.40gb 40GB)</option>
+                <option value="MIG_7G_80GB_FULL" data-friendly="Heavy Command Center (>25 Streams) or Fine-Tuning (-> Full 80GB A100/H100)" data-coded="[MIG_7G_80GB_FULL] 80GB Full Card Allocation (A100/H100 80GB, 1/GPU)">Heavy Command Center (&gt;25 Streams) or Fine-Tuning (-&gt; Full 80GB A100/H100)</option>
+                <option value="MIG_2G_20GB" data-friendly="Light Chat / Small 7B–9B Model (<10 Users -> A100/H100 MIG 2g.20gb 20GB)" data-coded="[MIG_2G_20GB] 20GB Hardware MIG Slice (A100/H100 80GB, 3/GPU)">Light Chat / Small 7B–9B Model (&lt;10 Users -&gt; A100/H100 MIG 2g.20gb 20GB)</option>
+                <option value="MIG_1G_10GB" data-friendly="Background OCR / Document Indexing Only (-> A100/H100 MIG 1g.10gb 10GB)" data-coded="[MIG_1G_10GB] 10GB Hardware MIG Slice (A100/H100 80GB, 7/GPU)">Background OCR / Document Indexing Only (-&gt; A100/H100 MIG 1g.10gb 10GB)</option>
+                <option value="NATIVE_GEMINI_ENDPOINT" data-friendly="Massive 500-Page Reports / 1M Context (-> Native GDC Gemini on NVIDIA B300 288GB Only)" data-coded="[NATIVE_GEMINI_ENDPOINT] GDC Vertex Gemini API (NVIDIA B300 288GB HBM3e Exclusive)">Massive 500-Page Reports / 1M Context (-&gt; Native GDC Gemini on NVIDIA B300 288GB Only)</option>
+                <option value="DEDICATED_L4_WHOLE" data-friendly="Single-Tenant PoC Demo on L4 Workstation (-> Whole L4 24GB)" data-coded="[DEDICATED_L4_WHOLE] Single-Tenant Whole L4 (24GB, No MIG)">Single-Tenant PoC Demo on L4 Workstation (-&gt; Whole L4 24GB)</option>
+                <option value="NO_GPU" data-friendly="No AI / Language Models Used (CPU Only)" data-coded="[NO_GPU] CPU Compute Only (0 MIG Slices)">No AI / Language Models Used (CPU Only)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Response Speed Expectation" data-coded="[F-09] Inference Serving Engine Mode">Response Speed Expectation</label>
+              <select id="f09_engine" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+                <option value="ENGINE_VLLM_PROD" selected data-friendly="Instant Live Streaming (<50ms response -> Production vLLM / B300 Gemini)" data-coded="[ENGINE_VLLM_PROD] Production vLLM PagedAttention / B300 Gemini">Instant Live Streaming (&lt;50ms response -&gt; Production vLLM / B300 Gemini)</option>
+                <option value="ENGINE_OLLAMA_POC" data-friendly="Pilot / Demo Speed OK (-> Ollama Quantized Engine)" data-coded="[ENGINE_OLLAMA_POC] PoC Ollama Quantized Engine">Pilot / Demo Speed OK (-&gt; Ollama Quantized Engine)</option>
+                <option value="ENGINE_BATCH_CRON" data-friendly="Overnight / Background Processing Only (-> Batch Queue)" data-coded="[ENGINE_BATCH_CRON] Async Batch Cron Worker">Overnight / Background Processing Only (-&gt; Batch Queue)</option>
+                <option value="ENGINE_NONE" data-friendly="Not Applicable" data-coded="[ENGINE_NONE] None">Not Applicable</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3B: Plain-English Archetype Cards (Auto-Rendered from SIZING_CONFIG.blueprints) -->
+        <div id="trackBPanel" class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base" data-friendly="3. Check All Functions Your Application Performs" data-coded="3B. Track B — Blueprint Pattern Selection ([F-18B]–[F-19B])">
+              3. Check All Functions Your Application Performs
+            </h2>
+            <span class="text-xs text-blue-400" data-friendly="Auto-Generated from SIZING_CONFIG" data-coded="Declarative Catalog [P1]–[P13+]">Auto-Generated from SIZING_CONFIG</span>
+          </div>
+
+          <div class="text-xs space-y-2">
+            <div id="blueprintCheckboxGrid" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+          </div>
+
+          <div class="pt-2 text-xs">
+            <label class="block font-medium mb-1" data-friendly="How many people actively use the system at the exact same moment (peak shift change)?" data-coded="[F-19B] Day 0 Operational Concurrency T-Shirt Size">
+              How many people actively use the system at the exact same moment (peak shift change)?
+            </label>
+            <select id="f19b_tier" onchange="recalc()" class="w-full px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--card)]">
+              <option value="TIER_S" data-friendly="Small Team / Pilot (< 50 concurrent users | 10 devs | < 10 AI streams)" data-coded="[TIER_S] Small Scale (1.0x Base Compute/Storage)">Small Team / Pilot (< 50 concurrent users | 10 devs | < 10 AI streams)</option>
+              <option value="TIER_M" selected data-friendly="Department Scale (50 – 250 concurrent users | 25 devs | 10–50 AI streams)" data-coded="[TIER_M] Medium Scale (2.0x Compute/Storage Scale)">Department Scale (50 – 250 concurrent users | 25 devs | 10–50 AI streams)</option>
+              <option value="TIER_L" data-friendly="Enterprise / Command Scale (250 – 1,000+ concurrent users | 50+ devs | 50–150+ AI streams)" data-coded="[TIER_L] Large Command Scale (4.0x Compute/Storage Scale)">Enterprise / Command Scale (250 – 1,000+ concurrent users | 50+ devs | 50–150+ AI streams)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Track A Direct Spec Panel -->
+        <div id="trackAPanel" class="hidden bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base">3A. Direct Infrastructure Specification (`[F-18A]`–`[F-24A]`)</h2>
+            <span class="text-xs text-purple-400">Known VM / K8s BOM</span>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label class="block font-medium mb-1">Prod Pod `vCPU`</label>
+              <input id="f18a_vcpu" type="number" value="16" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Prod Pod `RAM GiB`</label>
+              <input id="f19a_ram" type="number" value="64" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Prod VM `vCPU`</label>
+              <input id="f20a_vm_vcpu" type="number" value="0" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Prod VM `RAM GiB`</label>
+              <input id="f20a_vm_ram" type="number" value="0" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Primary DB `vCPU`</label>
+              <input id="f21a_db_vcpu" type="number" value="8" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Primary DB `RAM GiB`</label>
+              <input id="f21a_db_ram" type="number" value="32" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Day 0 Usable `GiB`</label>
+              <input id="f22a_disk" type="number" value="1000" min="10" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Prod MIG/GPU Units</label>
+              <input id="f24a_gpu" type="number" value="2" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Data Velocity & 4-Horizon Ramp-Up -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base" data-friendly="4. Daily Data Growth & Future Rollout Milestones" data-coded="4. Data Velocity, Retention & 4-Horizon Ramp-Up ([F-25]–[F-28])">
+              4. Daily Data Growth & Future Rollout Milestones
+            </h2>
+            <span class="text-xs text-amber-400">Sets 9–18m IO Hardware Orders</span>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label class="block font-medium mb-1" data-friendly="New Data Added Daily (GiB/day)" data-coded="[F-25.2] Daily Ingestion (GiB/day)">New Data Added Daily (GiB/day)</label>
+              <input id="f25_ingest" type="number" value="25" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Keep Data Online For (Days)" data-coded="[F-25.3] Retention Cap (Days)">Keep Data Online For (Days)</label>
+              <input id="f25_retention" type="number" value="730" min="1" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Daily Modified Data (0.05 = 5%)" data-coded="[F-25.4] Daily Change Rate">Daily Modified Data (0.05 = 5%)</label>
+              <input id="f25_change" type="number" step="0.01" value="0.05" min="0" max="1" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+            <div>
+              <label class="block font-medium mb-1" data-friendly="Days of Local Backup Snapshots" data-coded="[F-25.5] Snapshot Retention Days">Days of Local Backup Snapshots</label>
+              <input id="f25_snapdays" type="number" value="14" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-2 border-t border-[var(--border)]">
+            <div class="p-2.5 rounded-lg border border-[var(--border)]">
+              <div class="font-semibold mb-1.5">Month 6 Growth (`[F-26]`)</div>
+              <div class="flex items-center justify-between mb-1">
+                <span>Users / Compute:</span>
+                <input id="f26_cpu" type="number" step="0.25" value="1.25" min="1" oninput="recalc()" class="w-16 px-1.5 py-0.5 text-right rounded border border-[var(--border)] bg-transparent" />
+              </div>
+              <div class="flex items-center justify-between">
+                <span>AI / GPU Usage:</span>
+                <input id="f26_gpu" type="number" step="0.5" value="1.5" min="1" oninput="recalc()" class="w-16 px-1.5 py-0.5 text-right rounded border border-[var(--border)] bg-transparent" />
+              </div>
+            </div>
+
+            <div class="p-2.5 rounded-lg border border-blue-500/40 bg-blue-500/5">
+              <div class="font-semibold text-blue-400 mb-1.5">Month 12 Growth (`[F-27]` Day 0 Order Gate)</div>
+              <div class="flex items-center justify-between mb-1">
+                <span>Users / Compute:</span>
+                <input id="f27_cpu" type="number" step="0.25" value="2.0" min="1" oninput="recalc()" class="w-16 px-1.5 py-0.5 text-right rounded border border-[var(--border)] bg-transparent" />
+              </div>
+              <div class="flex items-center justify-between">
+                <span>AI / GPU Usage:</span>
+                <input id="f27_gpu" type="number" step="0.5" value="2.0" min="1" oninput="recalc()" class="w-16 px-1.5 py-0.5 text-right rounded border border-[var(--border)] bg-transparent" />
+              </div>
+            </div>
+
+            <div class="p-2.5 rounded-lg border border-purple-500/40 bg-purple-500/5">
+              <div class="font-semibold text-purple-400 mb-1.5">Month 24 Growth (`[F-28]` M6 Order Gate)</div>
+              <div class="flex items-center justify-between mb-1">
+                <span>Users / Compute:</span>
+                <input id="f28_cpu" type="number" step="0.5" value="3.0" min="1" oninput="recalc()" class="w-16 px-1.5 py-0.5 text-right rounded border border-[var(--border)] bg-transparent" />
+              </div>
+              <div class="flex items-center justify-between">
+                <span>AI / GPU Usage:</span>
+                <input id="f28_gpu" type="number" step="0.5" value="4.0" min="1" oninput="recalc()" class="w-16 px-1.5 py-0.5 text-right rounded border border-[var(--border)] bg-transparent" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- IO Available Physical Rack Headroom Input -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-sm">IO Baseline: Current Unallocated Physical GDC-ag Rack Headroom</h2>
+            <span class="text-xs text-[var(--muted-foreground)]">Compare against T0 & T+12m</span>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label class="block text-[var(--muted-foreground)] mb-1">Unallocated Physical Cores</label>
+              <input id="io_avail_cpu" type="number" value="96" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+            </div>
+            <div>
+              <label class="block text-[var(--muted-foreground)] mb-1">Unallocated RAM (`GiB`)</label>
+              <input id="io_avail_ram" type="number" value="384" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+            </div>
+            <div>
+              <label class="block text-[var(--muted-foreground)] mb-1">Unallocated Raw Ceph (`TiB`)</label>
+              <input id="io_avail_tib" type="number" value="80" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+            </div>
+            <div>
+              <label class="block text-[var(--muted-foreground)] mb-1">Unallocated Physical GPUs</label>
+              <input id="io_avail_gpu" type="number" value="3" min="0" oninput="recalc()" class="w-full px-2 py-1 rounded border border-[var(--border)] bg-transparent font-mono" />
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: Real-Time Sizing, MIG Bin-Packing & IO Procurement Output (5 cols) -->
+      <div class="lg:col-span-5 space-y-5">
+
+        <!-- Card 1: Day 0 IO Physical Allocation & MIG Bin-Packing Summary -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base">Day 0 (`T0`) IO & PA Capacity Summary</h2>
+            <span id="day0GateBadge" class="px-2.5 py-0.5 text-xs font-bold rounded-full"></span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="p-3 rounded-lg border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)]">Total Physical Cores (T0)</div>
+              <div id="out_t0_cpu" class="text-lg font-bold font-mono mt-0.5">--</div>
+              <div id="out_t0_cpu_sub" class="text-[11px] text-[var(--muted-foreground)] mt-0.5"></div>
+            </div>
+            <div class="p-3 rounded-lg border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)]">Total Physical RAM (T0)</div>
+              <div id="out_t0_ram" class="text-lg font-bold font-mono mt-0.5">--</div>
+              <div id="out_t0_nodes" class="text-[11px] text-blue-400 font-medium mt-0.5"></div>
+            </div>
+            <div class="p-3 rounded-lg border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)]">IO Raw Ceph Storage (3x)</div>
+              <div id="out_t0_raw_tib" class="text-lg font-bold font-mono mt-0.5">--</div>
+              <div id="out_t0_usable_sub" class="text-[11px] text-[var(--muted-foreground)] mt-0.5"></div>
+            </div>
+            <div class="p-3 rounded-lg border border-[var(--border)]">
+              <div class="text-[var(--muted-foreground)]">Physical GPU Cards & MIG</div>
+              <div id="out_t0_gpu" class="text-lg font-bold font-mono mt-0.5">--</div>
+              <div id="out_t0_mig_sub" class="text-[11px] text-emerald-400 font-medium mt-0.5"></div>
+            </div>
+          </div>
+
+          <!-- Extra Metadata Breakdown -->
+          <div class="text-xs p-3 rounded-lg border border-[var(--border)] space-y-1">
+            <div class="flex justify-between">
+              <span class="text-[var(--muted-foreground)]">Dedicated Platform Quorum Tax (`Vault P11` + `SSO P12`):</span>
+              <span id="out_isolation_tax" class="font-mono font-semibold">0 vCPU / 0 GiB (Shared Default)</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--muted-foreground)]">Confidence Contingency & Off-Shift Reclaimable:</span>
+              <span id="out_conf_reclaim" class="font-mono font-semibold">Measured (+0%) | 24x7 Static</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-[var(--muted-foreground)]">DR Replication Bandwidth (`[F-07]`):</span>
+              <span id="out_dr_bw" class="font-mono font-semibold">N/A</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Card 1B: Physical GPU MIG Hardware Card Bin-Packing & Rack Headroom Visualizer -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base">Visual Hardware Map: MIG Bin-Packing & Rack Headroom</h2>
+            <span class="text-xs px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 font-semibold">Live Hardware Visualizer</span>
+          </div>
+
+          <!-- Rack Headroom Progress Bars (T0 vs T+12m Gate) -->
+          <div class="space-y-2.5 text-xs">
+            <div class="font-semibold text-[var(--muted-foreground)]">Physical Rack Utilization vs Available Headroom (`T0 Day 0` vs `T+12m Order Gate`)</div>
+            <div id="visualHeadroomBars" class="space-y-2"></div>
+          </div>
+
+          <!-- Physical GPU Card Slot Diagram -->
+          <div class="space-y-2 text-xs pt-2 border-t border-[var(--border)]">
+            <div class="flex items-center justify-between">
+              <span id="migLayoutTitle" class="font-semibold text-[var(--muted-foreground)]">Day 0 (`T0`) Physical NVIDIA A100/H100 (80GB) MIG Card Layout</span>
+              <span id="migCardCountBadge" class="font-mono font-bold text-emerald-400"></span>
+            </div>
+            <div id="visualMigCardsContainer" class="grid grid-cols-1 gap-2.5"></div>
+          </div>
+        </div>
+
+        <!-- Card 2: 4-Stage Scaling Horizon & IO Procurement Schedule -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-3">
+          <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+            <h2 class="font-semibold text-base">4-Horizon Scaling &amp; IO Hardware Order Ledger</h2>
+            <span class="text-xs text-[var(--muted-foreground)]">9–18m Lead Time</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead>
+                <tr class="border-b border-[var(--border)] text-[var(--muted-foreground)]">
+                  <th class="py-2 pr-2">Horizon</th>
+                  <th class="py-2 px-2">Physical vCPU / RAM</th>
+                  <th class="py-2 px-2">Raw Ceph (`TiB`)</th>
+                  <th class="py-2 px-2">Slices &rarr; Physical GPUs</th>
+                  <th class="py-2 pl-2">IO Action vs Current Rack Headroom</th>
+                </tr>
+              </thead>
+              <tbody id="horizonTableBody" class="divide-y divide-[var(--border)] font-mono"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Card 3: Generated PA Declarative Manifests & IO Handoff Snippet -->
+        <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-sm">PA Declarative Cluster / GPU YAML &amp; IO Purchase Order Summary</h2>
+            <button onclick="copyOutput()" class="px-2.5 py-1 text-xs font-medium rounded border border-[var(--border)] hover:bg-[var(--secondary)]">
+              Copy Output
+            </button>
+          </div>
+          <pre id="yamlOutput" class="text-[11px] font-mono p-3 rounded-lg border border-[var(--border)] overflow-x-auto max-h-64 leading-relaxed"></pre>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Importing / Exporting Offline Coded Transcription Block -->
+  <div id="importModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl max-w-2xl w-full p-5 space-y-4 shadow-xl">
+      <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+        <h3 class="font-bold text-base">Section 6 Post-Interview Coded Transcription Block (`[F-01]`–`[F-28]`)</h3>
+        <button onclick="toggleModal('importModal')" class="text-xs px-2 py-1 rounded border border-[var(--border)]">Close</button>
+      </div>
+      <p class="text-xs text-[var(--muted-foreground)]">
+        Paste the key-value block transcribed from Section 6 of the Offline Facilitator Questionnaire, or copy the current configuration below.
+      </p>
+      <textarea id="transcriptionTextarea" rows="13" class="w-full p-3 text-xs font-mono rounded-lg border border-[var(--border)] bg-transparent"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="applyTranscription()" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500">
+          Apply Transcribed Values to Calculator
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Zero-Rewrite Maintenance & Live Service Catalog Editor -->
+  <div id="maintenanceModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-xl max-w-4xl w-full p-5 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-[var(--border)] pb-2">
+        <div>
+          <h3 class="font-bold text-base text-amber-400">🛠️ Zero-Rewrite Calculator Maintenance &amp; Live Catalog Editor (`SIZING_CONFIG`)</h3>
+          <p class="text-xs text-[var(--muted-foreground)]">See <a href="./MAINTENANCE.md" target="_blank" class="underline text-blue-400">MAINTENANCE.md</a> for full offline/CLI documentation.</p>
+        </div>
+        <button onclick="toggleModal('maintenanceModal')" class="text-xs px-2.5 py-1 rounded border border-[var(--border)] hover:bg-[var(--secondary)]">Close</button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div class="p-3 rounded-lg border border-[var(--border)] bg-black/20 space-y-1.5">
+          <div class="font-bold text-emerald-400">1. Add a New Service / Blueprint</div>
+          <p class="text-[var(--muted-foreground)]">Add 1 object to <code>SIZING_CONFIG.blueprints</code>. The UI automatically builds the checkbox, Friendly/Coded mode toggle, T-shirt math, and JSON export—<b>0 HTML or formula edits required</b>.</p>
+        </div>
+        <div class="p-3 rounded-lg border border-[var(--border)] bg-black/20 space-y-1.5">
+          <div class="font-bold text-blue-400">2. Update GPU SKUs (Gemini = B300 Only)</div>
+          <p class="text-[var(--muted-foreground)]">Edit <code>SIZING_CONFIG.gpuProfiles</code>. Currently <b>Native GDC Gemini requires NVIDIA B300 (288GB HBM3e) exclusively</b>, while self-hosted Gemma uses A100/H100 (80GB MIG) or L4 (24GB).</p>
+        </div>
+        <div class="p-3 rounded-lg border border-[var(--border)] bg-black/20 space-y-1.5">
+          <div class="font-bold text-purple-400">3. Add Platform Service Taxes</div>
+          <p class="text-[var(--muted-foreground)]">Add entries to <code>SIZING_CONFIG.platformServices</code> (alongside Vault P11 &amp; Keycloak P12). Active tenancy taxes are summed automatically.</p>
+        </div>
+      </div>
+
+      <div class="space-y-1.5 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="font-semibold">Live Declarative Catalog (`SIZING_CONFIG` JSON — Edit below &amp; click "Apply Live Catalog" to test new services immediately):</span>
+          <button onclick="resetCatalogToDefault()" class="text-[11px] px-2 py-0.5 rounded border border-[var(--border)] hover:bg-[var(--secondary)]">Reset Default Catalog</button>
+        </div>
+        <textarea id="catalogEditorTextarea" rows="14" class="w-full p-3 text-[11px] font-mono rounded-lg border border-[var(--border)] bg-black/30 leading-relaxed"></textarea>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button onclick="applyLiveCatalogEdit()" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-500 cursor-pointer">
+          Apply Live Catalog to UI &amp; Recalculate
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * SINGLE DECLARATIVE CONFIGURATION BLOCK (`SIZING_CONFIG`)
+     * ============================================================================
+     * MAINTAINER INSTRUCTIONS (Zero-Rewrite Architecture):
+     * To add a new application service, platform operator tax, or GPU hardware SKU:
+     *   1. Add or update the entry in `SIZING_CONFIG` below.
+     *   2. Do NOT edit any HTML checkboxes, dropdowns, or calculation formulas.
+     *      `initCatalogUI()` automatically builds the UI controls from this object.
+     *   3. Copy `gdc_ag_sizing_calculator.html` to `index.html` after saving.
+     * ============================================================================
+     */
+    const DEFAULT_SIZING_CONFIG = {
+      blueprints: {
+        P1_WEB_3TIER: {
+          name: "P1: Web Portal / Transactional App",
+          friendlyDesc: "<b>Web Portal / Transactional App:</b> \"Users open a web UI or call an API to view dashboards, submit forms, or update database records.\" (P1_WEB_3TIER)",
+          codedDesc: "<b>[P1_WEB_3TIER]:</b> 2x n2-standard-4/8/16 + Postgres HA",
+          defaultChecked: false,
+          minNodes: 2,
+          needsLargeModel: false,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 1.5, podRam: 4, dbCpu: 2, dbRam: 8, blockGib: 50, objGib: 50, migSlices: 0 },
+            TIER_M: { podCpu: 6, podRam: 16, dbCpu: 4, dbRam: 16, blockGib: 250, objGib: 100, migSlices: 0 },
+            TIER_L: { podCpu: 16, podRam: 48, dbCpu: 8, dbRam: 32, blockGib: 1024, objGib: 500, migSlices: 0 }
+          }
+        },
+        P3_LEGACY_VM_DB: {
+          name: "P3: Legacy Server Lift-and-Shift",
+          friendlyDesc: "<b>Legacy Server Lift-and-Shift:</b> \"It is an existing Windows or Linux server application we need to run as-is without rewriting into containers, connected to a database.\" (P3_LEGACY_VM_DB)",
+          codedDesc: "<b>[P3_LEGACY_VM_DB]:</b> GDC VM Runtime + Managed Postgres HA",
+          defaultChecked: false,
+          minNodes: 2,
+          needsLargeModel: false,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 4, podRam: 16, dbCpu: 2, dbRam: 8, blockGib: 150, objGib: 0, migSlices: 0 },
+            TIER_M: { podCpu: 16, podRam: 32, dbCpu: 4, dbRam: 16, blockGib: 300, objGib: 50, migSlices: 0 },
+            TIER_L: { podCpu: 64, podRam: 256, dbCpu: 8, dbRam: 32, blockGib: 2048, objGib: 200, migSlices: 0 }
+          }
+        },
+        P4_KAFKA_EVENT: {
+          name: "P4: Live Sensor / Event Stream Pipeline",
+          friendlyDesc: "<b>Live Sensor / Event Stream Pipeline:</b> \"High-volume data arrives continuously from sensors, radars, logs, or message feeds and must be buffered and processed in real time without drops.\" (P4_KAFKA_EVENT)",
+          codedDesc: "<b>[P4_KAFKA_EVENT]:</b> 3-Node Kafka Broker Quorum Floor + DB",
+          defaultChecked: true,
+          minNodes: 3,
+          needsLargeModel: false,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 4, podRam: 10, dbCpu: 2, dbRam: 8, blockGib: 250, objGib: 0, migSlices: 0 },
+            TIER_M: { podCpu: 6, podRam: 16, dbCpu: 4, dbRam: 16, blockGib: 538, objGib: 0, migSlices: 0 },
+            TIER_L: { podCpu: 28, podRam: 96, dbCpu: 8, dbRam: 32, blockGib: 6144, objGib: 1024, migSlices: 0 }
+          }
+        },
+        P6_RAG_AGENT: {
+          name: "P6: Document Q&A / Intelligence Search (RAG)",
+          friendlyDesc: "<b>Document Q&amp;A / Intelligence Search (RAG):</b> \"Users upload private PDFs, SOPs, SITREPs, or imagery and ask natural-language questions to get cited summaries and answers.\" (P6_RAG_AGENT)",
+          codedDesc: "<b>[P6_RAG_AGENT]:</b> Object Bucket + 15m Cron + pgvector HA DB",
+          defaultChecked: true,
+          minNodes: 2,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 1.5, podRam: 4, dbCpu: 4, dbRam: 16, blockGib: 200, objGib: 100, migSlices: 1 },
+            TIER_M: { podCpu: 4, podRam: 16, dbCpu: 8, dbRam: 32, blockGib: 500, objGib: 500, migSlices: 2 },
+            TIER_L: { podCpu: 12, podRam: 48, dbCpu: 16, dbRam: 64, blockGib: 2048, objGib: 2048, migSlices: 4 }
+          }
+        },
+        P7_SQL_AGENT: {
+          name: "P7: Natural Language Database Analyst",
+          friendlyDesc: "<b>Natural Language Database Analyst:</b> \"Commanders or analysts ask questions in plain English against live operational SQL tables (readiness, logistics, inventory) without writing SQL queries.\" (P7_SQL_AGENT)",
+          codedDesc: "<b>[P7_SQL_AGENT]:</b> Read-Only ADK SQL Agent + Postgres HA",
+          defaultChecked: true,
+          minNodes: 2,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 1, podRam: 2, dbCpu: 2, dbRam: 8, blockGib: 100, objGib: 0, migSlices: 1 },
+            TIER_M: { podCpu: 2, podRam: 8, dbCpu: 4, dbRam: 16, blockGib: 250, objGib: 0, migSlices: 1 },
+            TIER_L: { podCpu: 6, podRam: 16, dbCpu: 8, dbRam: 32, blockGib: 500, objGib: 0, migSlices: 2 }
+          }
+        },
+        P8_MLOPS_LOOP: {
+          name: "P8: AI Model Training & MLOps Lab",
+          friendlyDesc: "<b>AI Model Training &amp; MLOps Lab:</b> \"Data scientists continuously fine-tune or train machine learning models on new air-gapped datasets and push updated models to production.\" (P8_MLOPS_LOOP)",
+          codedDesc: "<b>[P8_MLOPS_LOOP]:</b> Dedicated Training + Serving GPUs + MLflow",
+          defaultChecked: false,
+          minNodes: 2,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 8, podRam: 32, dbCpu: 2, dbRam: 8, blockGib: 100, objGib: 250, migSlices: 2 },
+            TIER_M: { podCpu: 16, podRam: 64, dbCpu: 4, dbRam: 16, blockGib: 200, objGib: 500, migSlices: 2 },
+            TIER_L: { podCpu: 32, podRam: 128, dbCpu: 8, dbRam: 32, blockGib: 500, objGib: 2560, migSlices: 6 }
+          }
+        },
+        P9_P10_NOTEBOOK_CHAT: {
+          name: "P9/P10: Interactive Research Notebook / Chat",
+          friendlyDesc: "<b>Interactive Research Notebook / Chat:</b> \"Researchers organize private source documents into interactive notebooks (NotebookLM style) or use a general multi-turn AI chat interface.\" (P9_P10_NOTEBOOK_CHAT)",
+          codedDesc: "<b>[P9_P10_NOTEBOOK_CHAT]:</b> Sovereign Notebook / Gemini GUI + DB",
+          defaultChecked: false,
+          minNodes: 2,
+          needsLargeModel: true,
+          requiresGeminiB300: true,
+          tiers: {
+            TIER_S: { podCpu: 1, podRam: 2, dbCpu: 2, dbRam: 8, blockGib: 100, objGib: 100, migSlices: 1 },
+            TIER_M: { podCpu: 3, podRam: 8, dbCpu: 4, dbRam: 16, blockGib: 250, objGib: 250, migSlices: 2 },
+            TIER_L: { podCpu: 8, podRam: 24, dbCpu: 8, dbRam: 32, blockGib: 524, objGib: 1000, migSlices: 4 }
+          }
+        },
+        P13_GDC_DEV: {
+          name: "P13: Software Developer Cloud Workspaces",
+          friendlyDesc: "<b>Software Developer Cloud Workspaces:</b> \"Software engineers need browser-based coding IDEs, container build tools, and an AI coding assistant inside the air gap.\" (P13_GDC_DEV)",
+          codedDesc: "<b>[P13_GDC_DEV]:</b> Scale-to-Zero Dev Pods + 20Gi PVC/dev",
+          defaultChecked: false,
+          minNodes: 3,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 6.6, podRam: 13, dbCpu: 2, dbRam: 8, blockGib: 250, objGib: 100, migSlices: 1 },
+            TIER_M: { podCpu: 14.1, podRam: 28, dbCpu: 2, dbRam: 8, blockGib: 625, objGib: 200, migSlices: 2 },
+            TIER_L: { podCpu: 26.6, podRam: 53, dbCpu: 4, dbRam: 16, blockGib: 1280, objGib: 500, migSlices: 4 }
+          }
+        },
+        P2_P5_AI_GATEWAY: {
+          name: "P2/P5: Shared AI Gateway (Standalone)",
+          friendlyDesc: "<b>Shared AI Gateway (Standalone):</b> \"We are standing up a central model-serving API gateway to serve multiple downstream applications.\" (P2_P5_AI_GATEWAY)",
+          codedDesc: "<b>[P2_P5_AI_GATEWAY]:</b> Standalone gdc_gemma_gw proxy + GPU pool",
+          defaultChecked: false,
+          minNodes: 2,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 2, podRam: 8, dbCpu: 0, dbRam: 0, blockGib: 100, objGib: 100, migSlices: 1 },
+            TIER_M: { podCpu: 4, podRam: 16, dbCpu: 0, dbRam: 0, blockGib: 200, objGib: 200, migSlices: 2 },
+            TIER_L: { podCpu: 8, podRam: 32, dbCpu: 0, dbRam: 0, blockGib: 500, objGib: 500, migSlices: 4 }
+          }
+        },
+        P_MULTI_SYNTHESIS: {
+          name: "Integrated Command Center (C2 Synthesis)",
+          friendlyDesc: "<b>Integrated Command Center (C2 Synthesis):</b> \"An all-in-one operational command center combining live sensor feeds (Kafka), document intelligence search (RAG), and live database analytics (SQL).\" (P_MULTI_SYNTHESIS)",
+          codedDesc: "<b>[P_MULTI_SYNTHESIS]:</b> Integrated P4 + P6 + P7 + P5 + P10 + P12",
+          defaultChecked: false,
+          minNodes: 3,
+          needsLargeModel: true,
+          requiresGeminiB300: false,
+          tiers: {
+            TIER_S: { podCpu: 12, podRam: 36, dbCpu: 4, dbRam: 16, blockGib: 400, objGib: 300, migSlices: 2 },
+            TIER_M: { podCpu: 20, podRam: 64, dbCpu: 8, dbRam: 32, blockGib: 550, objGib: 1024, migSlices: 3 },
+            TIER_L: { podCpu: 40, podRam: 128, dbCpu: 16, dbRam: 64, blockGib: 1500, objGib: 3072, migSlices: 6 }
+          }
+        }
+      },
+
+      gpuProfiles: {
+        MIG_3G_40GB: {
+          label: "MIG 3g.40gb (A100/H100)",
+          gpuSku: "NVIDIA A100/H100 (80GB HBM)",
+          machineType: "a2-ultragpu-1g-gdc",
+          cardVramGb: 80,
+          slicesPerPhysicalCard: 2,
+          vramGb: 40,
+          isolationLabel: "Hardware MIG Isolated (A100/H100 80GB)",
+          requiresB300: false,
+          defaultSelected: true,
+          friendlyOption: "Live Chat / Document Q&A / SQL Assistant (Gemma 26B/31B -> A100/H100 MIG 3g.40gb 40GB)",
+          codedOption: "[MIG_3G_40GB] 40GB Hardware MIG Slice (A100/H100 80GB, 2/GPU)"
+        },
+        MIG_7G_80GB_FULL: {
+          label: "Full GPU 7g.80gb (A100/H100)",
+          gpuSku: "NVIDIA A100/H100 (80GB HBM)",
+          machineType: "a2-ultragpu-1g-gdc",
+          cardVramGb: 80,
+          slicesPerPhysicalCard: 1,
+          vramGb: 80,
+          isolationLabel: "Full 80GB Card Allocation (A100/H100)",
+          requiresB300: false,
+          defaultSelected: false,
+          friendlyOption: "Heavy Command Center (>25 Streams) or Fine-Tuning (-> Full 80GB A100/H100)",
+          codedOption: "[MIG_7G_80GB_FULL] 80GB Full Card Allocation (A100/H100 80GB, 1/GPU)"
+        },
+        MIG_2G_20GB: {
+          label: "MIG 2g.20gb (A100/H100)",
+          gpuSku: "NVIDIA A100/H100 (80GB HBM)",
+          machineType: "a2-ultragpu-1g-gdc",
+          cardVramGb: 80,
+          slicesPerPhysicalCard: 3,
+          vramGb: 20,
+          isolationLabel: "Hardware MIG Isolated (A100/H100 80GB)",
+          requiresB300: false,
+          defaultSelected: false,
+          friendlyOption: "Light Chat / Small 7B–9B Model (<10 Users -> A100/H100 MIG 2g.20gb 20GB)",
+          codedOption: "[MIG_2G_20GB] 20GB Hardware MIG Slice (A100/H100 80GB, 3/GPU)"
+        },
+        MIG_1G_10GB: {
+          label: "MIG 1g.10gb (A100/H100)",
+          gpuSku: "NVIDIA A100/H100 (80GB HBM)",
+          machineType: "a2-ultragpu-1g-gdc",
+          cardVramGb: 80,
+          slicesPerPhysicalCard: 7,
+          vramGb: 10,
+          isolationLabel: "Hardware MIG Isolated (A100/H100 80GB)",
+          requiresB300: false,
+          defaultSelected: false,
+          friendlyOption: "Background OCR / Document Indexing Only (-> A100/H100 MIG 1g.10gb 10GB)",
+          codedOption: "[MIG_1G_10GB] 10GB Hardware MIG Slice (A100/H100 80GB, 7/GPU)"
+        },
+        NATIVE_GEMINI_ENDPOINT: {
+          label: "GDC Gemini API (NVIDIA B300 Only)",
+          gpuSku: "NVIDIA B300 (288GB HBM3e — Gemini Exclusive)",
+          machineType: "a4-highgpu-1g-b300-gdc",
+          cardVramGb: 288,
+          slicesPerPhysicalCard: 2,
+          vramGb: 144,
+          isolationLabel: "Dedicated B300 Gemini Appliance Pool (B300 Only)",
+          requiresB300: true,
+          defaultSelected: false,
+          friendlyOption: "Massive 500-Page Reports / 1M Context (-> Native GDC Gemini on NVIDIA B300 288GB Only)",
+          codedOption: "[NATIVE_GEMINI_ENDPOINT] GDC Vertex Gemini API (NVIDIA B300 288GB HBM3e Exclusive)"
+        },
+        DEDICATED_L4_WHOLE: {
+          label: "Whole L4 (24GB)",
+          gpuSku: "NVIDIA L4 (24GB GDDR6 — Non-MIG)",
+          machineType: "g2-standard-12-l4-gdc",
+          cardVramGb: 24,
+          slicesPerPhysicalCard: 1,
+          vramGb: 24,
+          isolationLabel: "Whole-Card L4 Allocation (No MIG Support)",
+          requiresB300: false,
+          defaultSelected: false,
+          friendlyOption: "Single-Tenant PoC Demo on L4 Workstation (-> Whole L4 24GB)",
+          codedOption: "[DEDICATED_L4_WHOLE] Single-Tenant Whole L4 (24GB, No MIG)"
+        },
+        NO_GPU: {
+          label: "No GPU",
+          gpuSku: "None (CPU Only)",
+          machineType: "n2-standard-8-gdc",
+          cardVramGb: 0,
+          slicesPerPhysicalCard: 0,
+          vramGb: 0,
+          isolationLabel: "CPU Only",
+          requiresB300: false,
+          defaultSelected: false,
+          friendlyOption: "No AI / Language Models Used (CPU Only)",
+          codedOption: "[NO_GPU] CPU Compute Only (0 MIG Slices)"
+        }
+      },
+
+      platformServices: {
+        VAULT_P11_QUORUM: {
+          name: "Dedicated HashiCorp Vault Quorum (P11)",
+          vcpu: 12,
+          ramGib: 48,
+          usableGib: 125,
+          minNodes: 3,
+          applyInModes: ["DEDICATED_SINGLE_TENANT", "HYBRID_DEDICATED_SVC"]
+        },
+        KEYCLOAK_P12_QUORUM: {
+          name: "Dedicated Keycloak OIDC SSO + Postgres (P12)",
+          vcpu: 12,
+          ramGib: 48,
+          usableGib: 125,
+          minNodes: 2,
+          applyInModes: ["DEDICATED_SINGLE_TENANT", "HYBRID_DEDICATED_SVC"]
+        },
+        DEDICATED_CLUSTER_CONTROL_PLANE: {
+          name: "Dedicated Single-Tenant K8s Control Plane & System Overhead",
+          vcpu: 8,
+          ramGib: 32,
+          usableGib: 100,
+          minNodes: 3,
+          applyInModes: ["DEDICATED_SINGLE_TENANT"]
+        }
+      },
+
+      confidenceMultipliers: {
+        MEASURED: 1.00,
+        BENCHMARKED: 1.05,
+        DERIVED: 1.10,
+        ESTIMATED: 1.25
+      }
+    };
+
+    let SIZING_CONFIG = JSON.parse(JSON.stringify(DEFAULT_SIZING_CONFIG));
+    let isFriendlyMode = true;
+
+    /**
+     * Dynamically populates Blueprint checkboxes and GPU Profile options from `SIZING_CONFIG`
+     * so adding a new service or GPU SKU never requires HTML edits.
+     */
+    function initCatalogUI(preserveSelection = false) {
+      const prevChecked = preserveSelection
+        ? Array.from(document.querySelectorAll('.bp-check:checked')).map(c => c.value)
+        : null;
+      const prevMig = preserveSelection && document.getElementById('f08_mig')
+        ? document.getElementById('f08_mig').value
+        : null;
+
+      // 1. Render Section 3B Blueprint Checkboxes
+      const grid = document.getElementById('blueprintCheckboxGrid');
+      if (grid) {
+        grid.innerHTML = Object.entries(SIZING_CONFIG.blueprints).map(([code, bp]) => {
+          const isChecked = prevChecked ? prevChecked.includes(code) : Boolean(bp.defaultChecked);
+          const labelHtml = isFriendlyMode ? bp.friendlyDesc : bp.codedDesc;
+          return `
+            <label class="flex items-start gap-2 p-2.5 rounded border border-[var(--border)] cursor-pointer hover:bg-[var(--secondary)]/30">
+              <input type="checkbox" class="bp-check mt-0.5" value="${code}" ${isChecked ? 'checked' : ''} onchange="recalc()" />
+              <span data-friendly="${bp.friendlyDesc.replace(/"/g, '&quot;')}" data-coded="${bp.codedDesc.replace(/"/g, '&quot;')}">${labelHtml}</span>
+            </label>
+          `;
+        }).join('');
+      }
+
+      // 2. Render Section 2 GPU / MIG / B300 Select Options
+      const migSelect = document.getElementById('f08_mig');
+      if (migSelect) {
+        migSelect.innerHTML = Object.entries(SIZING_CONFIG.gpuProfiles).map(([key, prof]) => {
+          const isSelected = prevMig ? (prevMig === key) : Boolean(prof.defaultSelected);
+          const text = isFriendlyMode ? prof.friendlyOption : prof.codedOption;
+          return `<option value="${key}" ${isSelected ? 'selected' : ''} data-friendly="${prof.friendlyOption.replace(/"/g, '&quot;')}" data-coded="${prof.codedOption.replace(/"/g, '&quot;')}">${text}</option>`;
+        }).join('');
+      }
+
+      // 3. Sync the live catalog editor textarea
+      const catArea = document.getElementById('catalogEditorTextarea');
+      if (catArea) {
+        catArea.value = JSON.stringify(SIZING_CONFIG, null, 2);
+      }
+    }
+
+    function applyLiveCatalogEdit() {
+      try {
+        const parsed = JSON.parse(document.getElementById('catalogEditorTextarea').value);
+        if (!parsed.blueprints || !parsed.gpuProfiles || !parsed.platformServices) {
+          alert('Catalog JSON must contain blueprints, gpuProfiles, and platformServices objects.');
+          return;
+        }
+        SIZING_CONFIG = parsed;
+        initCatalogUI(true);
+        recalc();
+        toggleModal('maintenanceModal');
+      } catch (e) {
+        alert('Invalid JSON in Catalog Editor: ' + e.message);
+      }
+    }
+
+    function resetCatalogToDefault() {
+      SIZING_CONFIG = JSON.parse(JSON.stringify(DEFAULT_SIZING_CONFIG));
+      initCatalogUI(false);
+      recalc();
+    }
+
+    function toggleUiMode() {
+      isFriendlyMode = !isFriendlyMode;
+      const btn = document.getElementById('modeToggleBtn');
+      const badge = document.getElementById('activeModeBadge');
+      if (isFriendlyMode) {
+        btn.textContent = "🔄 Switch to Coded Mode ([F-01]–[F-28])";
+        btn.className = "px-3.5 py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition shadow-md cursor-pointer ring-2 ring-emerald-400/40";
+        if (badge) {
+          badge.textContent = "🗣️ Active View: Customer-Friendly (Plain English)";
+          badge.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30";
+        }
+      } else {
+        btn.textContent = "🔄 Switch to Customer-Friendly Mode";
+        btn.className = "px-3.5 py-2 text-xs font-bold rounded-lg bg-purple-600 text-white hover:bg-purple-500 transition shadow-md cursor-pointer ring-2 ring-purple-400/40";
+        if (badge) {
+          badge.textContent = "🔒 Active View: Facilitator Coded ([F-01]–[F-28])";
+          badge.className = "px-2.5 py-0.5 text-xs font-semibold rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30";
+        }
+      }
+      document.querySelectorAll('[data-friendly]').forEach(el => {
+        const val = isFriendlyMode ? el.getAttribute('data-friendly') : el.getAttribute('data-coded');
+        if (el.tagName === 'OPTION') {
+          el.textContent = val;
+        } else {
+          el.innerHTML = val;
+        }
+      });
+    }
+
+    function recalc() {
+      const path = document.getElementById('f03_path').value;
+      document.getElementById('trackBPanel').classList.toggle('hidden', path !== 'PATH_B');
+      document.getElementById('trackAPanel').classList.toggle('hidden', path !== 'PATH_A');
+
+      const projectId = document.getElementById('f01_project').value || 'tactical-c2-prod';
+      const confKey = document.getElementById('f04b_conf').value;
+      const confMult = (SIZING_CONFIG.confidenceMultipliers && SIZING_CONFIG.confidenceMultipliers[confKey]) || 1.0;
+      const tenancy = document.getElementById('f05_tenancy').value;
+      const overcommit = document.getElementById('f06_overcommit').value;
+      const haMode = document.getElementById('f07_ha').value;
+      const migKey = document.getElementById('f08_mig').value;
+      const engine = document.getElementById('f09_engine').value;
+      const harborGib = parseFloat(document.getElementById('f17_harbor').value) || 0;
+      const nonProdPolicy = document.getElementById('f20b_nonprod').value;
+      const lifespan = document.getElementById('f20c_lifespan').value;
+
+      const isZonalHa = haMode !== 'SINGLE_ZONE';
+      const hasDr = haMode === 'ZONAL_HA_PLUS_DR';
+      const drSiteMultiplier = hasDr ? 2.0 : 1.0;
+
+      let prodPodCpu = 0, prodPodRam = 0, prodDbPrimaryCpu = 0, prodDbPrimaryRam = 0;
+      let prodUsableGib = 0, prodMigSlices = 0, minNodesRequired = isZonalHa ? 2 : 1;
+      let needsLargeModel = false;
+      let blueprintRequiresGeminiB300 = false;
+      let selectedBlueprints = [];
+
+      if (path === 'PATH_B') {
+        const tier = document.getElementById('f19b_tier').value;
+        const dbConsolidation = document.getElementById('db_consolidation').value;
+        const checks = Array.from(document.querySelectorAll('.bp-check:checked')).map(c => c.value);
+        selectedBlueprints = checks;
+
+        checks.forEach(code => {
+          const bp = SIZING_CONFIG.blueprints[code];
+          if (!bp) return;
+          const t = bp.tiers[tier];
+          if (!t) return;
+          prodPodCpu += t.podCpu;
+          prodPodRam += t.podRam;
+          if (dbConsolidation === 'CONSOLIDATED') {
+            prodDbPrimaryCpu = Math.max(prodDbPrimaryCpu, t.dbCpu);
+            prodDbPrimaryRam = Math.max(prodDbPrimaryRam, t.dbRam);
+          } else {
+            prodDbPrimaryCpu += t.dbCpu;
+            prodDbPrimaryRam += t.dbRam;
+          }
+          prodUsableGib += ((t.blockGib || 0) + (t.objGib || 0));
+          prodMigSlices = Math.max(prodMigSlices, t.migSlices || 0);
+          minNodesRequired = Math.max(minNodesRequired, bp.minNodes || 2);
+          if (bp.needsLargeModel) needsLargeModel = true;
+          if (bp.requiresGeminiB300) blueprintRequiresGeminiB300 = true;
+        });
+      } else {
+        selectedBlueprints = ['CUSTOM_TRACK_A'];
+        prodPodCpu = (parseFloat(document.getElementById('f18a_vcpu').value) || 0) + (parseFloat(document.getElementById('f20a_vm_vcpu').value) || 0);
+        prodPodRam = (parseFloat(document.getElementById('f19a_ram').value) || 0) + (parseFloat(document.getElementById('f20a_vm_ram').value) || 0);
+        prodDbPrimaryCpu = parseFloat(document.getElementById('f21a_db_vcpu').value) || 0;
+        prodDbPrimaryRam = parseFloat(document.getElementById('f21a_db_ram').value) || 0;
+        prodUsableGib = parseFloat(document.getElementById('f22a_disk').value) || 0;
+        prodMigSlices = parseFloat(document.getElementById('f24a_gpu').value) || 0;
+      }
+
+      const prodDbTotalCpu = isZonalHa ? prodDbPrimaryCpu * 2 : prodDbPrimaryCpu;
+      const prodDbTotalRam = isZonalHa ? prodDbPrimaryRam * 2 : prodDbPrimaryRam;
+
+      // Declarative Platform Service Isolation Tax (from SIZING_CONFIG.platformServices)
+      let taxCpu = 0, taxRam = 0, taxUsableGib = 0;
+      const activeTaxServices = [];
+      Object.values(SIZING_CONFIG.platformServices || {}).forEach(svc => {
+        if (Array.isArray(svc.applyInModes) && svc.applyInModes.includes(tenancy)) {
+          taxCpu += (svc.vcpu || 0);
+          taxRam += (svc.ramGib || 0);
+          taxUsableGib += (svc.usableGib || 0);
+          minNodesRequired = Math.max(minNodesRequired, svc.minNodes || 2);
+          activeTaxServices.push(svc.name);
+        }
+      });
+
+      // Non-Prod
+      let nonProdRawCpu = 0, nonProdRam = 0, nonProdMigSlices = 0;
+      if (nonProdPolicy === 'NONPROD_HALF') {
+        nonProdRawCpu = (prodPodCpu + prodDbPrimaryCpu) * 0.5;
+        nonProdRam = (prodPodRam + prodDbPrimaryRam) * 0.5;
+        nonProdMigSlices = prodMigSlices > 0 ? 1 : 0;
+      } else if (nonProdPolicy === 'NONPROD_MIRROR') {
+        nonProdRawCpu = prodPodCpu + prodDbTotalCpu;
+        nonProdRam = prodPodRam + prodDbTotalRam;
+        nonProdMigSlices = prodMigSlices;
+      }
+      const nonProdPhysicalCpu = (overcommit === 'ALL_1_TO_1') ? nonProdRawCpu : (nonProdRawCpu / 2.0);
+
+      const migSpec = SIZING_CONFIG.gpuProfiles[migKey] || SIZING_CONFIG.gpuProfiles.MIG_3G_40GB;
+
+      // Guardrails (including NVIDIA B300 Gemini Exclusive Hardware Rule)
+      const warnings = [];
+      if ((migKey === 'MIG_1G_10GB' || migKey === 'MIG_2G_20GB') && (needsLargeModel || engine === 'ENGINE_VLLM_PROD')) {
+        warnings.push(`MIG VRAM Guardrail: ${migSpec.label} (${migSpec.vramGb}GB VRAM) cannot load Gemma 4 26B/31B weights + KV-cache. Upgrade to MIG_3G_40GB (40GB) or Full 80GB A100/H100 GPU.`);
+      }
+      if (migSpec.requiresB300) {
+        warnings.push(`Gemini Hardware SKU Constraint (NVIDIA B300 Only): GDC Native Gemini Endpoint is delivered exclusively via ${migSpec.gpuSku}. It cannot be scheduled onto A100, H100, or L4 GPUs. Verify IO rack GPU headroom consists of physical B300 units or trigger a B300 Purchase Order.`);
+      } else if (blueprintRequiresGeminiB300) {
+        warnings.push(`Blueprint Advisory (P9/P10 Gemini GUI): Selected blueprint supports Native GDC Gemini (which requires NVIDIA B300 288GB hardware exclusively) or self-hosted Gemma fallback on A100/H100 MIG (${migSpec.label} currently selected). Switch [F-08] to NATIVE_GEMINI_ENDPOINT if sizing for B300 Gemini.`);
+      }
+      if (hasDr) {
+        warnings.push(`Active DR Multiplier Active: Primary + DR site mirroring combined with local snapshots and 3x Ceph replication creates a ~22.2x Raw-to-Baseline storage multiplier.`);
+      }
+
+      const alertBox = document.getElementById('guardrailAlert');
+      const alertList = document.getElementById('guardrailList');
+      if (warnings.length > 0) {
+        alertBox.classList.remove('hidden');
+        alertList.innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
+      } else {
+        alertBox.classList.add('hidden');
+      }
+
+      // Storage & Backup
+      const dailyIngestGib = parseFloat(document.getElementById('f25_ingest').value) || 0;
+      const retentionDays = parseFloat(document.getElementById('f25_retention').value) || 365;
+      const changeRate = parseFloat(document.getElementById('f25_change').value) || 0.05;
+      const snapDays = parseFloat(document.getElementById('f25_snapdays').value) || 14;
+      const backupFactor = (changeRate * snapDays) + 2.0;
+
+      const horizons = [
+        { id: 'T0 (Day 0)', days: 0, cpuMult: 1.0, gpuMult: 1.0, gate: 'Day 0 Rack Allocation' },
+        { id: 'T+6m', days: 180, cpuMult: parseFloat(document.getElementById('f26_cpu').value) || 1.25, gpuMult: parseFloat(document.getElementById('f26_gpu').value) || 1.5, gate: 'Monitor Headroom' },
+        { id: 'T+12m', days: 365, cpuMult: parseFloat(document.getElementById('f27_cpu').value) || 2.0, gpuMult: parseFloat(document.getElementById('f27_gpu').value) || 2.0, gate: 'DAY 0 IO ORDER GATE' },
+        { id: 'T+24m', days: 730, cpuMult: parseFloat(document.getElementById('f28_cpu').value) || 3.0, gpuMult: parseFloat(document.getElementById('f28_gpu').value) || 4.0, gate: 'MONTH 6 IO ORDER GATE' }
+      ];
+
+      const availCpu = parseFloat(document.getElementById('io_avail_cpu').value) || 0;
+      const availRam = parseFloat(document.getElementById('io_avail_ram').value) || 0;
+      const availTib = parseFloat(document.getElementById('io_avail_tib').value) || 0;
+      const availGpu = parseFloat(document.getElementById('io_avail_gpu').value) || 0;
+
+      const computedHorizons = horizons.map(h => {
+        const activeProdCpuReq = ((prodPodCpu * h.cpuMult) + prodDbTotalCpu + taxCpu) * confMult;
+        const activeProdRamReq = ((prodPodRam * h.cpuMult) + prodDbTotalRam + taxRam) * confMult;
+        const prodEffectiveCpu = (overcommit === 'OVERCOMMIT_2_TO_1') ? (activeProdCpuReq / 2.0) : activeProdCpuReq;
+
+        const rawNodeCpu = Math.ceil((prodEffectiveCpu * drSiteMultiplier + nonProdPhysicalCpu) / 0.80) + (isZonalHa ? 8 : 0);
+        const rawNodeRam = Math.ceil((activeProdRamReq * drSiteMultiplier + nonProdRam) / 0.80) + (isZonalHa ? 32 : 0);
+
+        const nodeCount8 = Math.max(minNodesRequired, Math.ceil(Math.max(rawNodeCpu / 8, rawNodeRam / 32)));
+        const allocatedPhysicalCpu = nodeCount8 * 8;
+        const allocatedPhysicalRam = nodeCount8 * 32;
+
+        const effectiveDays = Math.min(h.days, retentionDays);
+        const cumulativeUsableGib = (prodUsableGib + taxUsableGib + harborGib + (dailyIngestGib * effectiveDays)) * 1.20 * drSiteMultiplier * confMult;
+        const usableTib = cumulativeUsableGib / 1024.0;
+        const backupTib = usableTib * backupFactor;
+        const rawCephTib = (usableTib + backupTib) * 3.0;
+
+        let totalMigSlices = 0;
+        let physicalGpuCards = 0;
+        if (migKey !== 'NO_GPU' && prodMigSlices > 0 && migSpec.slicesPerPhysicalCard > 0) {
+          totalMigSlices = Math.ceil(prodMigSlices * h.gpuMult * drSiteMultiplier) + nonProdMigSlices;
+          physicalGpuCards = Math.ceil(totalMigSlices / migSpec.slicesPerPhysicalCard);
+        }
+
+        const cpuDeficit = Math.max(0, allocatedPhysicalCpu - availCpu);
+        const tibDeficit = Math.max(0, rawCephTib - availTib);
+        const gpuDeficit = Math.max(0, physicalGpuCards - availGpu);
+        const hasDeficit = cpuDeficit > 0 || tibDeficit > 0 || gpuDeficit > 0;
+
+        return {
+          ...h,
+          nodeCount8,
+          allocatedPhysicalCpu,
+          allocatedPhysicalRam,
+          usableTib,
+          rawCephTib,
+          totalMigSlices,
+          physicalGpuCards,
+          cpuDeficit,
+          tibDeficit,
+          gpuDeficit,
+          hasDeficit
+        };
+      });
+
+      const t0 = computedHorizons[0];
+      const t12 = computedHorizons[2];
+
+      document.getElementById('out_t0_cpu').textContent = `${t0.allocatedPhysicalCpu} vCPU`;
+      document.getElementById('out_t0_cpu_sub').textContent = `Includes 1.25x Kubelet + N+1 HA reserve`;
+      document.getElementById('out_t0_ram').textContent = `${t0.allocatedPhysicalRam} GiB`;
+      document.getElementById('out_t0_nodes').textContent = `Rec Pool: ${t0.nodeCount8}x n2-standard-8-gdc`;
+      document.getElementById('out_t0_raw_tib').textContent = `${t0.rawCephTib.toFixed(2)} TiB`;
+      document.getElementById('out_t0_usable_sub').textContent = `${t0.usableTib.toFixed(2)} TiB Usable + Backups (x3 Ceph)`;
+      document.getElementById('out_t0_gpu').textContent = `${t0.physicalGpuCards} Physical Cards`;
+      document.getElementById('out_t0_mig_sub').textContent = migKey === 'NO_GPU' ? 'CPU Only' : `${t0.totalMigSlices}x ${migSpec.label} (${migSpec.gpuSku})`;
+
+      document.getElementById('out_isolation_tax').textContent = taxCpu > 0
+        ? `+${taxCpu} vCPU / +${taxRam} GiB RAM (${activeTaxServices.length} Isolated Svcs)`
+        : `0 vCPU / 0 GiB (Shared Default)`;
+      const reclaimCores = lifespan === 'SPINDOWN_ELIGIBLE' ? Math.ceil(nonProdPhysicalCpu) : 0;
+      document.getElementById('out_conf_reclaim').textContent = `${confKey} (+${Math.round((confMult - 1) * 100)}%) | ${reclaimCores > 0 ? reclaimCores + 'c Off-Shift Reclaimable' : '24x7 Static'}`;
+
+      const drBwMbps = hasDr ? (((dailyIngestGib * 8 * 1024) / (4 * 3600)) * 1.5).toFixed(1) : null;
+      document.getElementById('out_dr_bw').textContent = hasDr ? `${drBwMbps} Mbps (4h Window, 1.5x Burst)` : `N/A (Primary Site Only)`;
+
+      const gateBadge = document.getElementById('day0GateBadge');
+      if (!t0.hasDeficit && !t12.hasDeficit) {
+        gateBadge.className = "px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30";
+        gateBadge.textContent = "DAY 0 & T+12M HEADROOM OK";
+      } else if (!t0.hasDeficit && t12.hasDeficit) {
+        gateBadge.className = "px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30";
+        gateBadge.textContent = "T0 OK — TRIGGER DAY 0 ORDER FOR T+12M";
+      } else {
+        gateBadge.className = "px-2.5 py-0.5 text-xs font-bold rounded-full bg-red-500/15 text-red-400 border border-red-500/30";
+        gateBadge.textContent = "DAY 0 RACK DEFICIT — STAGE POC / ORDER HW";
+      }
+
+      const tbody = document.getElementById('horizonTableBody');
+      tbody.innerHTML = computedHorizons.map(h => {
+        const statusHtml = h.hasDeficit
+          ? `<span class="text-red-400 font-semibold">ORDER: +${h.cpuDeficit}c / +${h.tibDeficit.toFixed(1)}TiB / +${h.gpuDeficit} ${migSpec.requiresB300 ? 'B300' : 'GPU'}</span>`
+          : `<span class="text-emerald-400">Allocate from Rack (${h.gate})</span>`;
+        return `
+          <tr>
+            <td class="py-2 pr-2 font-sans font-semibold">${h.id}</td>
+            <td class="py-2 px-2">${h.allocatedPhysicalCpu}c / ${h.allocatedPhysicalRam}Gi (${h.nodeCount8} nodes)</td>
+            <td class="py-2 px-2">${h.rawCephTib.toFixed(2)} TiB</td>
+            <td class="py-2 px-2">${h.totalMigSlices} slices &rarr; <b>${h.physicalGpuCards} ${migSpec.requiresB300 ? 'B300' : 'GPU'}</b></td>
+            <td class="py-2 pl-2 font-sans">${statusHtml}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Render Visual Headroom Comparison Bars (T0 vs T+12m vs Available Rack Headroom)
+      const renderBar = (label, t0Val, t12Val, availVal, unit) => {
+        const maxScale = Math.max(t12Val, availVal, 1) * 1.1;
+        const t0Pct = Math.min(100, (t0Val / maxScale) * 100);
+        const t12Pct = Math.min(100, (t12Val / maxScale) * 100);
+        const availPct = Math.min(100, (availVal / maxScale) * 100);
+        const t0Color = t0Val <= availVal ? 'bg-emerald-500' : 'bg-red-500';
+        const t12Color = t12Val <= availVal ? 'bg-blue-500' : 'bg-amber-500';
+        return `
+          <div class="space-y-1 bg-black/20 p-2.5 rounded-lg border border-[var(--border)]">
+            <div class="flex justify-between items-center text-[11px]">
+              <span class="font-semibold">${label}</span>
+              <span class="font-mono">T0: <b>${t0Val}${unit}</b> | T+12m Gate: <b>${t12Val}${unit}</b> | Rack Limit: <span class="text-emerald-400 font-bold">${availVal}${unit}</span></span>
+            </div>
+            <div class="relative h-3.5 bg-gray-800 rounded overflow-hidden">
+              <div class="absolute top-0 bottom-0 left-0 ${t12Color} opacity-45" style="width: ${t12Pct}%" title="T+12m Demand"></div>
+              <div class="absolute top-0 bottom-0 left-0 ${t0Color}" style="width: ${t0Pct}%" title="T0 Day 0 Demand"></div>
+              <div class="absolute top-0 bottom-0 border-r-2 border-white z-10" style="left: ${availPct}%" title="Available Rack Headroom"></div>
+            </div>
+          </div>
+        `;
+      };
+
+      document.getElementById('visualHeadroomBars').innerHTML = [
+        renderBar('Physical Compute (Cores)', t0.allocatedPhysicalCpu, t12.allocatedPhysicalCpu, availCpu, 'c'),
+        renderBar('3x Ceph Physical Storage', parseFloat(t0.rawCephTib.toFixed(1)), parseFloat(t12.rawCephTib.toFixed(1)), availTib, ' TiB'),
+        renderBar(`Physical ${migSpec.gpuSku}`, t0.physicalGpuCards, t12.physicalGpuCards, availGpu, ' GPUs')
+      ].join('');
+
+      // Render Physical GPU Card Slot Diagram (Dynamically adapts to B300 288GB vs A100/H100 80GB vs L4 24GB)
+      const migTitleEl = document.getElementById('migLayoutTitle');
+      const migBadge = document.getElementById('migCardCountBadge');
+      const migContainer = document.getElementById('visualMigCardsContainer');
+      if (migTitleEl) {
+        migTitleEl.textContent = `Day 0 (T0) Physical ${migSpec.gpuSku} Card Layout`;
+      }
+
+      if (migKey === 'NO_GPU' || t0.physicalGpuCards === 0) {
+        migBadge.textContent = '0 Physical Cards (CPU Only)';
+        migContainer.innerHTML = `<div class="text-[var(--muted-foreground)] italic p-2">No GPU acceleration selected for this workload.</div>`;
+      } else {
+        const slicesPerCard = migSpec.slicesPerPhysicalCard || 1;
+        migBadge.textContent = `${t0.physicalGpuCards}x ${migSpec.cardVramGb}GB Cards (${t0.totalMigSlices} Active Slices / ${t0.physicalGpuCards * slicesPerCard} Total Slots)`;
+        let nonProdAssigned = (nonProdPolicy !== 'NONPROD_NONE' && prodMigSlices > 0) ? 1 : 0;
+        let drAssigned = hasDr ? Math.floor((t0.totalMigSlices - nonProdAssigned) / 2) : 0;
+        let prodAssigned = t0.totalMigSlices - nonProdAssigned - drAssigned;
+
+        let cardsHtml = '';
+        for (let cardIdx = 1; cardIdx <= t0.physicalGpuCards; cardIdx++) {
+          let slotsHtml = '';
+          for (let slotIdx = 1; slotIdx <= slicesPerCard; slotIdx++) {
+            let roleLabel = 'UNALLOCATED SPARE SLICE';
+            let slotStyle = 'border-dashed border-gray-600 text-gray-400 bg-gray-900/40';
+            if (prodAssigned > 0) {
+              roleLabel = `PROD PRIMARY (${projectId})`;
+              slotStyle = 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300 font-semibold';
+              prodAssigned--;
+            } else if (drAssigned > 0) {
+              roleLabel = `DR SITE STANDBY (${projectId}-dr)`;
+              slotStyle = 'border-blue-500/60 bg-blue-500/15 text-blue-300 font-semibold';
+              drAssigned--;
+            } else if (nonProdAssigned > 0) {
+              roleLabel = `NON-PROD STAGING (${projectId}-dev)`;
+              slotStyle = 'border-purple-500/60 bg-purple-500/15 text-purple-300 font-semibold';
+              nonProdAssigned--;
+            }
+            slotsHtml += `
+              <div class="p-2 rounded border ${slotStyle} flex items-center justify-between text-[11px]">
+                <span>Slot #${slotIdx}: <b>${migSpec.label}</b> (${migSpec.vramGb}GB VRAM)</span>
+                <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-black/30">${roleLabel}</span>
+              </div>
+            `;
+          }
+          cardsHtml += `
+            <div class="p-2.5 rounded-lg border border-[var(--border)] bg-black/25 space-y-1.5">
+              <div class="flex justify-between items-center text-[11px] font-mono text-[var(--muted-foreground)]">
+                <span>PHYSICAL GPU CARD #${cardIdx} (${migSpec.gpuSku})</span>
+                <span class="${migSpec.requiresB300 ? 'text-amber-400 font-bold' : 'text-emerald-400'}">${migSpec.isolationLabel}</span>
+              </div>
+              <div class="grid grid-cols-1 gap-1.5">${slotsHtml}</div>
+            </div>
+          `;
+        }
+        migContainer.innerHTML = cardsHtml;
+      }
+
+      const yaml = `# IO Capacity & Procurement Handoff Summary (${projectId})
+# Target GPU Hardware SKU: ${migSpec.gpuSku}
+# Day 0 Allocation (T0): ${t0.allocatedPhysicalCpu} Physical Cores (${t0.nodeCount8}x n2-standard-8-gdc) | ${t0.allocatedPhysicalRam} GiB RAM | ${t0.rawCephTib.toFixed(2)} TiB Raw Ceph | ${t0.physicalGpuCards} Physical GPUs (${t0.totalMigSlices}x ${migSpec.label})
+# Day 0 Emergency Hardware Purchase Order (T+12m Gate vs Available Rack Headroom):
+#   -> Compute Order: +${t12.cpuDeficit} Physical Cores (+${Math.ceil(t12.cpuDeficit/8)} nodes)
+#   -> Storage Order: +${t12.tibDeficit.toFixed(2)} TiB Raw Ceph Storage
+#   -> GPU Order:     +${t12.gpuDeficit} Physical ${migSpec.gpuSku}
+---
+apiVersion: cluster.gdc.goog/v1
+kind: Cluster
+metadata:
+  name: ${tenancy === 'DEDICATED_SINGLE_TENANT' ? projectId + '-cluster' : 'shared-platform-cluster'}
+  namespace: ${tenancy === 'DEDICATED_SINGLE_TENANT' ? projectId : 'platform'}
+spec:
+  nodePools:
+  - name: cpu-ha-pool
+    machineTypeName: n2-standard-8-gdc
+    nodeCount: ${t0.nodeCount8}
+${t0.physicalGpuCards > 0 ? `  - name: ${migSpec.requiresB300 ? 'gemini-b300-pool' : 'gpu-mig-pool'}
+    machineTypeName: ${migSpec.machineType || 'a2-ultragpu-1g-gdc'}
+    nodeCount: ${t0.physicalGpuCards}
+    labels:
+      gdc.goog/gpu-sku: "${migSpec.requiresB300 ? 'nvidia-b300-288gb' : 'nvidia-a100-h100-80gb'}"
+      nvidia.com/mig.config: "${migKey.toLowerCase()}"` : ''}`;
+
+      document.getElementById('yamlOutput').textContent = yaml;
+      syncTranscriptionTextarea();
+    }
+
+    function syncTranscriptionTextarea() {
+      const checks = Array.from(document.querySelectorAll('.bp-check:checked')).map(c => c.value);
+      const isolatedSvcs = Array.from(document.querySelectorAll('.svc-tax-check:checked')).map(c => c.value);
+      const payloadObj = {
+        F01_PROJECT_ID: document.getElementById('f01_project').value,
+        F03_ENTRY_PATH: document.getElementById('f03_path').value,
+        F04B_CONFIDENCE_LEVEL: document.getElementById('f04b_conf').value,
+        F05_TENANCY_MODE: document.getElementById('f05_tenancy').value,
+        F06_OVERCOMMIT_POLICY: document.getElementById('f06_overcommit').value,
+        F07_HA_DR_TOPOLOGY: document.getElementById('f07_ha').value,
+        F08_GPU_MIG_PROFILE: document.getElementById('f08_mig').value,
+        F09_INFERENCE_ENGINE: document.getElementById('f09_engine').value,
+        F17_HARBOR_BUNDLE_GIB: parseFloat(document.getElementById('f17_harbor').value) || 120,
+        F18B_BLUEPRINT_PATTERNS: checks,
+        F19B_TSHIRT_TIER: document.getElementById('f19b_tier').value,
+        F20B_NONPROD_POLICY: document.getElementById('f20b_nonprod').value,
+        F20C_LIFESPAN_CLASS: document.getElementById('f20c_lifespan').value,
+        DB_CONSOLIDATION_POLICY: document.getElementById('db_consolidation').value,
+        ISOLATED_PLATFORM_SERVICES: isolatedSvcs,
+        F25_STORAGE_PARAMS: {
+          daily_ingest_gib: parseFloat(document.getElementById('f25_ingest').value) || 25
+        },
+        F26_RAMP_M6_COMPUTE_GPU: [parseFloat(document.getElementById('f26_cpu').value) || 1.25, parseFloat(document.getElementById('f26_gpu').value) || 1.5],
+        F27_RAMP_M12_COMPUTE_GPU: [parseFloat(document.getElementById('f27_cpu').value) || 2.0, parseFloat(document.getElementById('f27_gpu').value) || 2.0],
+        F28_RAMP_M24_COMPUTE_GPU: [parseFloat(document.getElementById('f28_cpu').value) || 3.0, parseFloat(document.getElementById('f28_gpu').value) || 4.0],
+        IO_AVAILABLE_RACK_HEADROOM: {
+          physical_vcpu: parseFloat(document.getElementById('io_avail_cpu').value) || 96,
+          physical_ram_gib: parseFloat(document.getElementById('io_avail_ram').value) || 384,
+          raw_ceph_tib: parseFloat(document.getElementById('io_avail_tib').value) || 80,
+          physical_gpu_cards: parseFloat(document.getElementById('io_avail_gpu').value) || 3
+        }
+      };
+      document.getElementById('transcriptionTextarea').value = JSON.stringify(payloadObj, null, 2);
+      return payloadObj;
+    }
+
+    function downloadCurrentIntakeJson() {
+      const payload = syncTranscriptionTextarea();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${payload.F01_PROJECT_ID || 'gdc-workload'}_intake.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function applyJsonPayloadToUi(data) {
+      if (!data) return;
+      if (data.F01_PROJECT_ID) document.getElementById('f01_project').value = data.F01_PROJECT_ID;
+      if (data.F03_ENTRY_PATH) document.getElementById('f03_path').value = data.F03_ENTRY_PATH;
+      if (data.F04B_CONFIDENCE_LEVEL) document.getElementById('f04b_conf').value = data.F04B_CONFIDENCE_LEVEL;
+      if (data.F05_TENANCY_MODE) document.getElementById('f05_tenancy').value = data.F05_TENANCY_MODE;
+      if (data.F06_OVERCOMMIT_POLICY) document.getElementById('f06_overcommit').value = data.F06_OVERCOMMIT_POLICY;
+      if (data.F07_HA_DR_TOPOLOGY) document.getElementById('f07_ha').value = data.F07_HA_DR_TOPOLOGY;
+      if (data.F08_GPU_MIG_PROFILE) document.getElementById('f08_mig').value = data.F08_GPU_MIG_PROFILE;
+      if (data.F09_INFERENCE_ENGINE) document.getElementById('f09_engine').value = data.F09_INFERENCE_ENGINE;
+      if (data.F17_HARBOR_BUNDLE_GIB !== undefined) document.getElementById('f17_harbor').value = data.F17_HARBOR_BUNDLE_GIB;
+      if (data.F19B_TSHIRT_TIER) document.getElementById('f19b_tier').value = data.F19B_TSHIRT_TIER;
+      if (data.F20B_NONPROD_POLICY) document.getElementById('f20b_nonprod').value = data.F20B_NONPROD_POLICY;
+      if (data.F20C_LIFESPAN_CLASS) document.getElementById('f20c_lifespan').value = data.F20C_LIFESPAN_CLASS;
+      if (data.DB_CONSOLIDATION_POLICY) document.getElementById('db_consolidation').value = data.DB_CONSOLIDATION_POLICY;
+      if (data.F18A_PATH_A_COMPUTE_GPU) {
+        const pa = data.F18A_PATH_A_COMPUTE_GPU;
+        if (pa.prod_vcpu !== undefined) document.getElementById('f18a_cpu').value = pa.prod_vcpu;
+        if (pa.prod_ram_gib !== undefined) document.getElementById('f18a_ram').value = pa.prod_ram_gib;
+        if (pa.prod_storage_gib !== undefined) document.getElementById('f18a_storage').value = pa.prod_storage_gib;
+        if (pa.prod_gpu_slices !== undefined) document.getElementById('f18a_gpu').value = pa.prod_gpu_slices;
+      }
+      if (data.F25_STORAGE_PARAMS && data.F25_STORAGE_PARAMS.daily_ingest_gib !== undefined) {
+        document.getElementById('f25_ingest').value = data.F25_STORAGE_PARAMS.daily_ingest_gib;
+      }
+      if (Array.isArray(data.F18B_BLUEPRINT_PATTERNS)) {
+        document.querySelectorAll('.bp-check').forEach(c => {
+          c.checked = data.F18B_BLUEPRINT_PATTERNS.includes(c.value);
+        });
+      }
+      if (Array.isArray(data.ISOLATED_PLATFORM_SERVICES)) {
+        document.querySelectorAll('.svc-tax-check').forEach(c => {
+          c.checked = data.ISOLATED_PLATFORM_SERVICES.includes(c.value);
+        });
+      }
+      if (Array.isArray(data.F26_RAMP_M6_COMPUTE_GPU)) {
+        document.getElementById('f26_cpu').value = data.F26_RAMP_M6_COMPUTE_GPU[0];
+        document.getElementById('f26_gpu').value = data.F26_RAMP_M6_COMPUTE_GPU[1];
+      }
+      if (Array.isArray(data.F27_RAMP_M12_COMPUTE_GPU)) {
+        document.getElementById('f27_cpu').value = data.F27_RAMP_M12_COMPUTE_GPU[0];
+        document.getElementById('f27_gpu').value = data.F27_RAMP_M12_COMPUTE_GPU[1];
+      }
+      if (Array.isArray(data.F28_RAMP_M24_COMPUTE_GPU)) {
+        document.getElementById('f28_cpu').value = data.F28_RAMP_M24_COMPUTE_GPU[0];
+        document.getElementById('f28_gpu').value = data.F28_RAMP_M24_COMPUTE_GPU[1];
+      }
+      if (data.IO_AVAILABLE_RACK_HEADROOM) {
+        const hr = data.IO_AVAILABLE_RACK_HEADROOM;
+        if (hr.physical_vcpu !== undefined) document.getElementById('io_avail_cpu').value = hr.physical_vcpu;
+        if (hr.physical_ram_gib !== undefined) document.getElementById('io_avail_ram').value = hr.physical_ram_gib;
+        if (hr.raw_ceph_tib !== undefined) document.getElementById('io_avail_tib').value = hr.raw_ceph_tib;
+        if (hr.physical_gpu_cards !== undefined) document.getElementById('io_avail_gpu').value = hr.physical_gpu_cards;
+      }
+      recalc();
+    }
+
+    function handleJsonFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          applyJsonPayloadToUi(parsed);
+        } catch (err) {
+          alert('Invalid JSON file: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function applyTranscription() {
+      const raw = document.getElementById('transcriptionTextarea').value.trim();
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        applyJsonPayloadToUi(parsed);
+      } catch (e) {
+        // Fallback: Parse YAML / Key-Value lines from Tear-Off Sheet (e.g. F01_PROJECT_ID: "my-app")
+        const obj = {};
+        raw.split('\n').forEach(line => {
+          const clean = line.split('#')[0].trim();
+          const idx = clean.indexOf(':');
+          if (idx > 0) {
+            const k = clean.slice(0, idx).trim();
+            let v = clean.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+            if (v.startsWith('[') && v.endsWith(']')) {
+              try { v = JSON.parse(v); } catch (_) {
+                v = v.slice(1, -1).split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+              }
+            } else if (!isNaN(parseFloat(v)) && isFinite(v)) {
+              v = parseFloat(v);
+            }
+            obj[k] = v;
+          }
+        });
+        applyJsonPayloadToUi(obj);
+      }
+      toggleModal('importModal');
+      recalc();
+    }
+
+    function loadPreset(name) {
+      document.querySelectorAll('.bp-check').forEach(c => c.checked = false);
+      if (name === 'rag_sql') {
+        document.getElementById('f01_project').value = 'tactical-c2-prod';
+        document.getElementById('f03_path').value = 'PATH_B';
+        document.getElementById('f04b_conf').value = 'DERIVED';
+        document.getElementById('f05_tenancy').value = 'SHARED_DEFAULT';
+        document.getElementById('f07_ha').value = 'ZONAL_HA_PLUS_DR';
+        document.getElementById('f08_mig').value = 'MIG_3G_40GB';
+        document.getElementById('f09_engine').value = 'ENGINE_VLLM_PROD';
+        document.getElementById('f17_harbor').value = 120;
+        document.getElementById('f19b_tier').value = 'TIER_M';
+        document.getElementById('f25_ingest').value = 25;
+        ['P4_KAFKA_EVENT', 'P6_RAG_AGENT', 'P7_SQL_AGENT'].forEach(code => {
+          const el = document.querySelector(`.bp-check[value="${code}"]`);
+          if (el) el.checked = true;
+        });
+      }
+      recalc();
+    }
+
+    function toggleModal(id) {
+      document.getElementById(id).classList.toggle('hidden');
+    }
+
+    function copyOutput() {
+      navigator.clipboard.writeText(document.getElementById('yamlOutput').textContent);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initCatalogUI(false);
+      if (window.location.search.includes('mode=coded') || window.location.hash === '#coded') {
+        toggleUiMode();
+      }
+      if (window.location.hash.includes('intake=')) {
+        try {
+          const b64 = window.location.hash.split('intake=')[1].split('&')[0];
+          const jsonStr = decodeURIComponent(escape(atob(b64)));
+          applyJsonPayloadToUi(JSON.parse(jsonStr));
+        } catch (e) {}
+      } else if (window.location.search.includes('autoload=intake')) {
+        try {
+          const savedIntake = localStorage.getItem('GDC_AG_COLLATED_INTAKE_JSON');
+          if (savedIntake) {
+            applyJsonPayloadToUi(JSON.parse(savedIntake));
+          }
+        } catch (e) {}
+      }
+      recalc();
+    });
+  </script>
+</body>
+</html>

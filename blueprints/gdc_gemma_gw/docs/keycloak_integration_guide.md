@@ -1,5 +1,3 @@
-Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
-
 # Keycloak Integration Guide for GDC
 
 > **Version:** 1.1
@@ -315,10 +313,10 @@ To maintain operational compliance, you must separate the emulated staging sandb
 
 | Operational Dimension | GCP GKE Staging Sandbox VM (Cloud Workstations) | GDC Air-Gapped Physical Production Racks |
 | :--- | :--- | :--- |
-| **Unified Exposure Gateway** | Temporary **NGINX Reverse Proxy Pod** (`gemma-ingress-gateway`) | Platform **Hardware Load Balancers & Ingress Controller Gateway** |
+| **Unified Exposure Gateway** | **GKE Gateway API (`gdc-platform-gateway`)** via L4 TCP Bridge (`gdc-gateway-tunnel`) | Platform **Hardware Load Balancers & Ingress Controller Gateway** |
 | **Exposure Entry Port** | Port-forwarded unified preview port **Port `8081`** | Native HTTPS **Port `443`** (SSL/TLS terminated natively at platform entry) |
 | **Domain Host Target** | Dynamic browser subdomain mapping (`8081-w-...cloudworkstations.dev`) | Secure, Unified Enterprise Domain FQDN (e.g. `https://app.gdc.local`) |
-| **K8s API Standard** | Developer-custom NGINX sidecar mapping | GDC standard: **Kubernetes Gateway API** (`gateway.networking.k8s.io`) |
+| **K8s API Standard** | **Kubernetes Gateway API** (`gateway.networking.k8s.io/v1`, `gke-l7-rilb`) | GDC standard: **Kubernetes Gateway API** (`gateway.networking.k8s.io/v1`) |
 | **Dynamic Key Resolution** | Internal KubeDNS lookup mapping on sandbox namespace | Hardened service-to-service routing utilizing GDC internal DNS |
 
 ---

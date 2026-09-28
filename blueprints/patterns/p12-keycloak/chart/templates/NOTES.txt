@@ -1,0 +1,13 @@
+Pattern Chart: p12-keycloak
+Target Namespace: {{ include "p12-keycloak.namespace" . }}
+Target GDC Project: {{ include "p12-keycloak.projectId" . }}
+Image Registry: {{ include "p12-keycloak.registry" . }}
+
+Execution Plane Status:
+- User Cluster Workloads (apps.enabled): {{ .Values.apps.enabled }}
+- Zonal GDC Resources (gdc.enabled): {{ .Values.gdc.enabled }}
+- Day-2 DB Failover Trigger (gdc.failover.enabled): {{ .Values.gdc.failover.enabled }}
+
+Note: In the GDC IaC Framework (foundations/releases), Zonal databases and VMs are provisioned in
+Stage 2 (2-resources) via charts/gdc-dbs and charts/gdc-vm, while this pattern chart deploys
+User Cluster workloads in Stage 5 (5-workload-factory).

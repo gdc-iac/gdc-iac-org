@@ -1,0 +1,45 @@
+{
+  "F01_PROJECT_ID": "tactical-c2-prod",
+  "F03_ENTRY_PATH": "PATH_B",
+  "F04B_CONFIDENCE_LEVEL": "DERIVED",
+  "F05_TENANCY_MODE": "SHARED_DEFAULT",
+  "F06_OVERCOMMIT_POLICY": "PROD_1_TO_1",
+  "F07_HA_DR_TOPOLOGY": "ZONAL_HA_PLUS_DR",
+  "F08_GPU_MIG_PROFILE": "MIG_3G_40GB",
+  "F15_VAULT_ISOLATION": "VAULT_SHARED",
+  "F16_IDENTITY_SSO": "KEYCLOAK_SHARED",
+  "F17_HARBOR_BUNDLE_GIB": 120,
+  "F18B_BLUEPRINT_PATTERNS": [
+    "P4_KAFKA_EVENT",
+    "P6_RAG_AGENT",
+    "P7_SQL_AGENT"
+  ],
+  "F19B_TSHIRT_TIER": "TIER_M",
+  "F20B_NONPROD_POLICY": "NONPROD_HALF",
+  "F20C_LIFESPAN_CLASS": "STATIC_24X7",
+  "F25_STORAGE_PARAMS": {
+    "daily_ingest_gib": 25.0,
+    "retention_days": 730.0,
+    "daily_change_rate": 0.05,
+    "snapshot_days": 14.0,
+    "base_full_backups": 2.0
+  },
+  "F26_RAMP_M6_COMPUTE_GPU": [
+    1.25,
+    1.5
+  ],
+  "F27_RAMP_M12_COMPUTE_GPU": [
+    2.0,
+    2.0
+  ],
+  "F28_RAMP_M24_COMPUTE_GPU": [
+    3.0,
+    4.0
+  ],
+  "IO_AVAILABLE_RACK_HEADROOM": {
+    "physical_vcpu": 96,
+    "physical_ram_gib": 384,
+    "raw_ceph_tib": 80.0,
+    "physical_gpu_cards": 3
+  }
+}
