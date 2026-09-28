@@ -52,21 +52,22 @@ Before deploying this pattern to a GDC air-gapped environment, the following art
 
 ## Resource Requirements (T-Shirt Sizes)
 
-**Estimated Capacity:** Supports 100+ concurrent requests (proxy layer). Failover capacity depends on local model size.
+**Estimated Capacity:** Supports 100+ concurrent requests (proxy layer). Sovereign / failover model capacity aligns with the **`gdc_gemma_gw`** (Gemma 4 26B MoE `52GB` FP16 / Gemma 4 31B Dense `62GB` FP16) validated tiers:
 
-| Component | Recommended GDC Machine Type | vCPU | RAM | Storage (PVC) | GPU Required? |
+| Component / Tier | Recommended GDC Machine Type | vCPU | RAM | Storage (PVC) | GPU Required? |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **LLM Gateway** | `n2-standard-4-gdc` | 4 | 16Gi | N/A | No |
-| **Failover Model (Ollama)** | `g2-standard-4` or `a2-highgpu-1g` | 4+ | 16Gi+ | 50Gi+ | Yes (e.g., L4, A100) |
-| **Failover Model (vLLM)** | `g2-standard-8` (RAM hungry) | 8+ | 24Gi+ | 50Gi+ | Yes (A100 preferred) |
+| **LLM Gateway Proxy** | `n2-standard-4-gdc` (Small/Med) / `n2-standard-8-gdc` (Large) | 4 – 8 | 16Gi – 32Gi | N/A | No |
+| **Small — Dev / PoC (Ollama or Single vLLM)** | `g2-standard-16` or `a3-highgpu-1g-gdc` | 16 | 120Gi | 150Gi (`standard-rwo`) | Yes: 1x NVIDIA L4 (24GB Quantized) or 1x H100/A100 (80GB FP16) |
+| **Medium — Standard Prod (`gdc_gemma_gw` vLLM)** | `2x a3-highgpu-1g-gdc` | 32 | 240Gi | 150Gi (`standard-rwx`) | Yes: 2x NVIDIA H100 / A100 (80GB FP16: 1x 26B MoE + 1x 31B Dense) |
+| **Large — High-Concurrency Enterprise (`vLLM`)** | `2–4x hgx-h200-1g` or `4x a3-highgpu-1g-gdc` | 64 | 480Gi | 150Gi – 300Gi (`standard-rwx`) | Yes: 2–4x NVIDIA H200 (141GB HBM3e) or 4x H100 (80GB) |
 
 **Scaling & Upgrades:**
 *   **Gateway:** Use HPA to scale the gateway service based on CPU/Memory usage.
-*   **Failover Model:** Inference requires stable GPU node pools. Scale replica counts horizontally for increased concurrent capacity. Storage scaling is required for model weight persistence.
-*   **Primary LLM:** Managed by the platform (Gemini). No user scaling required.
+*   **Failover / Sovereign Model (`gdc_gemma_gw`):** Inference requires stable GPU node pools. Scale replica counts horizontally for increased concurrent capacity. A `150Gi` PVC is required to store both `Gemma 4 26B` (`~52GB`) and `Gemma 4 31B` (`~62GB`) unquantized FP16 weights (`114GB` total) plus runtime cache.
+*   **Primary LLM:** Managed by the platform (**GDC Native Gemini**, delivered exclusively on **NVIDIA B300 288GB HBM3e** hardware).
 
 **Sizing Rationale:**
-The Gateway is a lightweight proxy. The Failover Model sizing is dictated by the hardware requirements to run a 7B+ parameter LLM (Gemma) with acceptable inference latency.
+The Gateway is a lightweight proxy (`4 vCPU / 16Gi RAM`). The Sovereign / Failover Model sizing is dictated by the VRAM and host RAM requirements to load unquantized FP16 `Gemma 4 26B/31B` weights with PagedAttention KV-cache headroom.
 
 ## Configuration
 

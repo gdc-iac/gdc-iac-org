@@ -182,8 +182,8 @@ Before initiating production deployment, verify that the target GDC user cluster
 | **Landing Page** (`gdc-dev-landing-page`) | 2 | 100m (500m) | 128Mi (512Mi) | None (Stateless Web UI) |
 | **Operator** (`gdc-dev-operator`) | 2 | 200m (1000m) | 256Mi (1024Mi) | None (Stateless Controller) |
 | **Developer Session Pod** (`gdc-dev-workspace-session`) | 1 per active user | 500m (2000m) | 1Gi (4Gi) | 20Gi (`standard-rwo`) GDC Block Storage |
-| **Keycloak SSO (`p12-keycloak`)** | 2 | 500m (1000m) | 1Gi (2Gi) | 50Gi HA DB Volume |
-| **Sovereign Gemma Gateway (`gdc_gemma_gw`)** | 1–2 (GPU) | 4 (8) | 16Gi (32Gi) | 100Gi SAN Volume (Model Weights) |
+| **Keycloak SSO (`p12-keycloak`)** | 2 | 1000m (2000m) | 2Gi (4Gi) | 100Gi HA DB Volume (`2x 100Gi` Zonal HA) |
+| **Sovereign Gemma Gateway (`gdc_gemma_gw`)** | 1–2 (GPU) | 4 Proxy + 16–64 Host | 16Gi Proxy + 120–480Gi Host | 150Gi SAN Volume (Model Weights: 26B + 31B) |
 
 ### 2.2 Recommended Node Pool Configurations & Sizing Guidelines
 
@@ -196,14 +196,14 @@ Before initiating production deployment, verify that the target GDC user cluster
   * Dedicated to dynamic developer workspaces (`gdc-dev-workspace-session`) and unprivileged container builders (`podman`, `buildah`).
   * Sizing guidelines based on concurrent active developer tenancy:
     * **Small Team (10 Concurrent Developers):**
-      * Compute Baseline: 10 pods $\times$ 500m CPU = 5 vCPUs request; 10 pods $\times$ 1Gi RAM = 10Gi RAM request.
-      * Recommended: 2 nodes of type **`n2-standard-8-gdc`** (8 vCPUs, 32Gi RAM per node; total 16 vCPUs, 64Gi RAM). Provides ample headroom for compilation bursts, language servers, and rootless OCI builds.
+      * Compute Baseline: 10 pods $\times$ 500m CPU (2000m burst limit) = 5 vCPUs request (20 vCPUs limit); 10 pods $\times$ 1Gi RAM (4Gi limit) = 10Gi RAM request (40Gi limit).
+      * Recommended: 2–3 nodes of type **`n2-standard-8-gdc`** (8 vCPUs, 32Gi RAM per node; total 16–24 vCPUs, 64–96Gi RAM). Provides ample headroom for compilation bursts, language servers, and rootless OCI builds.
     * **Medium Department (25 Concurrent Developers):**
-      * Compute Baseline: 25 pods $\times$ 500m CPU = 12.5 vCPUs request; 25 pods $\times$ 1Gi RAM = 25Gi RAM request.
-      * Recommended: 3 nodes of type **`n2-standard-8-gdc`** (24 vCPUs, 96Gi RAM) or 2 nodes of type **`n2-standard-16-gdc`** (32 vCPUs, 128Gi RAM).
+      * Compute Baseline: 25 pods $\times$ 500m CPU (2000m burst limit) = 12.5 vCPUs request (50 vCPUs limit); 25 pods $\times$ 1Gi RAM (4Gi limit) = 25Gi RAM request (100Gi limit).
+      * Recommended: 3–4 nodes of type **`n2-standard-16-gdc`** (48–64 vCPUs, 192–256Gi RAM) or 3 nodes of type **`n2-standard-8-gdc`** (24 vCPUs, 96Gi RAM with 2:1 burst overcommit).
     * **Large Engineering Organization (50 Concurrent Developers):**
-      * Compute Baseline: 50 pods $\times$ 500m CPU = 25 vCPUs request; 50 pods $\times$ 1Gi RAM = 50Gi RAM request.
-      * Recommended: 4 nodes of type **`n2-standard-16-gdc`** (64 vCPUs, 256Gi RAM).
+      * Compute Baseline: 50 pods $\times$ 500m CPU (2000m burst limit) = 25 vCPUs request (100 vCPUs limit); 50 pods $\times$ 1Gi RAM (4Gi limit) = 50Gi RAM request (200Gi limit).
+      * Recommended: 4–7 nodes of type **`n2-standard-16-gdc`** (64–112 vCPUs, 256–448Gi RAM).
 
 * **Persistent Storage Capacity Planning:**
   * Backed by GDC Air-Gapped block storage (`standard-rwo`).

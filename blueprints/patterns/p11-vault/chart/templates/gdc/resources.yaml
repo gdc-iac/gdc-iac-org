@@ -12,20 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 {{- if .Values.gdc.enabled }}
-apiVersion: postgresql.dbadmin.gdc.goog/v1
-kind: DBCluster
-metadata:
-  name: vault-db
-  namespace: {{ include "p11-vault.namespace" . }}
-  labels:
-    {{- include "p11-vault.labels" . | nindent 4 }}
-spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: '2'
-      memory: 8Gi
-  storage:
-    size: 50G
+# Pattern 11 (HashiCorp Vault) uses Integrated Raft Storage (3x 50Gi GDC Block PVCs = 150Gi usable)
+# and GDC Cloud KMS for Auto-Unseal. No external PostgreSQL DBCluster is provisioned.
 {{- end }}
