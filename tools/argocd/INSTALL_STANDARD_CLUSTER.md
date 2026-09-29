@@ -6,15 +6,15 @@ export HARBOR_INSTANCE="harbor001"
 ```
 You can create a Managed Harbor instance (see [INSTALL_HARBOR.md](INSTALL_HARBOR.md) or use org-level harbor. 
 ```bash
-export REGISTRY="harbor.gdchservices.us-east70-b.google.gdch.test"
+export REGISTRY="harbor.org-12345.zone1-a.gdch.test"
 export HARBOR_USER="admin"
 export HARBOR_SECRET="KCXioUXR4zPVyY3N"
 ```
 Note, that to use org-level harbor, the images needs to be signed to avoid an error:
 ```bash
-│   Warning  Failed     9s    kubelet            Failed to pull image "harbor.gdchservices.us-east70-b.google.gdch.test/iac/argocd:latest": failed to pull a │
-│ nd unpack image "harbor.gdchservices.us-east70-b.google.gdch.test/iac/argocd:latest": failed to copy: httpReadSeeker: failed open: unexpected status code  │
-│ https://harbor.gdchservices.us-east70-b.google.gdch.test/v2/iac/argocd/manifests/sha256:fe3b76b7ee4acc292c3f6c7cc1afbf9d252d71f8842740921a5dad67bac6ef20:  │
+│   Warning  Failed     9s    kubelet            Failed to pull image "harbor.org-12345.zone1-a.gdch.test/iac/argocd:latest": failed to pull a │
+│ nd unpack image "harbor.org-12345.zone1-a.gdch.test/iac/argocd:latest": failed to copy: httpReadSeeker: failed open: unexpected status code  │
+│ https://harbor.org-12345.zone1-a.gdch.test/v2/iac/argocd/manifests/sha256:fe3b76b7ee4acc292c3f6c7cc1afbf9d252d71f8842740921a5dad67bac6ef20:  │
 │ 412 Precondition Failed - Server message: unknown: The image doesn't pass Cosign signature verification with err [no matching signatures:                  │
 │ ].
 ```
@@ -40,7 +40,7 @@ docker push ${REGISTRY}/${HARBOR_PROJECT}/argocd:latest
 
 # Set Org Admin cluster context
 ```bash
-kubectl config set-context gdchservices-admin-us-east70-b-gdch_console-gdchservices-us-east70-b-google-gdch-test_gdchservices-admin
+kubectl config set-context org-12345-admin-zone1-a-gdch_console-org-12345-zone1-a-google-gdch-test_org-12345-admin
 ```
 
 ```
@@ -48,7 +48,7 @@ kubectl auth whoami
 ATTRIBUTE                        VALUE
 Username                         system:serviceaccount:iac-root:iac001-sa
 Groups                           [system:authenticated]
-Extra: __AIS_token_issuer_zone   [us-east70-b]
+Extra: __AIS_token_issuer_zone   [zone1-a]
 ```
 # Prepare cluster definition
 ```
@@ -96,7 +96,7 @@ gdcloud clusters get-credentials argocd-cluster \
     --standard \
     --project=iac-root
 ```
-Example cluster context is `iac-root-2ad0c4dd-us-east70-b-gdch_console-gdchservices-us-east70-b-google-gdch-test_iac-root-2ad0c4dd`
+Example cluster context is `iac-root-2ad0c4dd-zone1-a-gdch_console-org-12345-zone1-a-google-gdch-test_iac-root-2ad0c4dd`
 
 # Configure TLS trust.
 Sdandard cluster by default trusts org-level harbor. If using managed harbor, follow instructions in [INSTALL_HARBOR.md](INSTALL_HARBOR.md) to configure trust store.
@@ -104,9 +104,9 @@ Sdandard cluster by default trusts org-level harbor. If using managed harbor, fo
 # Configure Image Pull credentials for project-scoped harbor
 In GDC air-gapped, the local project-scoped Harbor registries require credentials to authorize image pulls. In case you see errors like:
 ```
-│   Warning  Failed     17s (x2 over 31s)  kubelet            Failed to pull image "harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/iac/alpine": f │
-│ ailed to pull and unpack image "harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/iac/alpine:latest": failed to resolve reference "harbor001-iac-r │
-│ oot.gdchservices.us-east70-b.google.gdch.test/iac/alpine:latest": pull access denied, repository does not exist or may require authorization: authorization f │
+│   Warning  Failed     17s (x2 over 31s)  kubelet            Failed to pull image "harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/alpine": f │
+│ ailed to pull and unpack image "harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/alpine:latest": failed to resolve reference "harbor001-iac-r │
+│ oot.org-12345.zone1-a.gdch.test/iac/alpine:latest": pull access denied, repository does not exist or may require authorization: authorization f │
 │ ailed: no basic auth credentials 
 ```
 

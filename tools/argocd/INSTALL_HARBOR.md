@@ -22,7 +22,7 @@ gdcloud harbor harbor-projects create ${HARBOR_PROJECT} \
 gdcloud harbor instances describe ${HARBOR_INSTANCE} \
     --project=${PROJECT}
 ```
-Output contains the harbor url, e.g.: https://harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test
+Output contains the harbor url, e.g.: https://harbor001-iac-root.org-12345.zone1-a.gdch.test
 
 # Create Kubernetes image pull secret
 Follow [create-image-pull-secret](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform-application/deploy-container-workloads#create-image-pull-secret) documentation to add a Harbor project robot account to serve as your service account.
@@ -35,13 +35,10 @@ Follow [create-image-pull-secret](https://docs.cloud.google.com/distributed-clou
 
 - Give your new robot account a name and define any additional settings.
 
-- Click Add.
+- Click Add. The robot account name and secret are displayed on the success screen. Keep this screen open for reference in the next step. For more information, see [Harbor's documentation](https://goharbor.io/docs/2.8.0/working-with-projects/project-configuration/create-robot-accounts/#add-a-robot-account). 
 
-The robot account name and secret are displayed on the success screen. Keep this screen open for reference in the next step.
-
-For more information, see [Harbor's documentation](https://goharbor.io/docs/2.8.0/working-with-projects/project-configuration/create-robot-accounts/#add-a-robot-account).
+- Login using robot account credentials:
 ```bash
-export SECRET=MKVNV9FMUdnKulnogF2YVw5aeztFmqRv
 docker login ${REGISTRY} 
 ... provide robot account name and password
 ```
@@ -53,7 +50,7 @@ docker login -u "${HARBOR_USER}" -p "${HARBOR_SECRET}" "${REGISTRY}"
 
 # Mirror  images to harbor
 ```bash
-export REGISTRY="harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test"
+export REGISTRY="harbor001-iac-root.org-12345.zone1-a.gdch.test"
 
 ../mirror-images/mirror_images.py \
   --manifest argo-cd/manifests/install.yaml \
@@ -72,7 +69,7 @@ docker push ${REGISTRY}/${HARBOR_PROJECT}/${IMAGE}
 
 ## Authentication Issue
 ```
-E0926 08:57:00.988701 3971516 get.go:37] cred helper failed: can not find harbor credential: failed to get audience of the Harbor instance registry harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test: HarborInstance iac-root/harbor001 does not contain audience annotation
+E0926 08:57:00.988701 3971516 get.go:37] cred helper failed: can not find harbor credential: failed to get audience of the Harbor instance registry harbor001-iac-root.org-12345.zone1-a.gdch.test: HarborInstance iac-root/harbor001 does not contain audience annotation
 ```
 The error you are encountering occurs because the docker-credential-mhs credential helper relies on an annotation (harborinstance.artifactregistry.gdc.goog/auth-audience) on the HarborInstance resource to generate the correct tokens. As we saw in your earlier describe output, your harbor001 instance has empty annotations (annotations: `{}`), which causes the credential helper to fail.
 
@@ -89,11 +86,11 @@ kubectl patch harborinstance harbor001 -n iac-root --type=merge -p '{"metadata":
 # Trust Harbor Registry
 In case there is an issue with trusting harbor registry, here is what needs to be done:
 ```
-Failed to pull image "harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/iac/argocd:latest": failed to pull and unpack image "harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/iac/argocd:latest": failed to resolve reference "harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/iac/argocd:latest": failed to do request: Head "https://harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/v2/iac/argocd/manifests/latest": tls: failed to verify certificate: x509: certificate signed by unknown authority
+Failed to pull image "harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/argocd:latest": failed to pull and unpack image "harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/argocd:latest": failed to resolve reference "harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/argocd:latest": failed to do request: Head "https://harbor001-iac-root.org-12345.zone1-a.gdch.test/v2/iac/argocd/manifests/latest": tls: failed to verify certificate: x509: certificate signed by unknown authority
 ```
 Managed Harbor trust chain is:
 - CN = GDC Managed ORG TLS CA
-  - CN = harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test
+  - CN = harbor001-iac-root.org-12345.zone1-a.gdch.test
 
 Export GDC Managed ORG TLS CA to "harbor-ca.crt" and follow instructions in online documentation to trust the registry.
 
@@ -103,20 +100,20 @@ Standard cluster config snippet:
     - caCertSecretRef:
         name: trust-store-root-ext
         namespace: anthos-creds
-      endpoint: https://harbor.gdchservices.us-east70-b.google.gdch.test/v2/library
+      endpoint: https://harbor.org-12345.zone1-a.gdch.test/v2/library
     - caCertSecretRef:
         name: trust-store-root-ext
         namespace: anthos-creds
-      endpoint: https://harbor.gdchservices.us-east70-b.google.gdch.test/v2/gpc-system-container-images
+      endpoint: https://harbor.org-12345.zone1-a.gdch.test/v2/gpc-system-container-images
     - caCertSecretRef:
         name: trust-store-root-ext
         namespace: anthos-creds
-      endpoint: https://harbor.gdchservices.us-east70-b.google.gdch.test/v2/
+      endpoint: https://harbor.org-12345.zone1-a.gdch.test/v2/
 ```
 This is however missing trust store for Managed Harbor. To add it, add the snpippet (requires IO priviledges):
 ```yaml
     - caCertSecretRef:
         name: trust-store-root-ext
         namespace: anthos-creds
-      endpoint: https://harbor001-iac-root.gdchservices.us-east70-b.google.gdch.test/iac
+      endpoint: https://harbor001-iac-root.org-12345.zone1-a.gdch.test/iac
 ```
