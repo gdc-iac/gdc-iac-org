@@ -5,7 +5,7 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 This guide outlines the standard process for transferring software from an internet-connected development environment to a secure, air-gapped Google Distributed Cloud (GDC) environment.
 
-The core principle in an air-gapped GDC environment is that your GKE user clusters have no access to the public internet. Every container image, Helm chart, and dependency must be made available from within the GDC network, typically from an internal **Harbor registry**.
+The core principle in an air-gapped GDC environment is that your GKE user clusters have no access to the public internet. Every container image, Helm chart, and dependency must be made available from within the GDC network, typically from an internal **GDC Managed Harbor registry** (see [Standardized Image Mirroring & Managed Harbor Setup](../tools/mirror-images/README.md)).
 
 The process involves preparing a self-contained "deployment bundle" on a connected machine, transferring it securely, and then publishing the assets to internal GDC services before deployment.
 
@@ -17,25 +17,26 @@ On your development machine with internet access, you will gather all assets and
 
 ### 1. Identify and Save All Container Images
 *   Identify every Docker/OCI image your application uses, including third-party services (e.g., `postgres`, `redis`).
-*   Save each image to a tarball using `docker save`.
+*   Use the standardized [`tools/mirror-images/mirror_images.py`](../tools/mirror-images/README.md) utility to pull and save images from a Kubernetes manifest or image list file into compressed `.tar.gz` archives:
   ```bash
-  docker save my-app:1.2.3 -o my-app.tar
-  docker save redis:latest -o redis.tar
+  python3 ./tools/mirror-images/mirror_images.py \
+    --manifest <path_to_manifest.yaml> \
+    --save-dir ./offline-images
   ```
 
 ### 2. Re-configure Kubernetes Manifests & Helm Charts
-*   This is the most critical GDC-specific step in the preparation phase. You must edit all your Kubernetes manifests (`Deployment`, `StatefulSet`, `DaemonSet`, etc.) and Helm `values.yaml` files to point to your **future GDC Harbor registry**.
+*   This is the most critical GDC-specific step in the preparation phase. You must edit all your Kubernetes manifests (`Deployment`, `StatefulSet`, `DaemonSet`, etc.) and Helm `values.yaml` files to point to your **future GDC Managed Harbor registry**.
 *   For example, change an image reference from this:
     ```yaml
     # Before
     image: "docker.io/library/redis:latest"
     ```
-    To this, using your GDC Harbor registry's URL:
+    To this, using your GDC Managed Harbor registry's URL:
     ```yaml
     # After
-    image: "harbor.gdc.local/my-project/redis:latest"
+    image: "harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/redis:latest"
     ```
-*   **Best Practice:** Automate this process with a script that replaces registry URLs across all your manifest files. This prevents manual errors and makes it easy to target different environments.
+*   **Best Practice:** Automate this process with `./blueprints/common-scripts/configure-blueprints.sh` (or `sed` as shown in [`tools/mirror-images/README.md`](../tools/mirror-images/README.md)) to replace registry URLs across all your manifest files.
 
 ### 3. Gather Other Dependencies
 *   If your application needs them, download all language-specific packages (e.g., Python wheels, npm packages) or system packages (e.g., `.rpm`, `.deb`). These will need to be hosted on an internal repository within GDC (like Nexus or Artifactory).
@@ -49,13 +50,15 @@ Because of the architectural differences between raw Kubernetes vs. Helm charts,
 ### Phase 1: Internal Blueprints (`package-for-gdc.sh`)
 **CRITICAL REQUIREMENT:** Before running the packager, you MUST ensure all Kubernetes manifests have been configured with your actual registry URLs so the script can locate and bundle the correct images from your local cache.
 ```bash
-# From the root of the repository, replace placeholders with your actual project and registry
-./configure-blueprints.sh -p $PROJECT_ID -n test-project -r $REGISTRY_HOST
+# From the blueprints/ directory, replace placeholders with your actual project and registry
+cd blueprints
+./common-scripts/configure-blueprints.sh -p $PROJECT_ID -n test-project -r $REGISTRY_HOST
+```
 
-First, package the blueprint's native K8s manifests, helper scripts, configuration parameters, and custom application images. Run the script from the root of this repository:
+First, package the blueprint's native K8s manifests, helper scripts, configuration parameters, and custom application images:
 
 ```bash
-./scripts/package-for-gdc.sh p1-resilient-3-tier-webapp
+./common-scripts/package-for-gdc.sh patterns/p1-resilient-3-tier-webapp
 ```
 
 This will create a `packages/p1-resilient-3-tier-webapp/` directory containing:
@@ -66,23 +69,24 @@ This will create a `packages/p1-resilient-3-tier-webapp/` directory containing:
 
 ### Phase 2: External Dependencies (Helm Charts & Public Images)
 
-If a pattern relies on heavy remote Helm charts (e.g., Ollama or Kafka), the `package-for-gdc.sh` script intentionally skips them because they are not hardcoded in your local `.yaml` files. You must package these external dependencies using the dedicated export script:
+To mirror external public images referenced by the blueprint patterns (defined in `external_images.txt` / `bulk_external_images.txt`), use either the standardized [`tools/mirror-images/mirror_images.py`](../tools/mirror-images/README.md) script or the blueprint mirror scripts under `blueprints/common-scripts/`:
 
 ```bash
-./scripts/export-external-dependencies.sh
+# Standardized Python mirror tool (supports both --save-dir and direct --registry push):
+python3 ../tools/mirror-images/mirror_images.py \
+  --images-file ./common-scripts/bulk_external_images.txt \
+  --save-dir ./packages/external-images
+
+# Or pattern-specific bash mirror script:
+./common-scripts/mirror_images.sh ./patterns/p5-hybrid-llm-gateway ./artifacts/vllm-images
 ```
-
-This deposits the relevant artifacts directly into individual pattern output folders (e.g., `packages/p4-event-driven-kafka/external-dependencies/`).
-
-*Note: Due to its massive size (15GB+), the `vLLM` model image is deliberately skipped by this automated script. If your architecture specifically requires it, you must mirror it manually:*
-`./scripts/mirror_images.sh ./p5-hybrid-llm-gateway ./artifacts/vllm-images`
 
 ---
 
 ## Stage 3: The Secure Transfer
 
 *   **Mandatory Pre-Transfer Check:** Before transferring, the operator MUST read the generated `*-BOM.txt` (Bill of Materials) file for the pattern. Verify that no critical container images are listed under `MISSING / FAILED`. If any are missing, resolve the error and repackage before proceeding!
-*   Move the final transfer bundle (The output `.tar.gz`, `.tar`, `*-BOM.txt`, and `.txt` checksum files from Phase 1, plus the Helm `.tgz` and mirrored `.tar`s from Phase 2) into the GDC environment using your organization's approved secure transfer method (e.g., secure USB, dedicated transfer host).
+*   Move the final transfer bundle (The output `.tar.gz`, `.tar`, `*-BOM.txt`, and `.txt` checksum files from Phase 1, plus the Helm `.tgz` and mirrored image archives from Phase 2) into the GDC environment using your organization's approved secure transfer method (e.g., secure USB, dedicated transfer host).
 
 ---
 
@@ -90,13 +94,14 @@ This deposits the relevant artifacts directly into individual pattern output fol
 
 Once the bundle is on a workstation within the GDC environment, you will unpack it and publish the assets to the internal GDC services.
 
-### 1. Authenticate
-*   Log in to your GDC environment using the `gdcloud` CLI.
-*   Authenticate your Docker client with the GDC Harbor registry.
-  ```bash
-  # Example login command
-  docker login harbor.gdc.local
-  ```
+### 1. Provision & Authenticate with GDC Managed Harbor
+*   Follow **[tools/mirror-images/README.md](../tools/mirror-images/README.md)** to:
+    1. Create a GDC Managed Harbor instance (`gdcloud harbor instances create`) or provision it declaratively via `charts/gdc-harbors`.
+    2. Create a Harbor Robot Account and authenticate your Docker client:
+       ```bash
+       docker login -u "${HARBOR_USER:?}" -p "${HARBOR_SECRET:?}" "${REGISTRY:?}"
+       ```
+    3. Create the Kubernetes `imagePullSecret` in your target cluster namespace and (for Standard Clusters) configure `registryMirrors` TLS trust (`trust-store-root-ext`).
 
 ### 2. Verify Transfer Integrity
 *   First, use the checksum manifest to verify the integrity of the bundle.
@@ -105,25 +110,24 @@ Once the bundle is on a workstation within the GDC environment, you will unpack 
   ```
 
 ### 3. Load Images into Harbor
-*   Use the native unpacking script provided in the blueprints. This script takes the pattern name (not the file name) as its argument. It will automatically extract your packaged Kubernetes manifests into a folder and use `docker load` to import the custom application images into your Workstation's local Docker daemon.
+*   Use the native unpacking script provided in `blueprints/common-scripts/`. This script takes the pattern name as its argument, extracts your packaged Kubernetes manifests, and runs `docker load` to import custom application images into your Workstation's local Docker daemon:
   ```bash
-  # Automatically extracts manifests and runs 'docker load'
-  ./scripts/unpack-for-gdc.sh p1-resilient-3-tier-webapp
+  ./common-scripts/unpack-for-gdc.sh p1-resilient-3-tier-webapp
   ```
-  *(Note for P5 Hybrid LLM Gateway: Because the massive 5GB+ Gemma AI model is natively "baked" into a custom Docker image and captured by the Phase 1 packaging loop, this single `unpack-for-gdc.sh` command will perfectly extract and load those heavy AI weights into your daemon alongside the lightweight gateway app!)*
-
-*   **Push to Harbor**: The `unpack-for-gdc.sh` script **does not automatically push** images. Because your workstation previously ran `./configure-blueprints.sh` to inject your Harbour URLs during Stage 1, the loaded images *should* already be tagged correctly for your GDC registry. You must now push them manually:
+*   **Push Custom Images to Harbor**: Because `./common-scripts/configure-blueprints.sh` injected your Harbor URLs during Stage 1, the loaded images are already tagged for your GDC registry:
   ```bash
-  docker push harbor.gdc.local/library/p1-backend:latest
-  docker push harbor.gdc.local/library/p1-frontend:latest
+  ./common-scripts/push-images.sh "${REGISTRY:?}/${HARBOR_PROJECT:?}"
   ```
-
-*   **External Dependencies (Phase 2):** You must manually `docker load -i <file.tar>` any heavy external dependencies mirrored into the `artifacts/external-dependencies/images` folder, tag them for your Harbor registry, push them, and then use `helm install` to deploy the raw `.tgz` charts (like Ollama or Kafka).
+*   **Load & Push External Dependencies (Phase 2):** Use `tools/mirror-images/mirror_images.py` to load and push all offline 3P image archives in one step:
+  ```bash
+  python3 ../tools/mirror-images/mirror_images.py \
+    --load-dir ./packages/external-images \
+    --registry "${REGISTRY:?}/${HARBOR_PROJECT:?}"
+  ```
 
 ### 4. Deploy to GKE
-*   With all your custom blueprint images and heavy external helm dependencies now hosted in the GDC Harbor registry, you can finally deploy your resilient architecture.
-*   Apply the re-configured Kubernetes manifests to your target GKE user cluster.
+*   With all custom blueprint images and external dependencies hosted in the GDC Managed Harbor registry, apply the Kubernetes manifests (or deploy via Foundations Stage 3 `patterns.yaml.gotmpl`):
   ```bash
-  kubectl apply -f ./p1-resilient-3-tier-webapp/manifests/apps/
+  kubectl apply -f ./patterns/p1-resilient-3-tier-webapp/manifests/apps/
   ```
 *   Because the `configure-blueprints.sh` script previously injected the Harbor registry into the raw `.yaml`, the GKE cluster will successfully pull the images from within the air-gapped environment and start your application.

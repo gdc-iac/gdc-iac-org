@@ -217,15 +217,18 @@ tar -czf ./packages/gemma-4-E4B-it-weights.tar.gz -C ./packages gemma-4-E4B-it-w
 
 This section provides the absolute, step-by-step deployment instructions for new GDC operators receiving the packaged payload files inside the air-gappedRack boundaries.
 
-### 3.1. Step 1: Loading Container Images to dynamic Harbor Registry
+### 3.1. Step 1: Loading Container Images to GDC Managed Harbor Registry
+> [!NOTE]
+> For full instructions on provisioning a **GDC Managed Harbor** instance (`gdcloud harbor`), creating Robot Accounts, configuring `imagePullSecrets`, and adding Standard Cluster `registryMirrors` TLS trust (`trust-store-root-ext`), refer to **[Standardized Image Mirroring (`tools/mirror-images/README.md`)](../../../tools/mirror-images/README.md)**.
+
 1. Move the generated `packages/gemma-gateway-gdc/` staging folders into your offline rack workstations.
 2. Extract the container image targets:
    `docker load -i gateway/ollama/gemma-gateway-gdc-images.tar` (For Ollama serving)
    OR `docker load -i gateway/vllm/gemma-gateway-gdc-images.tar` (For vLLM serving)
-3. Tag and push the loaded image slots dynamically over to your dynamic internal Harbor registry:
+3. Tag and push the loaded image slots over to your internal GDC Managed Harbor registry (or use `../../../tools/mirror-images/mirror_images.py --load-dir ... --registry ...`):
    ```bash
-   docker tag <IMAGE_ID> harbor.gdc.local/library/gemma-proxy:latest
-   docker push harbor.gdc.local/library/gemma-proxy:latest
+   docker tag <IMAGE_ID> ${REGISTRY:?}/${HARBOR_PROJECT:?}/gemma-proxy:latest
+   docker push ${REGISTRY:?}/${HARBOR_PROJECT:?}/gemma-proxy:latest
    ```
 
 ---

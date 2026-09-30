@@ -8,54 +8,53 @@ This guide provides detailed instructions on how to use the repository's scripts
 
 ## 1. Overview of Scripts
 
-The `scripts/` directory contains tools grouped into four main functional areas:
-
-1. **Image and Artifact Management (Air-Gap):** Packaging, unpacking, mirroring, and pushing images for GDC deployments.
-2. **Emulation and GCP Deployment:** Setting up infrastructure, workload identity, and deploying patterns to local or GCP-emulated clusters.
-3. **Testing and Verification:** Validating manifests, running smoke tests, and verifying deployments.
-4. **Utilities:** Managing secrets, fixing manifests, and cleaning up resources.
+Container image mirroring and blueprint management scripts are organized across:
+* **[`tools/mirror-images/`](../tools/mirror-images/README.md):** Standardized Python utility (`mirror_images.py`) and Managed Harbor setup guide for mirroring images from Kubernetes manifests or image lists (`--manifest`, `--images-file`, `--save-dir`, `--load-dir`, `--registry`).
+* **`blueprints/common-scripts/`:** Blueprint packaging, unpacking, parameter configuration, and custom application image build/push helpers.
+* **`scripts/`:** Repository-level OCI Helm chart air-gap bundle ingestion (`ingest-airgap-bundle.sh`), chart validation (`test-charts.sh`), and schema generation.
 
 ---
 
 ## 2. Image and Artifact Management (Air-Gap)
 
-These scripts prepare custom and external dependencies for disconnected GDC environments.
+These scripts prepare custom and external dependencies for disconnected GDC environments. For GDC Managed Harbor provisioning (`gdcloud harbor`), Robot Account setup, `imagePullSecrets`, and Standard Cluster `registryMirrors` TLS trust, see **[tools/mirror-images/README.md](../tools/mirror-images/README.md)**.
 
-### `configure-blueprints.sh`
-* **Usage:** `./configure-blueprints.sh -p <project-id> -n <namespace> -r <registry-url>`
+### `tools/mirror-images/mirror_images.py` (Standardized Image Mirroring)
+* **Direct Connected Bastion Usage:**
+  ```bash
+  ./tools/mirror-images/mirror_images.py --manifest <manifest.yaml> --registry <harbor-url>/<project>
+  ./tools/mirror-images/mirror_images.py --images-file blueprints/common-scripts/bulk_external_images.txt --registry <harbor-url>/<project>
+  ```
+* **Two-Step Disconnected Air-Gap Usage:**
+  ```bash
+  # Step 1 (Low-Side): Pull and export compressed .tar.gz archives
+  ./tools/mirror-images/mirror_images.py --images-file blueprints/common-scripts/bulk_external_images.txt --save-dir /tmp/offline-images
+
+  # Step 2 (High-Side): Load archives and push to GDC Managed Harbor
+  ./tools/mirror-images/mirror_images.py --load-dir /tmp/offline-images --registry <harbor-url>/<project>
+  ```
+
+### `blueprints/common-scripts/configure-blueprints.sh`
+* **Usage:** `./blueprints/common-scripts/configure-blueprints.sh -p <project-id> -n <namespace> -r <registry-url>`
 * **CRITICAL:** Run this script *before* `package-for-gdc.sh`. It injects your actual registry URLs into the raw manifests so the packager knows exactly where to find your locally built images.
 * **⚠️ WARNING FOR VALIDATION TESTS:** If you omit the `-n` flag, the script will permanently override the `NAMESPACE` variable inside the repository's validation scripts (`verify.sh`) from `test-project` to `<project-id>`, failing any future local emulation tests. Always use `-n test-project` for simple air-gap staging!
 
-### `package-for-gdc.sh` & `unpack-for-gdc.sh`
+### `blueprints/common-scripts/package-for-gdc.sh` & `unpack-for-gdc.sh`
 Used to manage custom application images that you build.
-* **`package-for-gdc.sh <pattern-directory>`:** Parses Kubernetes manifests, verifies required custom images exist locally, and packages them alongside manifests into a dedicated `packages/<pattern-name>` folder containing tarballs (`-gdc-manifests.tar.gz` and `-gdc-images.tar`), parameters, and helper scripts. Optionally accepts `--skip-vllm` flag.
-* **`unpack-for-gdc.sh <pattern-name>`:** Bundled inside the package `helper-scripts/` directory. Run on the air-gapped machine to extract manifests and load images into the local Docker daemon.
+* **`./blueprints/common-scripts/package-for-gdc.sh <pattern-directory>`:** Parses Kubernetes manifests, verifies required custom images exist locally, and packages them alongside manifests into a dedicated `packages/<pattern-name>` folder containing tarballs (`-gdc-manifests.tar.gz` and `-gdc-images.tar`), parameters, and helper scripts. Optionally accepts `--skip-vllm` flag.
+* **`./blueprints/common-scripts/unpack-for-gdc.sh <pattern-name>`:** Bundled inside the package `helper-scripts/` directory. Run on the air-gapped machine to extract manifests and load images into the local Docker daemon.
 
-### `push-images.sh`
-* **Usage:** `./scripts/push-images.sh <registry-url-prefix> [--dry-run]`
-* Used after unpacking to push the loaded application images to the internal GDC registry (e.g., Harbor).
+### `blueprints/common-scripts/push-images.sh`
+* **Usage:** `./blueprints/common-scripts/push-images.sh <registry-url-prefix> [--dry-run]`
+* Used after unpacking to build/push custom blueprint application images (`p1-frontend`, `p1-backend`, etc.) to the internal GDC Harbor registry.
 
-### `mirror_images.sh`
-* **Usage:** `./scripts/mirror_images.sh <PATTERN_DIRECTORY> <OUTPUT_DIRECTORY>`
-* Pulls external public images (defined in a pattern's `external_images.txt`) and archives them as `.tar` files. Supports exporting a `SKIP_IMAGES` regex to skip large images (e.g. `export SKIP_IMAGES="vllm"`).
+### `blueprints/common-scripts/mirror_images.sh` & `bulk_mirror_images.sh`
+* **Usage:** `./blueprints/common-scripts/mirror_images.sh <PATTERN_DIRECTORY> <OUTPUT_DIRECTORY>`
+* Pulls external public images (defined in a pattern's `external_images.txt` or `bulk_external_images.txt`) and archives them as `.tar` files. Supports exporting a `SKIP_IMAGES` regex to skip large images (e.g. `export SKIP_IMAGES="vllm"`).
 
-### `bulk_mirror_images.sh`
-* Underlying bulk image mirror script. Called by `export-external-dependencies.sh` to grab all referenced public Docker images across the repository, saving them into their respective `packages/<pattern-name>/external-dependencies/images` folders.
-
-### `export-external-dependencies.sh`
-* **Usage:** `./scripts/export-external-dependencies.sh`
-* Consolidates external dependency gathering. Automatically pulls needed Helm charts and runs `bulk_mirror_images.sh` to grab all public images for all patterns, placing them directly into pattern-specific `packages/<pattern>/external-dependencies` folders. Note: Massive images like `vLLM` are explicitly hard-skipped by this script.
-
-### `bulk-package-all.sh`
-* **Usage:** `./scripts/bulk-package-all.sh`
-* High-level automation script that iterates through all recognized blueprint patterns. It invokes dependency exports, and runs the individual `package-for-gdc.sh` script to cleanly package all blueprints into the `packages/` directory at once.
-
-### Managing Helm Charts
-Some patterns (P4, P5, P8) require external Helm charts. The `export-external-dependencies.sh` script automates downloading their `.tgz` archives. 
-Once transferred to an air-gapped environment, install using:
-```bash
-helm install my-release ./<CHART_NAME>-<VERSION>.tgz
-```
+### `scripts/ingest-airgap-bundle.sh`
+* **Usage:** `./scripts/ingest-airgap-bundle.sh --registry <harbor-host> --project <project>`
+* Verifies `SHA256SUMS` and pushes packaged OCI Helm charts (`*.tgz`) into GDC Harbor (see [foundations/AIRGAP_MIRRORING.md](../foundations/AIRGAP_MIRRORING.md)).
 
 ---
 

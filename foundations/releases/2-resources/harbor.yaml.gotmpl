@@ -56,6 +56,9 @@ releases:
           {{- $harborsList := list }}
           {{- range $harbor := $project.resources.harbors }}
             {{- $h := dict "name" $harbor.name "namespace" $project.name }}
+            {{- if (hasKey $harbor "annotations") }}
+              {{- $_ := set $h "annotations" $harbor.annotations }}
+            {{- end }}
             {{- $hp := dict "name" $project.name "autoscan" $harbor.autoscan "creatorkind" $harbor.creatorkind "creatorname" $harbor.creatorname }}
             {{- $_ := set $h "projects" (list $hp) }}
             {{- $harborsList = append $harborsList $h }}
