@@ -12,6 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 {{- if .Values.gdc.enabled }}
-# Pattern 11 (HashiCorp Vault) uses Integrated Raft Storage (3x 50Gi GDC Block PVCs = 150Gi usable)
-# and GDC Cloud KMS for Auto-Unseal. No external PostgreSQL DBCluster is provisioned.
+apiVersion: iam.gdc.goog/v1
+kind: ProjectPolicy
+metadata:
+  name: vault-kms-bindings
+  namespace: {{ include "p11-vault.namespace" . }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+spec:
+  bindings:
+  - role: Role/cloudkms.encrypterDecrypter
+    members:
+    - serviceAccount:{{ .Values.vault.serviceAccountName | default "vault-kms-sa" }}
+  - role: Role/cloudkms.viewer
+    members:
+    - serviceAccount:{{ .Values.vault.serviceAccountName | default "vault-kms-sa" }}
 {{- end }}

@@ -53,5 +53,5 @@ tests:
       - hasDocuments:
           count: 1
       - isKind:
-          of: DBCluster
+          of: ProjectPolicy
         documentIndex: 0
