@@ -11,7 +11,7 @@ This procedure outlines how to connect **ArgoCD** to a **GDC (Google Distributed
 ## Install ArgoCD
 ArgoCD can be installed in one of the following environments:
 - **External Cluster:** Using `microk8s` as an example.
-- **User Standard Cluster:** Setup is similar to an external cluster, and is described in the [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md). You can use Managed Harbor Service for image mirroring as described in [INSTALL_HARBOR.md](../mirror-images/INSTALL_HARBOR.md).
+- **User Standard Cluster:** Setup is similar to an external cluster, and is described in the [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md). You can use Managed Harbor Service for image mirroring as described in [tools/mirror-images/README.md](../mirror-images/README.md).
 - **User Shared Cluster:** Requires an Infrastructure Operator (IO) to install Custom Resource Definitions (CRDs).
 
 ### Install ArgoCD on Standard Cluster
@@ -23,7 +23,7 @@ git clone https://github.com/argoproj/argo-cd.git
 cd argo-cd
 ```
 
-Follow the instructions in [INSTALL_HARBOR.md](../mirror-images/INSTALL_HARBOR.md) to prepare the environment for ArgoCD installation and mirror images into Managed Harbor, and [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md) to install ArgoCD on standard cluster.
+Follow the instructions in [tools/mirror-images/README.md](../mirror-images/README.md) to prepare the environment for ArgoCD installation and mirror images into Managed Harbor, and [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md) to install ArgoCD on standard cluster.
 
 Update image names in the ArgoCD manifests to use the private registry:
 ```bash
