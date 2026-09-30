@@ -11,23 +11,35 @@ This procedure outlines how to connect **ArgoCD** to a **GDC (Google Distributed
 ## Install ArgoCD
 ArgoCD can be installed in one of the following environments:
 - **External Cluster:** Using `microk8s` as an example.
-- **User Standard Cluster:** Setup is similar to an external cluster.
+- **User Standard Cluster:** Setup is similar to an external cluster, and is described in the [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md). You can use Managed Harbor Service for image mirroring as described in [INSTALL_HARBOR.md](INSTALL_HARBOR.md).
 - **User Shared Cluster:** Requires an Infrastructure Operator (IO) to install Custom Resource Definitions (CRDs).
 
-### Install ArgoCD on External or Standard Cluster
-
-This process follows the regular installation path for ArgoCD—there are no special modifications required.
-
-Make sure that the container images required by ArgoCD are accessible from the cluster where you are installing ArgoCD.
+### Install ArgoCD on Standard Cluster
+Clone the latest ArgoCD manifests to your working directory, as they will be updated to point to the private registry.
 
 ```bash
 # Clone the ArgoCD repository
 git clone https://github.com/argoproj/argo-cd.git
 cd argo-cd
+```
 
+Follow the instructions in [INSTALL_HARBOR.md](INSTALL_HARBOR.md) to prepare the environment for ArgoCD installation and mirror images into Managed Harbor, and [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md) to install ArgoCD on standard cluster.
+
+Update image names in the ArgoCD manifests to use the private registry:
+```bash
+sed -i -E "s@(image:[[:space:]]+).*/@\1${REGISTRY:?}/${HARBOR_PROJECT:?}/@g" install.yaml
+```
+
+Make sure to update the manufest also to include:
+```bash
+  imagePullSecrets:
+      - name: harbor001-creds
+```
+
+```bash
 # Install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f manifests/install.yaml
+kubectl apply -n argocd -f install.yaml --server-side
 ```
 
 ## Register GDC Clusters in ArgoCD
