@@ -4,7 +4,7 @@ export PROJECT="iac-root"
 export HARBOR_PROJECT="iac"
 export HARBOR_INSTANCE="harbor001"
 ```
-You can create a Managed Harbor instance (see [INSTALL_HARBOR.md](INSTALL_HARBOR.md) or use org-level harbor. 
+You can create a Managed Harbor instance (see [INSTALL_HARBOR.md](../mirror-images/INSTALL_HARBOR.md) or use org-level harbor. 
 ```bash
 export REGISTRY="harbor.org-12345.zone1-a.gdch.test"
 export HARBOR_USER="admin"
@@ -99,7 +99,7 @@ gdcloud clusters get-credentials argocd-cluster \
 Example cluster context is `iac-root-2ad0c4dd-zone1-a-gdch_console-org-12345-zone1-a-google-gdch-test_iac-root-2ad0c4dd`
 
 # Configure TLS trust.
-Sdandard cluster by default trusts org-level harbor. If using managed harbor, follow instructions in [INSTALL_HARBOR.md](INSTALL_HARBOR.md) to configure trust store.
+Sdandard cluster by default trusts org-level harbor. If using managed harbor, follow instructions in [INSTALL_HARBOR.md](../mirror-images/INSTALL_HARBOR.md) to configure trust store.
 
 # Configure Image Pull credentials for project-scoped harbor
 In GDC air-gapped, the local project-scoped Harbor registries require credentials to authorize image pulls. In case you see errors like:
@@ -110,7 +110,7 @@ In GDC air-gapped, the local project-scoped Harbor registries require credential
 │ ailed: no basic auth credentials 
 ```
 
-You need to configure robot account and obtain pull credentials for the project-scoped harbor as shown in `INSTALL_HARBOR.md`. Create a docker-registry secret in ArgoCD namespace (default is argocd):
+You need to configure robot account and obtain pull credentials for the project-scoped harbor as shown in [INSTALL_HARBOR.md](../mirror-images/INSTALL_HARBOR.md). Create a docker-registry secret in ArgoCD namespace (default is argocd):
 ```bash
 kubectl create secret docker-registry harbor001-creds  \
     --from-file=.dockerconfigjson=${HOME}/.docker/config.json \
