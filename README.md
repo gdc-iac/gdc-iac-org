@@ -35,6 +35,7 @@ This repository operates as a **Reusable Helm & Helmfile Blueprint Library**. It
 ├── charts/                    # 30 modular Helm charts templating GDCag Custom Resources
 ├── tools/                     # Deployment tooling and GitOps orchestration engines
 │   ├── bootstrap/             # Initial root project, service account, and credentials bootstrap
+│   ├── mirror-images/         # Standardized container image mirroring & Managed Harbor setup
 │   ├── helmfile/              # Declarative, data-driven orchestration using helmfile
 │   ├── helm_cli/              # Custom Python CLI wrapper script for imperative templating and deployments
 │   ├── config-sync/           # In-cluster continuous GitOps synchronization with Google Config Sync

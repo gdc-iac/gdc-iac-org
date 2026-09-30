@@ -88,25 +88,18 @@ echo "✅ All images saved to ${OUTPUT_DIR}"
 echo ""
 echo "NEXT STEPS (On Air-Gapped Workstation):"
 echo "1. Transfer the .tar files to the secure environment."
-echo "2. Load and push them to your internal registry:"
+echo "2. Load and push them to your GDC Managed Harbor registry (or run mirror_images.py --load-dir ... --registry ...):"
 echo ""
-echo "   export REGISTRY=<YOUR_INTERNAL_REGISTRY>"
+echo "   export REGISTRY=<YOUR_MANAGED_HARBOR_HOST>/<HARBOR_PROJECT>"
 echo ""
 
 for IMG in "${IMAGES[@]}"; do
     FILENAME=$(echo "$IMG" | tr '/:' '_').tar
-    # Extract short name for tagging, assuming typical format repo/image:tag or image:tag
-    # We want the last component of the path before the tag
-    # e.g. ollama/ollama:latest -> ollama
-    # vllm/vllm-openai:latest -> vllm-openai
-    # library/postgres:14 -> postgres
-    
-    # Logic: remove tag, then take basename
-    IMAGE_NO_TAG=$(echo "$IMG" | cut -d':' -f1)
-    SHORT_NAME=$(basename "$IMAGE_NO_TAG")
+    # Preserve both the image short name and its pinned version tag (e.g. keycloak:24.0.4)
+    IMAGE_BASE=$(basename "$IMG")
     
     echo "   docker load -i ${FILENAME}"
-    echo "   docker tag ${IMG} \${REGISTRY}/${SHORT_NAME}:latest"
-    echo "   docker push \${REGISTRY}/${SHORT_NAME}:latest"
+    echo "   docker tag ${IMG} \${REGISTRY}/${IMAGE_BASE}"
+    echo "   docker push \${REGISTRY}/${IMAGE_BASE}"
     echo ""
 done

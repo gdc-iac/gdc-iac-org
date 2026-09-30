@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 {{- if .Values.gdc.enabled }}
-apiVersion: postgresql.dbadmin.gdc.goog/v1
-kind: DBCluster
+apiVersion: iam.gdc.goog/v1
+kind: ProjectPolicy
 metadata:
-  name: vault-db
+  name: vault-kms-bindings
   namespace: {{ include "p11-vault.namespace" . }}
   labels:
     {{- include "p11-vault.labels" . | nindent 4 }}
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: '2'
-      memory: 8Gi
-  storage:
-    size: 50G
+  bindings:
+  - role: Role/cloudkms.encrypterDecrypter
+    members:
+    - serviceAccount:{{ .Values.vault.serviceAccountName | default "vault-kms-sa" }}
+  - role: Role/cloudkms.viewer
+    members:
+    - serviceAccount:{{ .Values.vault.serviceAccountName | default "vault-kms-sa" }}
 {{- end }}

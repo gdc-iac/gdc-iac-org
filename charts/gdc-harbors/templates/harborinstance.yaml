@@ -19,4 +19,8 @@ kind: HarborInstance
 metadata:
   name: {{ $harbor.name }}
   namespace: {{ $harbor.namespace }}
+  {{- with $harbor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}
