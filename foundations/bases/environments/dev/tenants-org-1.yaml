@@ -149,8 +149,6 @@ dev:
               dashboards:
                 - name: "mellons-dashboard"
                   json_model: '{"title": "mellons Dashboard Overview"}'
-                - name: "org-spend-dash"
-                  json_model_file: "org-spend-dash.json"
                 - json_model_dir: "mydashboards"
               backup_plans: # TODO: uncomment once backup repositories are created
                 namespace: "mellons-prj"
