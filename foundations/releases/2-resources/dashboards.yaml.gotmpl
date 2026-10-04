@@ -225,7 +225,15 @@ releases:
               {{- end }}
             {{- end }}
           {{- end }}
-          - dashboards: {{ $dashboardsList | toJson }}
+          {{- $dedupedDashboards := list }}
+          {{- $seenNames := dict }}
+          {{- range $d := $dashboardsList }}
+            {{- if not (hasKey $seenNames $d.name) }}
+              {{- $_ := set $seenNames $d.name true }}
+              {{- $dedupedDashboards = append $dedupedDashboards $d }}
+            {{- end }}
+          {{- end }}
+          - dashboards: {{ $dedupedDashboards | toJson }}
             namespace: {{ $project.name }}
       {{- end }}
     {{- end }}
