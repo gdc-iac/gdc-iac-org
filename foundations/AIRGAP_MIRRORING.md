@@ -220,35 +220,53 @@ mellons-user-cluster  oci://harbor.infra.gdc.example.com/gdc-iac/gdc-clusters   
 
 ---
 
-## 5. External Container Image Mirroring (Skopeo / Crane)
+## 5. External Container Image Mirroring (`tools/mirror-images/`)
 
-While Helm charts are packaged directly inside the air-gap bundle, referenced base container images (e.g. for Jupyter notebooks or validation tests) can be mirrored using `skopeo`:
+While Helm charts are packaged directly inside the air-gap bundle (`scripts/ingest-airgap-bundle.sh`), referenced container images (for GitOps controllers like ArgoCD/Config Sync, blueprint workloads, Jupyter notebooks, or validation tests) are mirrored into **GDC Managed Harbor** using the standardized [`tools/mirror-images/mirror_images.py`](../tools/mirror-images/README.md) utility.
 
-### Image Inventory
+👉 **For Managed Harbor instance creation (`gdcloud harbor`), Robot Account setup, `imagePullSecrets`, `docker-credential-mhs` audience annotations, and Standard Cluster `registryMirrors` TLS trust, see [tools/mirror-images/README.md](../tools/mirror-images/README.md).**
+
+### Image Inventory Examples
 
 | Category | Source Public Reference | Target Local Harbor Reference |
 | :--- | :--- | :--- |
-| **Stage 4 (Notebooks)** | `gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/pytorch-gpu:m125_ext` | `<gdc-harbor-domain>/library/pytorch-gpu:m125_ext` |
-| **Validation / Testing** | `docker.io/library/alpine:3.20` | `<gdc-harbor-domain>/library/alpine:3.20` |
-| **Validation / Testing** | `docker.io/library/busybox:latest` | `<gdc-harbor-domain>/library/busybox:latest` |
+| **Stage 4 (Notebooks)** | `gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/pytorch-gpu:m125_ext` | `<gdc-harbor-domain>/<project>/pytorch-gpu:m125_ext` |
+| **Blueprint Workloads** | Listed in `blueprints/common-scripts/bulk_external_images.txt` | `<gdc-harbor-domain>/<project>/<image>:<tag>` |
+| **Validation / Testing** | `docker.io/library/alpine:3.20` | `<gdc-harbor-domain>/<project>/alpine:3.20` |
 
-### Mirroring Procedure
+### Standardized Mirroring Procedure (`mirror_images.py`)
 
-#### Low-Side (Internet-Connected):
+#### Option A — Two-Step Disconnected Air-Gap Transfer (Low-Side -> High-Side):
 ```bash
-mkdir -p images
-skopeo copy docker://gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/pytorch-gpu:m125_ext dir:./images/pytorch-gpu
-skopeo copy docker://docker.io/library/alpine:3.20 dir:./images/alpine
-tar -czf gdc-images.tar.gz ./images
+# 1. Low-Side (Internet-Connected Workstation): Pull and export .tar.gz archives
+python3 ./tools/mirror-images/mirror_images.py \
+  --images-file ./blueprints/common-scripts/bulk_external_images.txt \
+  --save-dir ./gdc-offline-images
+
+# 2. High-Side (Air-Gapped GDC Workstation): Authenticate, load archives, and push to Managed Harbor
+docker login -u "${HARBOR_USER:?}" -p "${HARBOR_SECRET:?}" "${REGISTRY:?}"
+python3 ./tools/mirror-images/mirror_images.py \
+  --load-dir ./gdc-offline-images \
+  --registry "${REGISTRY:?}/${HARBOR_PROJECT:?}"
 ```
 
-#### High-Side (Air-Gapped Workstation):
+#### Option B — Direct Connected Bastion Mirroring:
 ```bash
-tar -xzf gdc-images.tar.gz
-skopeo login --tls-verify=false -u <registry-user> -p <registry-password> harbor.infra.gdc.example.com
+python3 ./tools/mirror-images/mirror_images.py \
+  --manifest <path_to_manifest.yaml> \
+  --registry "${REGISTRY:?}/${HARBOR_PROJECT:?}"
+```
 
-skopeo copy --dest-tls-verify=false dir:./images/pytorch-gpu docker://harbor.infra.gdc.example.com/library/pytorch-gpu:m125_ext
-skopeo copy --dest-tls-verify=false dir:./images/alpine docker://harbor.infra.gdc.example.com/library/alpine:3.20
+#### Option C — Daemonless OCI Copy (`skopeo`):
+If running in a CI environment without a local Docker daemon, you can also mirror individual images using `skopeo`:
+```bash
+# Low-Side:
+mkdir -p images
+skopeo copy docker://docker.io/library/alpine:3.20 dir:./images/alpine
+
+# High-Side:
+skopeo login --tls-verify=false -u "${HARBOR_USER:?}" -p "${HARBOR_SECRET:?}" "${REGISTRY:?}"
+skopeo copy --dest-tls-verify=false dir:./images/alpine "docker://${REGISTRY:?}/${HARBOR_PROJECT:?}/alpine:3.20"
 ```
 
 ---

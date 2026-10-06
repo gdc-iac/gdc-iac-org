@@ -18,7 +18,7 @@ gdcloud harbor harbor-projects create ${HARBOR_PROJECT:?} \
     --instance=${HARBOR_INSTANCE:?}
 ```
 
-## Get harbor details:
+### Get Harbor Registry URL
 ```bash
 gdcloud harbor instances describe ${HARBOR_INSTANCE:?} \
     --project=${PROJECT:?}
@@ -172,9 +172,7 @@ Standard cluster config snippet:
         name: trust-store-root-ext
         namespace: anthos-creds
       endpoint: https://harbor.org-12345.zone1-a.gdch.test/v2/
-```
-This is however missing trust store for Managed Harbor. To add it, add the snpippet (requires IO priviledges):
-```yaml
+    # Add trust entry for project-scoped Managed Harbor instance:
     - caCertSecretRef:
         name: trust-store-root-ext
         namespace: anthos-creds

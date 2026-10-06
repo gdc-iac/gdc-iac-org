@@ -1,14 +1,30 @@
+<!--
+Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # Setup environment variables
 ```bash
 export PROJECT="iac-root"
 export HARBOR_PROJECT="iac"
 export HARBOR_INSTANCE="harbor001"
 ```
-You can create a Managed Harbor instance (see [tools/mirror-images/README.md](../mirror-images/README.md) or use org-level harbor. 
+You can create a Managed Harbor instance (see [tools/mirror-images/README.md](../mirror-images/README.md)) or use org-level harbor. 
 ```bash
-export REGISTRY="harbor.org-12345.zone1-a.gdch.test"
-export HARBOR_USER="admin"
-export HARBOR_SECRET="KCXioUXR4zPVyY3N"
+export REGISTRY="harbor001-iac-root.org-12345.zone1-a.gdch.test"
+export HARBOR_USER="<robot-account-or-user>"
+export HARBOR_SECRET="<harbor-cli-secret>"
 ```
 Note, that to use org-level harbor, the images needs to be signed to avoid an error:
 ```bash
@@ -99,7 +115,7 @@ gdcloud clusters get-credentials argocd-cluster \
 Example cluster context is `iac-root-2ad0c4dd-zone1-a-gdch_console-org-12345-zone1-a-google-gdch-test_iac-root-2ad0c4dd`
 
 # Configure TLS trust.
-Sdandard cluster by default trusts org-level harbor. If using managed harbor, follow instructions in [tools/mirror-images/README.md](../mirror-images/README.md) to configure trust store.
+Standard cluster by default trusts org-level harbor. If using managed harbor, follow instructions in [tools/mirror-images/README.md](../mirror-images/README.md) to configure trust store.
 
 # Configure Image Pull credentials for project-scoped harbor
 In GDC air-gapped, the local project-scoped Harbor registries require credentials to authorize image pulls. In case you see errors like:

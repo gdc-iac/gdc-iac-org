@@ -6,7 +6,7 @@ persistence:
   storageClassName: "standard-rwx" # Mandatory GDC SAN StorageClass
   accessModes:
     - ReadWriteMany
-  size: 120Gi
+  size: 150Gi
 
 nodeSelector:
   pool: gpu-moe # Default to MoE node pool, can be overridden via helm --set nodeSelector.pool=gpu-dense

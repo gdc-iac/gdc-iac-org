@@ -10,8 +10,8 @@ This procedure outlines how to connect **ArgoCD** to a **GDC (Google Distributed
 ### Select ArgoCD installation target
 ArgoCD can be installed in one of the following environments:
 - **External Cluster:** Using `microk8s` as an example.
-- **User Standard Cluster:** Setup is similar to an external cluster, and is described in the [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md). You can use Managed Harbor Service for image mirroring as described in [INSTALL_HARBOR.md](INSTALL_HARBOR.md).
-- **User Shared Cluster:** Requires an Infrastructure Operator (IO) to install Custom Resource Definitions (CRDs). The CRD manifests are located in [manifests/crds](https://github.com/argoproj/argo-cd/blob/stable/manifests/crds) and are required by ArgoCD server and UI to manage deployment configuration. For installation on shared cluster, use [namespace-install.yaml](https://github.com/argoproj/argo-cd/blob/stable/manifests/namespace-install.yaml). 
+- **User Standard Cluster:** Setup is similar to an external cluster, and is described in the [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md). You can use Managed Harbor Service for image mirroring as described in [tools/mirror-images/README.md](../mirror-images/README.md).
+- **User Shared Cluster:** Requires an Infrastructure Operator (IO) to install Custom Resource Definitions (CRDs). The CRD manifests are located in [manifests/crds](https://github.com/argoproj/argo-cd/blob/stable/manifests/crds) and are required by ArgoCD server and UI to manage deployment configuration. For installation on shared cluster, use [namespace-install.yaml](https://github.com/argoproj/argo-cd/blob/stable/manifests/namespace-install.yaml).
 
 ### Prepare ArgoCD manifests
 Clone the latest ArgoCD manifests to your working directory, as they will be updated to point to the private registry.
@@ -23,20 +23,20 @@ cd argo-cd
 Select the deployment option and corresponding [manifest](https://github.com/argoproj/argo-cd/blob/stable/manifests/).
 
 ### Prepare container images for air-gapped environment
-Follow the instructions in [INSTALL_HARBOR.md](INSTALL_HARBOR.md) to mirror ArgoCD images into Managed Harbor.
+Follow the instructions in [tools/mirror-images/README.md](../mirror-images/README.md) to mirror ArgoCD images into Managed Harbor.
 
 ## Installation procedures
 
 ### Install ArgoCD on Standard Cluster
-You can use [install.yaml](https://github.com/argoproj/argo-cd/blob/stable/manifests/install.yaml), a standard Argo CD installation with cluster-admin access. For production environments, consider using [High Availability setup](https://github.com/argoproj/argo-cd/tree/stable/manifests#high-availability). 
+You can use [install.yaml](https://github.com/argoproj/argo-cd/blob/stable/manifests/install.yaml), a standard Argo CD installation with cluster-admin access (see [INSTALL_STANDARD_CLUSTER.md](INSTALL_STANDARD_CLUSTER.md) for standard cluster specifics). For production environments, consider using [High Availability setup](https://github.com/argoproj/argo-cd/tree/stable/manifests#high-availability).
 
 Update image names in the ArgoCD manifests to use the private registry:
 ```bash
 sed -i -E "s@(image:[[:space:]]+).*/@\1${REGISTRY:?}/${HARBOR_PROJECT:?}/@g" install.yaml
 ```
 
-Make sure to update the manufest also to include:
-```bash
+Make sure to update the manifest also to include:
+```yaml
   imagePullSecrets:
       - name: harbor001-creds
 ```
@@ -47,7 +47,7 @@ kubectl create namespace argocd
 kubectl apply -n argocd -f install.yaml --server-side
 ```
 ### Install ArgoCD on User Shared Cluster
-Shared cluster is a special cluster type in GDC that is used for deploying workloads. It is managed by an Infrastructure Operator (IO). To install ArgoCD on a user shared cluster, the required CRDs need to be installed on the shared cluster first and this requires IO permissions. The CRD manifests are located in [manifests/crds](https://github.com/argoproj/argo-cd/blob/stable/manifests/crds) directory. 
+Shared cluster is a special cluster type in GDC that is used for deploying workloads. It is managed by an Infrastructure Operator (IO). To install ArgoCD on a user shared cluster, the required CRDs need to be installed on the shared cluster first and this requires IO permissions. The CRD manifests are located in [manifests/crds](https://github.com/argoproj/argo-cd/blob/stable/manifests/crds) directory.
 
 After the CRDs are installed, you can install ArgoCD on the shared cluster using [namespace-install.yaml](https://github.com/argoproj/argo-cd/blob/stable/manifests/namespace-install.yaml). For production environments, consider using [High Availability setup](https://github.com/argoproj/argo-cd/tree/stable/manifests#high-availability).
 
@@ -56,8 +56,8 @@ Update image names in the ArgoCD manifests to use the private registry:
 sed -i -E "s@(image:[[:space:]]+).*/@\1${REGISTRY:?}/${HARBOR_PROJECT:?}/@g" namespace-install.yaml
 ```
 
-Make sure to update the manufest also to include:
-```bash
+Make sure to update the manifest also to include:
+```yaml
   imagePullSecrets:
       - name: harbor001-creds
 ```
