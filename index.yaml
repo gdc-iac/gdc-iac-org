@@ -108,6 +108,18 @@ entries:
   gdc-harbors:
   - apiVersion: v2
     appVersion: 1.0.0
+    created: "2026-10-06T09:47:32.812287407Z"
+    description: A Helm chart for creating GDCH Harbor Instances
+    digest: 0fe219942d626c28db7179d1c6a770a2cb16cdfefbe4eff8dad3a1f2fc9c3a16
+    maintainers:
+    - name: gdc-iac
+    name: gdc-harbors
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-harbors-0.1.2/gdc-harbors-0.1.2.tgz
+    version: 0.1.2
+  - apiVersion: v2
+    appVersion: 1.0.0
     created: "2026-09-23T09:27:40.13826574Z"
     description: A Helm chart for creating GDCH Harbor Instances
     digest: c7108972db73ae3d2ed53f9f901ebff36309d9e443a34a0541421bf7c2d78ca8
@@ -309,4 +321,4 @@ entries:
     urls:
     - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdch-dbs-0.1.1/gdch-dbs-0.1.1.tgz
     version: 0.1.1
-generated: "2026-09-23T09:27:44.638590182Z"
+generated: "2026-10-06T09:47:32.812296711Z"
