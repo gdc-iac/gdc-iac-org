@@ -58,20 +58,28 @@ This generates standalone payload bundles in `packages/<pattern-name>/` containi
 
 
 
-### Step 4: Air-Gapped Image Mirroring & Registry Push
-On a connected workstation, mirror 3P container images into tarball archives:
+### Step 4: Air-Gapped Image Mirroring & GDC Managed Harbor Push
+1. **Provision & Authenticate with GDC Managed Harbor:**
+   Follow [`../tools/mirror-images/README.md`](../tools/mirror-images/README.md) to create a project-scoped Managed Harbor instance (`gdcloud harbor instances create ${HARBOR_INSTANCE} --project=${PROJECT}` and `gdcloud harbor harbor-projects create ${HARBOR_PROJECT} --project=${PROJECT} --instance=${HARBOR_INSTANCE}` or declaratively via `charts/gdc-harbors`), create a Harbor Robot Account, and log in (`docker login -u "${HARBOR_USER}" -p "${HARBOR_SECRET}" "${REGISTRY}"`). Create a `docker-registry` pull secret in your target namespace and (for Standard Clusters) ensure `registryMirrors` includes a `trust-store-root-ext` entry for your Managed Harbor endpoint.
+2. **Mirror 3P Container Images (Connected Bastion or Two-Step Air-Gap):**
+   ```bash
+   # Option A — Two-Step Disconnected Air-Gap Transfer using mirror_images.py:
+   # Low-Side (Internet-Connected Workstation):
+   python3 ./common-scripts/mirror_images.py \
+     --images-file ./common-scripts/bulk_external_images.txt \
+     --save-dir ./artifacts/mirrored-images
 
-```bash
-./common-scripts/bulk_mirror_images.sh ./artifacts/mirrored-images
-```
-Transfer the `.tar` payloads to your air-gapped environment and push them into your internal GDC registry (e.g. Harbor or Artifact Registry):
+   # High-Side (Air-Gapped GDC Workstation):
+   python3 ./common-scripts/mirror_images.py \
+     --load-dir ./artifacts/mirrored-images \
+     --registry "${REGISTRY:?}/${HARBOR_PROJECT:?}"
 
-```bash
-export REGISTRY="harbor.gdc.local/library"
-docker load -i ./artifacts/mirrored-images/<image-tarball>.tar
-docker tag <image> ${REGISTRY}/<image-name>:latest
-docker push ${REGISTRY}/<image-name>:latest
-```
+   # Option B — Shell-based export & manual load/push (preserving pinned version tags):
+   ./common-scripts/bulk_mirror_images.sh ./artifacts/mirrored-images
+   docker load -i ./artifacts/mirrored-images/<image-tarball>.tar
+   docker tag <source-image>:<tag> ${REGISTRY:?}/${HARBOR_PROJECT:?}/<image-name>:<tag>
+   docker push ${REGISTRY:?}/${HARBOR_PROJECT:?}/<image-name>:<tag>
+   ```
 
 ### Step 5: Deploy GDC Managed Services & Application Workloads
 Provision GDC Managed Services (PostgreSQL DBClusters, Networks, IAM) and application workloads on target GDC clusters:

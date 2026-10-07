@@ -217,15 +217,21 @@ tar -czf ./packages/gemma-4-E4B-it-weights.tar.gz -C ./packages gemma-4-E4B-it-w
 
 This section provides the absolute, step-by-step deployment instructions for new GDC operators receiving the packaged payload files inside the air-gappedRack boundaries.
 
-### 3.1. Step 1: Loading Container Images to dynamic Harbor Registry
+### 3.1. Step 1: Loading Container Images to GDC Managed Harbor Registry
+> [!NOTE]
+> **GDC Managed Harbor & Cluster Trust Setup:**
+> - **Provision Managed Harbor:** Create a project-scoped Harbor instance via `gdcloud harbor instances create ${HARBOR_INSTANCE} --project=${PROJECT}` and `gdcloud harbor harbor-projects create ${HARBOR_PROJECT} --project=${PROJECT} --instance=${HARBOR_INSTANCE}` (or declaratively via `charts/gdc-harbors`).
+> - **Robot Account & Pull Secret:** Create a Harbor Robot Account, run `docker login -u "${HARBOR_USER}" -p "${HARBOR_SECRET}" "${REGISTRY}"`, and create the Kubernetes pull secret (`kubectl create secret docker-registry ${HARBOR_INSTANCE}-creds --from-file=.dockerconfigjson=${HOME}/.docker/config.json -n gemma-inference`).
+> - **Standard Cluster TLS Trust:** If deploying to a Standard Cluster, ensure the `registryMirrors` section of the `Cluster` resource includes a `caCertSecretRef` (`trust-store-root-ext` in `anthos-creds`) entry for your Managed Harbor endpoint. (See [`tools/mirror-images/README.md`](../../../tools/mirror-images/README.md) in `gdc-iac-org` for complete details.)
+
 1. Move the generated `packages/gemma-gateway-gdc/` staging folders into your offline rack workstations.
 2. Extract the container image targets:
    `docker load -i gateway/ollama/gemma-gateway-gdc-images.tar` (For Ollama serving)
    OR `docker load -i gateway/vllm/gemma-gateway-gdc-images.tar` (For vLLM serving)
-3. Tag and push the loaded image slots dynamically over to your dynamic internal Harbor registry:
+3. Tag and push the loaded image slots over to your internal GDC Managed Harbor registry (or use `mirror_images.py --load-dir ... --registry "${REGISTRY}/${HARBOR_PROJECT}"`):
    ```bash
-   docker tag <IMAGE_ID> harbor.gdc.local/library/gemma-proxy:latest
-   docker push harbor.gdc.local/library/gemma-proxy:latest
+   docker tag <IMAGE_ID> ${REGISTRY:?}/${HARBOR_PROJECT:?}/gemma-proxy:latest
+   docker push ${REGISTRY:?}/${HARBOR_PROJECT:?}/gemma-proxy:latest
    ```
 
 ---

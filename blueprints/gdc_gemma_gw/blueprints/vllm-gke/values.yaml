@@ -44,4 +44,4 @@ persistence:
   storageClassName: "standard-rwo" # Default for GKE staging/testing. Override on GDC-ag
   accessModes:
     - ReadWriteOnce
-  size: 50Gi
+  size: 150Gi
