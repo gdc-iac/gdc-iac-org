@@ -15,7 +15,7 @@
 ---
 dev:
   gdc_tenants:
-    org-1:
+    tenant-1:
       global:
         kube_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
         kube_context_zonal: "org-1-admin-zone1-gdch_console-org-1-zone1-google-gdch-test_zone1_org-1-admin"
