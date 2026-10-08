@@ -21,13 +21,13 @@ bases:
 
 templates:
   notebook-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_notebooks" true }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantZonalContext := $vals | get "gdc_context_zone" }}
 
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "notebooks") }}
       {{- range $notebook := $tenantConfig.global.notebooks }}
@@ -36,7 +36,6 @@ releases:
         {{- if ($vals | get "gdc_notebooks_chart_version" "") }}
         version: {{ $vals | get "gdc_notebooks_chart_version" | quote }}
         {{- end }}
-        kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 4-notebooks
           tenant: {{ $tenantName | quote }}

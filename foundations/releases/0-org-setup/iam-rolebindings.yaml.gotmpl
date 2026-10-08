@@ -21,13 +21,13 @@ bases:
 
 templates:
   iamrolebindings-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     installed: true
     createNamespace: false
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantGlobalContext := $vals | get "gdc_context_global" }}
 
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "iamrolebindings") }}
       {{- $customRolesList := list }}
@@ -52,7 +52,6 @@ releases:
       {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
       version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
       {{- end }}
-      kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup
       inherit:

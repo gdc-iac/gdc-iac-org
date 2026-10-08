@@ -21,13 +21,13 @@ bases:
 
 templates:
   db-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_databases" true }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantZonalContext := $vals | get "gdc_context_zone" }}
 
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "dbs") }}
@@ -36,7 +36,6 @@ releases:
         {{- if ($vals | get "gdc_dbs_chart_version" "") }}
         version: {{ $vals | get "gdc_dbs_chart_version" | quote }}
         {{- end }}
-        kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 2-resources
           tenant: {{ $tenantName | quote }}

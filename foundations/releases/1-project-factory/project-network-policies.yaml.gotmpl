@@ -21,13 +21,13 @@ bases:
 
 templates:
   netpol-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_project_network_policies" true }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantGlobalContext := $vals | get "gdc_context_global" }}
 
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "project_network_policies") }}
@@ -36,7 +36,6 @@ releases:
         {{- if ($vals | get "gdc_project_network_policies_chart_version" "") }}
         version: {{ $vals | get "gdc_project_network_policies_chart_version" | quote }}
         {{- end }}
-        kubeContext: {{ $tenantGlobalContext | quote }}
         labels:
           stage: 1-project-factory
           tenant: {{ $tenantName | quote }}

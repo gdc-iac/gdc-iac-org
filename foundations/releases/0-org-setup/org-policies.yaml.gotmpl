@@ -20,6 +20,7 @@ bases:
 {{- $envData := .Values | get .Environment.Name dict }}
 
 helmDefaults:
+  kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
   createNamespace: false
   wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
 
@@ -32,8 +33,6 @@ releases:
   # LOOP 1: Iterate over Tenants
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
 
-    {{- $tenantGlobalContext := $vals | get "gdc_context_global" }}
-
     # --- ORG LEVEL POLICIES ---
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_policies") }}
     - name: {{ $tenantName }}-org-policies
@@ -41,7 +40,6 @@ releases:
       {{- if ($vals | get "gdc_org_policies_chart_version" "") }}
       version: {{ $vals | get "gdc_org_policies_chart_version" | quote }}
       {{- end }}
-      kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup
       inherit:

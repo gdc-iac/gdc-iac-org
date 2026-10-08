@@ -23,13 +23,13 @@ bases:
 
 templates:
   policy-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     installed: true
 
 releases:
   # LOOP 1: Iterate over Tenants
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantGlobalContext := $vals | get "gdc_context_global" }}
 
     # --- ORG LEVEL POLICIES ---
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "org_network_policies") }}
@@ -38,7 +38,6 @@ releases:
       {{- if ($vals | get "gdc_org_network_policies_chart_version" "") }}
       version: {{ $vals | get "gdc_org_network_policies_chart_version" | quote }}
       {{- end }}
-      kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 0-org-setup
       inherit:

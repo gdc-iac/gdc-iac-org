@@ -21,14 +21,13 @@ bases:
 
 templates:
   bucket-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_buckets" true }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-  # TODO: add proper multizone support
-    {{- $tenantZonalContext := $vals | get "gdc_context_zone" }}
 
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "buckets") }}
@@ -38,7 +37,6 @@ releases:
           {{- if ($vals | get "gdc_buckets_chart_version" "") }}
           version: {{ $vals | get "gdc_buckets_chart_version" | quote }}
           {{- end }}
-          kubeContext: {{ $tenantZonalContext | quote }}
           labels:
             stage: 2-resources
             tenant: {{ $tenantName | quote }}

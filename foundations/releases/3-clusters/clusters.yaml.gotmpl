@@ -21,13 +21,13 @@ bases:
 
 templates:
   cluster-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_clusters" true }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantZonalContext := $vals | get "gdc_context_zone" }}
 
     {{- if and $tenantConfig.global (hasKey $tenantConfig.global "clusters") }}
       {{- range $cluster := $tenantConfig.global.clusters }}
@@ -36,7 +36,6 @@ releases:
         {{- if ($vals | get "gdc_clusters_chart_version" "") }}
         version: {{ $vals | get "gdc_clusters_chart_version" | quote }}
         {{- end }}
-        kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 3-clusters
           tenant: {{ $tenantName | quote }}
