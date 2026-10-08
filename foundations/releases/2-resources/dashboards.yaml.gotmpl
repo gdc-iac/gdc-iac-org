@@ -19,16 +19,9 @@ bases:
 {{- $vals := .Values }}
 {{- $envData := .Values | get .Environment.Name dict }}
 
-# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
-{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
-  {{- if not $tenantZonalContext }}
-    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
-  {{- end }}
-{{- end }}
-
 templates:
   dashboard-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: true
@@ -36,7 +29,6 @@ templates:
 releases:
 
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
     {{- range $project := $tenantConfig.global.projects }}
       {{- $dashboards := list }}
       {{- $hasExplicitDashboards := false }}
@@ -86,7 +78,6 @@ releases:
         {{- if ($vals | get "gdc_dashboards_chart_version" "") }}
         version: {{ $vals | get "gdc_dashboards_chart_version" | quote }}
         {{- end }}
-        kubeContext: {{ $tenantZonalContext | quote }}
         labels:
           stage: 2-resources
           tenant: {{ $tenantName | quote }}

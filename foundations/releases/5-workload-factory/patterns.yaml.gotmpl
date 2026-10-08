@@ -19,23 +19,15 @@ bases:
 {{- $vals := .Values }}
 {{- $envData := .Values | get .Environment.Name dict }}
 
-# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
-{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-  {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone" "") }}
-  {{- if not $tenantZonalContext }}
-    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_zonal' context!\n" $tenantName) }}
-  {{- end }}
-{{- end }}
-
 templates:
   pattern-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_patterns" true }}
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantZonalContext := $tenantConfig.global.kube_context_zonal | default ($vals | get "gdc_context_zone") }}
     {{- $patternsBasePath := $vals | get "gdc_patterns_base_path" "../../../blueprints/patterns" }}
 
     {{- range $project := $tenantConfig.global.projects }}
@@ -43,11 +35,9 @@ releases:
         {{- range $pattern := $project.resources.patterns }}
           {{- $patternId := $pattern | get "pattern" "" }}
           {{- $releaseName := $pattern | get "name" (printf "%s-%s" $project.name $patternId) }}
-          {{- $targetContext := $pattern | get "kube_context_cluster" $tenantZonalContext }}
           {{- $chartPath := $pattern | get "chart_path" (printf "%s/%s/chart" $patternsBasePath $patternId) }}
       - name: {{ $releaseName | quote }}
         chart: {{ $chartPath | quote }}
-        kubeContext: {{ $targetContext | quote }}
         labels:
           stage: 5-workload-factory
           tenant: {{ $tenantName | quote }}

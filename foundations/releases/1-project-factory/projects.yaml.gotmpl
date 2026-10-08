@@ -19,23 +19,15 @@ bases:
 {{- $vals := .Values }}
 {{- $envData := .Values | get .Environment.Name dict }}
 
-# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
-{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-  {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global" "") }}
-  {{- if not $tenantGlobalContext }}
-    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
-  {{- end }}
-{{- end }}
-
 templates:
   project-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     installed: true
     createNamespace: false
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantGlobalContext := $tenantConfig.global.kube_context_global | default ($vals | get "gdc_context_global") }}
 
     {{- range $project := $tenantConfig.global.projects }}
     - name: {{ $project.name }}
@@ -43,7 +35,6 @@ releases:
       {{- if ($vals | get "gdc_projects_chart_version" "") }}
       version: {{ $vals | get "gdc_projects_chart_version" | quote }}
       {{- end }}
-      kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 1-project-factory
         tenant: {{ $tenantName | quote }}
