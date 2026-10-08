@@ -1,6 +1,6 @@
 # GDC AG Foundations
 
-Infrastructure-as-Code implementation for automating operational configurations inside Google Distributed Cloud systems utilizing Helmfile pipelines orchestrations.
+Infrastructure-as-Code implementation for automating operational configurations inside [Google Distributed Cloud air gapped Organization](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/resource-hierarchy#organization) utilizing Helmfile pipelines orchestrations. The organization is the top-level resource in the GDC resource hierarchy and defines a security boundary that encloses infrastructure resources to be administered together by this code.
 
 ---
 
@@ -9,7 +9,7 @@ Infrastructure-as-Code implementation for automating operational configurations 
 The system groups environment resources and setups into execution layers triggered sequentially:
 
 - **`0-bootstrap/`**: Sets up root administrative namespace, base operations, and core landing zone operators.
-- **`0-org-setup/`**: Sets up platform operations, organizations policies boundaries, accounts systems linkages, and foundational setups.
+- **`0-org-setup/`**: Sets up platform operations, organization policies boundaries, accounts systems linkages, and foundational setups.
 - **`1-project-factory/`**: Dynamically processes projects definitions generating IAM permissions roles bindings, and service accounts baseline setups.
 - **`2-resources/`**: Coordinates deployment instances of application resources (observability dashboards, Harbor image registries, backup plans and repositories, VM instances, Database configurations, Buckets stores).
 - **`3-clusters/`**: Instantiates and provisions standard Kubernetes clusters with baseline supporting services.
@@ -35,7 +35,7 @@ gdc-iac-org/
 │   │       │   ├── globals.yaml      <- Cluster contexts & shared variables
 │   │       │   ├── charts.yaml       <- Dual-mode chart paths & version overrides
 │   │       │   ├── iac.yaml          <- Platform IAM & root configurations
-│   │       │   ├── tenants-org-1.yaml <- Tenant specifications & project definitions
+│   │       │   ├── tenant-1.yaml <- Organization resource specifications
 │   │       │   └── overrides.yaml    <- Manual configuration overrides
 │   │       ├── stg/
 │   │       └── prd/
@@ -53,34 +53,35 @@ gdc-iac-org/
 
 ---
 
-## Configuration Modular Separation
+## Environment Configuration
 
-Monolithic setup values are structured into targeted files profiles executed sequentially:
+Each environment (e.g. dev, stg, prd) represents a set of GDC resources belonging to a specific GDC ag Organization and is defined by a set of configuration files.
 
 1. **`globals.yaml`**: Shared context parameters (`gdc_context_global`, `gdc_context_zone`, `iac_sa`).
 2. **`charts.yaml`**: Paths locations referencing workspace Helm packages directories.
 3. **`iac.yaml`**: Static platform and project-level roles and IAM/RBAC rolebindings setup definitions.
-4. **`tenants-org-*.yaml`**: Grouped properties profiles defining operational specifications of separate GDC tenants.
+4. **`tenant-*.yaml`**: Grouped properties profiles defining organizational resources specifications.
 5. **`overrides.yaml`**: Local configuration manual overrides options. Properties set here supersede values loaded inside preceding configurations.
 
----
+The key role of environment component is providing [workload separation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation). There are two patterns possible that depend on a level oif isolation required:
+- single organization with [separate projects per software development environment](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/access-boundaries#design-projects-for-isolation) with [recommendation to design separate Kubernetes clusters per software development environment](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation#design-clusters-for-workload-isolation)
+- [separate organizations](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/access-boundaries#define-orgs-for-isolation). Each organization within a GDC zone provides physical isolation for compute infrastructure, and logical isolation for networking, storage, and other services. Users in one organization have no access to resources in another organization unless explicitly granted access. Network connectivity from one organization to another is not allowed by default, unless explicitly configured to allow data transfer out from one organization and data transfer in to another.
 
-## Multi-Tenant Configuration Pattern
+## Organization Configuration Pattern
 
-When assigning multiple static files (e.g. `tenants-org-1.yaml` and `tenants-org-2.yaml`) inside an environment, parameters are processed through a recursive merging behavior:
+The environment allows specifying multiple tenants per organization via assigning multiple static files (e.g. `tenant-1.yaml` and `tenant-2.yaml`) inside an environment. Parameters are processed through a recursive merging behavior:
 
-- **Independent Tenant Names (Safe)**: Distinct dictionary assignments (`org-1: ...` and `org-2: ...`) are deeply combined into the underlying `gdc_tenants:` evaluation object.
-- **Overlapping Keys Constraint**: If both configuration sources define parameters referencing the identical customer tenant context ID, fields loaded lower in the values evaluation chain will override rather than append entries.
+- **Independent Tenant Names (Safe)**: Distinct dictionary assignments (`tenant-1: ...` and `tenant-2: ...`) are deeply combined into the underlying `gdc_tenants:` evaluation object.
 
-### Required Tenant Configuration Structure (`tenants-org-*.yaml`)
+### Required Tenant Configuration Structure (`tenant-*.yaml`)
 
 Every tenant file **MUST** wrap its properties under the environment key (`dev:`, `stg:`, or `prd:`) to match the Project Factory parser requirements:
 
 ```yaml
-# bases/environments/<environment>/tenants-org-X.yaml
+# bases/environments/<environment>/tenant-X.yaml
 dev:
   gdc_tenants:
-    org-X:
+    tenant-X:
       global:
         org_policies:
           - name: "policy-name"
@@ -104,7 +105,7 @@ dev:
 
 ---
 
-## Defaulting Patterns (`iac.yaml` & `tenants-org-*.yaml`)
+## Defaulting Patterns (`iac.yaml` & `tenant-*.yaml`)
 
 To avoid repetitive declarations of `subject_name` and `subject_kind` inside configuration profiles, the system supports automated template defaulting across different stages:
 
@@ -114,7 +115,7 @@ To avoid repetitive declarations of `subject_name` and `subject_kind` inside con
   * **`subject_name`**: The environment-specific service account `iac_sa` defined in `globals.yaml` (e.g. `"system:serviceaccount:iac-root:iac001-sa"`).
   * **`subject_kind`**: `"serviceAccount"`.
 
-### 2. Tenant Admin Defaulting (`tenants-org-*.yaml`)
+### 2. Tenant Admin Defaulting (`tenant-*.yaml`)
 * **Context**: Organization Setup (`0-org-setup`) and Project Factory (`1-project-factory`) stages.
 * **Dynamic Fallback**: When `subject_name` and `subject_kind` are omitted for a global or project-level binding under `gdc_tenants`, they default to:
   * **`subject_name`**: The specific tenant's `admin_subject_name` parameter (e.g. `"fop-mellon@example.com"`).
@@ -123,9 +124,10 @@ To avoid repetitive declarations of `subject_name` and `subject_kind` inside con
 ### Design Principles & Rationale (The "Why")
 
 This defaulting architecture is built around core Helmfile and Kubernetes GitOps best practices:
-
+* **Strict Organization Separation**: 
+  The environment allows specifying multiple tenants per organization via assigning multiple static files (e.g. `tenant-1.yaml` and `tenant-2.yaml`) inside an environment however single environment can only belong to a single organization.
 * **Strict Separation of Concerns (Code/Values Separation)**:
-  Configuration profiles (`iac.yaml`, `tenants-org-X.yaml`) are kept as **pure static YAML**. Keeping them free from complex inline templates makes them highly readable, auditable, and declarative, protecting operators from syntax errors or templating leaks during value definition.
+  Configuration profiles (`iac.yaml`, `tenant-X.yaml`) are kept as **pure static YAML**. Keeping them free from complex inline templates makes them highly readable, auditable, and declarative, protecting operators from syntax errors or templating leaks during value definition.
 * **Pipeline-Level Controller Defaulting**:
   Defaulting is resolved entirely inside the pipeline release files (`.gotmpl` templates). These files act like a Kubernetes controller, dynamically mapping lightweight user declarations into fully validated API resources at template generation time.
 * **Robust JSON Serialization**:
@@ -148,11 +150,11 @@ dev:
       - role: "bucket-admin"           # Automatically bound to globals.yaml iac_sa with kind "serviceAccount"
 ```
 
-#### Simplified `tenants-org-1.yaml`:
+#### Simplified `tenants-1.yaml`:
 ```yaml
 dev:
   gdc_tenants:
-    org-1:
+    tenant-1:
       global:
         admin_subject_name: "fop-mellon@example.com"
         projects:
@@ -200,31 +202,7 @@ helmfile -f releases/2-resources/dashboards.yaml.gotmpl -e dev template
 
 To guarantee strict security boundary isolation in production GDC environments, the landing zone enforces dynamic, tenant-isolated Kubecontext routing.
 
-### 1. Tenant-Scoped Context Definition
-Monolithic fallback contexts inside merged environment variables are strictly prohibited. Every tenant organization **MUST** explicitly declare its isolated Global and Zonal Kubecontexts under its respective properties file:
-
-```yaml
-# bases/environments/dev/tenants-org-1.yaml
-dev:
-  gdc_tenants:
-    org-1:
-      global:
-        kube_context_global: "global-api-context-for-org-1"
-        kube_context_zonal: "zonal-api-context-for-org-1"
-```
-
-### 2. Pre-Flight Security Assertions (Compile-Time Fail-Safe)
-To prevent any accidental cross-tenant contamination or leaky context routing fallback to administrative clusters:
-* Each dynamic stage (`0-org-setup`, `1-project-factory`, `2-resources`, `3-clusters`, `4-notebooks`) contains a top-level **Pre-Flight Security Loop**.
-* The pipeline inspects the environment data and triggers a compile-time `fail` assertion if *any* active tenant lacks explicit `kube_context_global` or `kube_context_zonal` declarations:
-  ```text
-  ❌ SECURITY BREACH PREVENTED: Tenant 'org-X' does not have an explicitly defined 'kube_context_global' context!
-  ```
-
-### 3. Stage Boundaries
-* **Global Stages (Stages 0 & 1)**: Target the tenant-isolated global control plane API (`kube_context_global`) to coordinate platform policies, project boundaries, and IAM bindings.
-* **Zonal / Resource Stages (Stages 2, 3 & 4)**: Target the tenant-isolated zonal infrastructure API (`kube_context_zonal`) to coordinate application instances, databases, registries, user clusters, and notebooks.
-
+Monolithic fallback contexts inside merged environment variables are strictly prohibited. Every environment **MUST** explicitly declare its isolated Global and Zonal Kubecontexts under its respective `globals.yaml` file.
 ---
 
 ## GDC IAM Security & Admission Webhooks
