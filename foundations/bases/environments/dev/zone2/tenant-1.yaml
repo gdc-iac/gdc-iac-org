@@ -1,0 +1,137 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+dev-zone2:
+  gdc_tenants:
+    tenant-1:
+        admin_subject_name: &admin_subject_name "fop-iac@example.com"
+        shared_infra_project_names: &shared_infra_project_names ["mellons-prj"]
+        projects:
+          - name: "mellons-prj"
+            resources:
+              harbors:
+                - name: "example-harbor"
+                  autoscan: true
+                  creatorkind: "User"
+                  creatorname: *admin_subject_name
+              vms:
+                - name: "mellons-frontend-vm"
+                  image_name: "ubuntu-24.04-v20260601-gdch"
+                  image_namespace: "vm-system"
+                  boot_disk_size: "20Gi"
+                  machine_type: "n3-standard-2-gdc"
+                  ssh:
+                    uiAccessEnabled: true
+                    createProjectNetworkPolicy: true
+              buckets:
+                - name: "mellons-bucket"
+                  description: "test bucket"
+                  storage_class: "Standard"
+                  location: "zone1"
+                - name: "mellons-vm-repo"
+                  description: "bucket for vm repo"
+                  storage_class: "Standard"
+                  location: "zone1"
+
+              backup_repositories: # TODO: add secret creation
+                vm: []
+                #   - name: "mellons-vm-repo"
+                #     secretReference:
+                #       name: "s3-credentials"
+                #     endpoint: "https://objectstorage.gdc.goog"
+                #     s3Options:
+                #       bucket: "mellons-vm-bucket"
+                #       region: "zone1"
+              project_network_policies:
+                - name: "allow-internal-traffic"
+                  ingress:
+                  - from:
+                    - project_selector:
+                        projects:
+                          match_names:
+                          - "bunny-prj"
+              dashboards:
+                - name: "mellons-dashboard"
+                  json_model: '{"title": "mellons Dashboard Overview"}'
+                - json_model_dir: "mydashboards"
+              backup_plans: # TODO: uncomment once backup repositories are created
+                namespace: "mellons-prj"
+                vm: []
+                  # - name: "mellons-backup-plan"
+                  #   backupRepository: "mellons-vm-repo"
+                  #   volumeStrategy: "ProvisionerSpecific"
+                  #   cronSchedule: "0 0 * * *"
+              patterns:
+                - name: "mellons-p1-webapp"
+                  pattern: "p1-resilient-3-tier-webapp"
+                  namespace: "mellons-prj"
+                  registry: "harbor.gdc.local/blueprint-images"
+                  # Stage 2 (2-resources) provisions Zonal databases/VMs via charts/gdc-dbs & charts/gdc-vm;
+                  # Stage 5 (5-workload-factory) deploys User Cluster workloads (deploy_apps: true, deploy_gdc_resources: false).
+                  deploy_gdc_resources: false
+                  deploy_apps: true
+        clusters:
+          - name: "mellons-cluster" # This is a standard cluster
+            namespace: "platform"
+            clusterNetwork:
+              podCIDRSize: 21
+              serviceCIDRSize: 23
+            initialVersion:
+              kubernetesVersion: "1.35.3-gke.400"
+            loadBalancer:
+              ingressServiceIPSize: 21
+            nodePools:
+              - name: "worker-node-pool"
+                machineTypeName: "n3-standard-4-gdc"
+                nodeCount: 3
+            projectBindings: *shared_infra_project_names
+          - name: "mellons-user-cluster" # This is a user cluster
+            namespace: "mellons-prj"
+            clusterNetwork:
+              podCIDRSize: 21
+              serviceCIDRSize: 23
+            initialVersion:
+              kubernetesVersion: "1.35.3-gke.400"
+            loadBalancer:
+              ingressServiceIPSize: 21
+            nodePools:
+              - name: "worker-node-pool"
+                machineTypeName: "n3-standard-4-gdc"
+                nodeCount: 3
+            projectBindings: []
+        notebooks:
+          - name: "mellons-notebook"
+            project: "mellons-prj"
+            nb_jupyter_image: "gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/pytorch-gpu:m125_ext"
+            user_cluster_name: "mellons-cluster"
+            cpu_limit: "2"
+            memory_limit: "4Gi"
+            gpu_limit: "1"
+            serviceAccountName: "mellons-frontend-sa"
+            env:
+              - name: "MODEL_PATH"
+                value: "/mnt/models"
+            nodeSelector:
+              cloud.google.com/gke-accelerator: "nvidia-tesla-t4"
+            tolerations:
+              - key: "nvidia.com/gpu"
+                operator: "Exists"
+                effect: "NoSchedule"
+            volumes:
+              - name: "model-storage"
+                emptyDir: {}
+            volumeMounts:
+              - name: "model-storage"
+                mountPath: "/mnt/models"

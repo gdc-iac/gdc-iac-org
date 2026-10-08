@@ -30,15 +30,25 @@ gdc-iac-org/
 ├── charts/                     <- 30+ canonical Helm charts for GDC Custom Resources
 ├── foundations/
 │   ├── bases/                  <- Shared base configurations and variables
-│   │   └── environments/       <- Environment definitions files (dev, stg, prd)
-│   │       ├── dev/
-│   │       │   ├── globals.yaml      <- Cluster contexts & shared variables
+│   │   └── environments/       <- Environments (dev, stg, prd) definitions files
+│   │       ├── dev/            <- dev environment definition
+│   │       │   ├── global/           <- `dev` environment global API resources
+│   │       │   │   ├── context.yaml  <- Cluster context for global API
+│   │       │   │   ├── iac.yaml      <- IaC role bindings and service accounts
+│   │       │   │   └── tenant-1.yaml <- Organization global resources definitions
+│   │       │   ├── zone1/            <- `dev` zonal GDC resources (in example, GDC Zone 1)
+│   │       │   │   ├── contexts.yaml <- Cluster contexts for zone management APIs and zonal GKE clusters
+│   │       │   │   └── tenant-1.yaml <- Organization resource specifications
+│   │       │   ├── zone2/            <- `dev` zonal GDC resources (in example, GDC Zone 2)
+│   │       │   │   ...
+│   │       │   │   ...
 │   │       │   ├── charts.yaml       <- Dual-mode chart paths & version overrides
-│   │       │   ├── iac.yaml          <- Platform IAM & root configurations
-│   │       │   ├── tenant-1.yaml <- Organization resource specifications
-│   │       │   └── overrides.yaml    <- Manual configuration overrides
-│   │       ├── stg/
-│   │       └── prd/
+│   │       │   ├── globals.yaml      <- Environment parameters
+│   │       │   └── overrides.yaml    <- Manual configuration overrides 
+│   │       ├── stg/                <- `stg` environment definition
+│   │       │   ...
+│   │       └── prd/                <- `prd` environment definition
+│   │           ...
 │   └── releases/               <- Modular Helmfile execution stages
 │       ├── 0-bootstrap/        <- Foundations bootstrap stage
 │       ├── 0-org-setup/        <- Organization policies setup stage
@@ -57,11 +67,19 @@ gdc-iac-org/
 
 Each environment (e.g. dev, stg, prd) represents a set of GDC resources belonging to a specific GDC ag Organization and is defined by a set of configuration files.
 
-1. **`globals.yaml`**: Shared context parameters (`gdc_context_global`, `gdc_context_zone`, `iac_sa`).
-2. **`charts.yaml`**: Paths locations referencing workspace Helm packages directories.
-3. **`iac.yaml`**: Static platform and project-level roles and IAM/RBAC rolebindings setup definitions.
-4. **`tenant-*.yaml`**: Grouped properties profiles defining organizational resources specifications.
-5. **`overrides.yaml`**: Local configuration manual overrides options. Properties set here supersede values loaded inside preceding configurations.
+1. Environment settings files.
+	- **`globals.yaml`**: Shared global environment parameters.
+	- **`charts.yaml`**: Dual-mode chart paths & version overrides.
+	- **`overrides.yaml`**: Local configuration manual overrides. Properties set here supersede values loaded inside preceding configurations.
+
+2. Global API resources definitions: 
+	- **`context.yaml`**: Cluster context `gdc_context_global` for global API access.
+	- **`iac.yaml`**: Static platform and project-level roles for the IaC system.
+	- **`tenant-*.yaml`**: Global Organizational resources (projects, roles, etc) grouped by tenant profiles.
+
+3. One or more zone resources definitions:
+	- **`contexts.yaml`**: Cluster context `gdc_context_zone` for the zone Management API as well as zonal GKE cluster contexts.
+	- **`tenant-*.yaml`**: Zonal resources (clusters, Harbors, etc.) for that specific zone, grouped by tenant profiles.
 
 The key role of environment component is providing [workload separation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation). There are two patterns possible that depend on a level oif isolation required:
 - single organization with [separate projects per software development environment](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/access-boundaries#design-projects-for-isolation) with [recommendation to design separate Kubernetes clusters per software development environment](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation#design-clusters-for-workload-isolation)
@@ -69,7 +87,9 @@ The key role of environment component is providing [workload separation](https:/
 
 ## Organization Configuration Pattern
 
-The environment allows specifying multiple tenants per organization via assigning multiple static files (e.g. `tenant-1.yaml` and `tenant-2.yaml`) inside an environment. Parameters are processed through a recursive merging behavior:
+The environment allows specifying multiple tenants per organization via assigning multiple static files (e.g. `tenant-1.yaml` and `tenant-2.yaml`) inside an environment. This separation is useful for large organizations with multiple teams or departments sharing the same GDC organization for resource consumption optimization. The default assumption is that there is one tenant per organization - `tenant-1`.
+
+Parameters are processed through a recursive merging behavior:
 
 - **Independent Tenant Names (Safe)**: Distinct dictionary assignments (`tenant-1: ...` and `tenant-2: ...`) are deeply combined into the underlying `gdc_tenants:` evaluation object.
 

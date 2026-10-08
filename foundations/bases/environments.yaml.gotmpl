@@ -14,12 +14,26 @@
 
 ---
 environments:
-  dev:
+  dev-global:
     values:
-      - {{ env "PWD" }}/bases/environments/dev/globals.yaml
+      - {{ env "PWD" }}/bases/environments/dev/global/context.yaml
+      - {{ env "PWD" }}/bases/environments/dev/global/iac.yaml
+      - {{ env "PWD" }}/bases/environments/dev/global/tenant-1.yaml
       - {{ env "PWD" }}/bases/environments/dev/charts.yaml
-      - {{ env "PWD" }}/bases/environments/dev/iac.yaml
-      - {{ env "PWD" }}/bases/environments/dev/tenant-1.yaml
+      - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
+      - environment_name: "dev"
+  dev-zone1:
+    values:
+      - {{ env "PWD" }}/bases/environments/dev/zone1/contexts.yaml
+      - {{ env "PWD" }}/bases/environments/dev/zone1/tenant-1.yaml
+      - {{ env "PWD" }}/bases/environments/dev/charts.yaml
+      - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
+      - environment_name: "dev"
+  dev-zone2:
+    values:
+      - {{ env "PWD" }}/bases/environments/dev/zone2/contexts.yaml
+      - {{ env "PWD" }}/bases/environments/dev/zone2/tenant-1.yaml
+      - {{ env "PWD" }}/bases/environments/dev/charts.yaml
       - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
       - environment_name: "dev"
   stg:

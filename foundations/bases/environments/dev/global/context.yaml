@@ -13,4 +13,4 @@
 # limitations under the License.
 
 ---
-# global parameters
+gdc_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"

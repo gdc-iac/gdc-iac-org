@@ -13,4 +13,5 @@
 # limitations under the License.
 
 ---
-# global parameters
+gdc_context_zone: "org-1-infra-zone1-gdch_console-org-1-zone1-google-gdch-test_zone1_org-1-infra"
+
