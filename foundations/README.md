@@ -33,16 +33,15 @@ gdc-iac-org/
 │   │   └── environments/       <- Environments (dev, stg, prd) definitions files
 │   │       ├── dev/            <- dev environment definition
 │   │       │   ├── global/           <- `dev` environment global API resources
-│   │       │   │   ├── context.yaml  <- Cluster context for global API
 │   │       │   │   ├── iac.yaml      <- IaC role bindings and service accounts
 │   │       │   │   └── tenant-1.yaml <- Organization global resources definitions
 │   │       │   ├── zone1/            <- `dev` zonal GDC resources (in example, GDC Zone 1)
-│   │       │   │   ├── contexts.yaml <- Cluster contexts for zone management APIs and zonal GKE clusters
 │   │       │   │   └── tenant-1.yaml <- Organization resource specifications
 │   │       │   ├── zone2/            <- `dev` zonal GDC resources (in example, GDC Zone 2)
 │   │       │   │   ...
 │   │       │   │   ...
 │   │       │   ├── charts.yaml       <- Dual-mode chart paths & version overrides
+│   │       │   ├── contexts.yaml     <- Global and zonal API contexts
 │   │       │   ├── globals.yaml      <- Environment parameters
 │   │       │   └── overrides.yaml    <- Manual configuration overrides 
 │   │       ├── stg/                <- `stg` environment definition
@@ -68,17 +67,16 @@ gdc-iac-org/
 Each environment (e.g. dev, stg, prd) represents a set of GDC resources belonging to a specific GDC ag Organization and is defined by a set of configuration files.
 
 1. Environment settings files.
+	- **`context.yaml`**: Cluster context `gdc_context_global` for global API access and dictionary of zonal GDC API contexts.
 	- **`globals.yaml`**: Shared global environment parameters.
 	- **`charts.yaml`**: Dual-mode chart paths & version overrides.
 	- **`overrides.yaml`**: Local configuration manual overrides. Properties set here supersede values loaded inside preceding configurations.
 
 2. Global API resources definitions: 
-	- **`context.yaml`**: Cluster context `gdc_context_global` for global API access.
 	- **`iac.yaml`**: Static platform and project-level roles for the IaC system.
 	- **`tenant-*.yaml`**: Global Organizational resources (projects, roles, etc) grouped by tenant profiles.
 
 3. One or more zone resources definitions:
-	- **`contexts.yaml`**: Cluster context `gdc_context_zone` for the zone Management API as well as zonal GKE cluster contexts.
 	- **`tenant-*.yaml`**: Zonal resources (clusters, Harbors, etc.) for that specific zone, grouped by tenant profiles.
 
 The key role of environment component is providing [workload separation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation). There are two patterns possible that depend on a level oif isolation required:
