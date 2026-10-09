@@ -20,19 +20,21 @@
 # 2. TO SLIM IMAGE / REMOVE TOOLS: Comment out Section 2 (K8s/cloud) or Section 3 (Podman/Buildah).
 # ==============================================================================
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 LABEL maintainer="GDC Blueprint Authors"
 LABEL description="GDC Developer Environment (gdc-dev) session image pre-baked with enterprise tooling for GDC Air-Gapped."
 
-ARG KUBECTL_VERSION="v1.30.0"
-ARG HELM_VERSION="v3.15.2"
-ARG DOCKER_CLI_VERSION="26.1.4"
+ARG KUBECTL_VERSION="v1.37.1"
+ARG KUBECTL_SHA256="65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8"
+ARG HELM_VERSION="v3.22.0"
+ARG HELM_SHA256="1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb"
+ARG DOCKER_CLI_VERSION="29.8.2"
 
 # ------------------------------------------------------------------------------
 # SECTION 1: Base Operating System, Git, and Core Utilities (MANDATORY)
 # ------------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get dist-upgrade -y && apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
     curl \
@@ -48,28 +50,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
+# Upgrade Python packaging tools and pre-install pytest for offline air-gapped development
+# (--ignore-installed prevents pip from failing on Debian apt-installed packages lacking a RECORD file)
+RUN pip install --no-cache-dir --break-system-packages --ignore-installed --upgrade pip setuptools wheel pytest pytest-mock && \
+    rm -rf /usr/lib/python3/dist-packages/pip* \
+           /usr/lib/python3/dist-packages/setuptools* \
+           /usr/lib/python3/dist-packages/wheel* \
+           /usr/lib/python3/dist-packages/pkg_resources*
+
 # ------------------------------------------------------------------------------
 # SECTION 2: Kubernetes & Sovereign Cloud Infrastructure Tools (CUSTOMIZABLE)
 # [NOTE: Comment out this entire section if application developers do not manage clusters]
 # ------------------------------------------------------------------------------
-# 2.1 Install static kubectl binary (in-cluster SA auth)
-RUN (curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
-    && chmod +x /usr/local/bin/kubectl) \
-    || echo "Notice: kubectl download fallback for offline builds"
+# 2.1 Install static kubectl binary (in-cluster SA auth) with SHA256 verification
+RUN curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+    && echo "${KUBECTL_SHA256}  /usr/local/bin/kubectl" | sha256sum -c - \
+    && chmod +x /usr/local/bin/kubectl
 
-# 2.2 Install static Helm binary
-RUN (curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp \
+# 2.2 Install static Helm binary with SHA256 verification
+RUN curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o /tmp/helm.tar.gz \
+    && echo "${HELM_SHA256}  /tmp/helm.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/helm.tar.gz -C /tmp \
     && mv /tmp/linux-amd64/helm /usr/local/bin/helm \
-    && rm -rf /tmp/linux-amd64 \
-    && chmod +x /usr/local/bin/helm) \
-    || echo "Notice: helm download fallback for offline builds"
+    && rm -rf /tmp/linux-amd64 /tmp/helm.tar.gz \
+    && chmod +x /usr/local/bin/helm
 
 # 2.3 Install static Docker CLI client (used with remote BuildKit or Podman alias)
-RUN (curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" | tar -xz -C /tmp \
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /tmp \
     && mv /tmp/docker/docker /usr/local/bin/docker \
-    && rm -rf /tmp/docker \
-    && chmod +x /usr/local/bin/docker) \
-    || echo "Notice: docker CLI download fallback for offline builds"
+    && rm -rf /tmp/docker /tmp/docker.tgz \
+    && chmod +x /usr/local/bin/docker
 
 # 2.4 Install gdcloud CLI (GDC Air-Gapped archive support with emulation stub fallback)
 COPY binaries/ /tmp/binaries/

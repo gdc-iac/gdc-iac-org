@@ -62,45 +62,74 @@ sed -e "s|REGISTRY_HOST_PLACEHOLDER|${REGISTRY_HOST}|g" \
 
 # 6. Build and Deploy Joint Intelligence & Readiness Console (gemma-client)
 echo "[5/6] Deploying updated Joint Intelligence & Readiness Console..."
+grep -q "VITE_ENABLE_OIDC" gemma-client/src/frontend/.env 2>/dev/null || echo "VITE_ENABLE_OIDC=true" >> gemma-client/src/frontend/.env
 grep -q "VITE_ENABLE_INTEL_CONSOLE" gemma-client/src/frontend/.env 2>/dev/null || echo "VITE_ENABLE_INTEL_CONSOLE=true" >> gemma-client/src/frontend/.env
 chmod +x gemma-client/scripts/build.sh
 ./gemma-client/scripts/build.sh -p "${PROJECT_ID}" -r "${REGISTRY_HOST}"
 
+# Ensure required ServiceAccount and PostgreSQL credentials secret exist before deploying backend
+kubectl create serviceaccount gemma-client-sa -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic gemma-client-db-credentials \
+  --from-literal=connection_string="postgresql://postgres:password@postgres-svc:5432/postgres" \
+  -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
 # Hydrate and apply manifests
 sed -i "s|image: .*gemma-client-backend:.*|image: ${REGISTRY_HOST}/gemma-client-backend:latest|g" gemma-client/manifests/apps/backend.yaml
 sed -i "s|image: .*gemma-client-frontend:.*|image: ${REGISTRY_HOST}/gemma-client-frontend:latest|g" gemma-client/manifests/apps/frontend.yaml
+sed -i "s|PROJECT_ID_PLACEHOLDER|${PROJECT_ID}|g" gemma-client/manifests/apps/backend.yaml
+sed -i "s|INPUT_BUCKET_PLACEHOLDER|gemma-client-files-${PROJECT_ID}|g" gemma-client/manifests/apps/backend.yaml
 
 kubectl apply -f gemma-client/manifests/apps/backend.yaml -n "${NAMESPACE}"
+kubectl set env deployment/backend \
+  ENABLE_OIDC="true" \
+  KEYCLOAK_URL="http://keycloak-svc:8080/auth/realms/gdc-rag-realm" \
+  -n "${NAMESPACE}"
+
 kubectl apply -f gemma-client/manifests/apps/frontend.yaml -n "${NAMESPACE}"
 
 echo "[+] Waiting for frontend and backend rollouts..."
+kubectl rollout restart deployment/backend deployment/frontend -n "${NAMESPACE}"
 kubectl rollout status deployment/backend -n "${NAMESPACE}" --timeout=90s
 kubectl rollout status deployment/frontend -n "${NAMESPACE}" --timeout=90s
 
-# Ensure Gateway API L4 tunnel or fallback Ingress Gateway is refreshed
-if kubectl get gateway gdc-platform-gateway -n "${NAMESPACE}" >/dev/null 2>&1; then
+# 7. Configure Traffic Exposure (Path A: NGINX Staging Ingress vs. Path B: GKE Gateway API + L4 Tunnel)
+echo "[6/6] Verifying Ingress / Gateway API routing..."
+INGRESS_MODE="${INGRESS_MODE:-auto}"
+
+if [ "${INGRESS_MODE}" = "gateway" ] || ( [ "${INGRESS_MODE}" = "auto" ] && kubectl get gateway gdc-platform-gateway -n "${NAMESPACE}" >/dev/null 2>&1 ); then
+  kubectl apply -f gemma-client/manifests/gcp/gateway-api-staging.yaml -n "${NAMESPACE}"
+  kubectl apply -f gemma-client/manifests/gdc/security/production-gateway-routing.yaml -n "${NAMESPACE}"
   GATEWAY_VIP=$(kubectl get gateway gdc-platform-gateway -n "${NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
   if [ -n "${GATEWAY_VIP}" ] && kubectl get deployment gdc-gateway-tunnel -n "${NAMESPACE}" >/dev/null 2>&1; then
     kubectl set env deployment/gdc-gateway-tunnel GATEWAY_VIP="${GATEWAY_VIP}" -n "${NAMESPACE}"
     kubectl rollout status deployment/gdc-gateway-tunnel -n "${NAMESPACE}" --timeout=60s || true
   fi
-elif kubectl get deployment gemma-ingress-gateway -n "${NAMESPACE}" >/dev/null 2>&1; then
+fi
+
+if [ "${INGRESS_MODE}" = "nginx" ] || [ "${INGRESS_MODE}" = "auto" ]; then
+  kubectl apply -f gemma-client/manifests/gcp/nginx-ingress-staging.yaml -n "${NAMESPACE}"
   kubectl rollout restart deployment/gemma-ingress-gateway -n "${NAMESPACE}"
+  kubectl rollout status deployment/gemma-ingress-gateway -n "${NAMESPACE}" --timeout=90s || true
 fi
 
 echo "=============================================================================="
 echo "✅ SOLUTION DEPLOYMENT COMPLETE!"
 echo "=============================================================================="
 echo ""
-echo "To access the Joint Intelligence & Readiness Console:"
+echo "To access the Joint Intelligence & Readiness Console, choose your routing path:"
 echo ""
-echo "1. Forward the Gateway API L4 Tunnel (Port 8081):"
+echo "Option A — NGINX Staging Ingress Proxy (Immediate / Default):"
+echo "   pkill -f 'port-forward' || true"
+echo "   kubectl port-forward service/gemma-ingress-gateway 8081:80 -n ${NAMESPACE}"
+echo ""
+echo "Option B — GKE Gateway API L7 RILB + L4 Tunnel (Full GDC HTTPRoute Parity):"
 echo "   pkill -f 'port-forward' || true"
 echo "   kubectl port-forward service/gdc-gateway-tunnel 8081:80 -n ${NAMESPACE}"
 echo ""
-echo "2. Open in your browser: http://localhost:8081"
-echo "   (Log in with Keycloak user: 'alice' / 'password' or 'charlie' / 'password')"
+echo "Then open in your browser: http://localhost:8081 (or Workstation Port 8081 Preview)"
+echo "   • Analyst Login:   'alice' / 'password' (role: user)"
+echo "   • Commander Login: 'charlie' / 'password' (role: admin)"
 echo ""
-echo "3. Run the synthetic sensor stream in the background (optional):"
+echo "Run the synthetic sensor stream in the background (optional):"
 echo "   python scripts/simulate_multidomain_telemetry.py --mode stream --interval 2.0"
 echo "=============================================================================="

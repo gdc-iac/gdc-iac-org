@@ -4,7 +4,8 @@ import httpx
 import random
 import psutil
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
+import hmac
+from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,31 @@ app = FastAPI(title="Gemma 4 Inference Gateway (GDC-ag)")
 ACTIVE_COMPLETIONS_COUNT = 0
 ACTIVE_SESSIONS = {}
 BLOCKED_USERS = set()
+
+# Optional API and Admin authentication tokens (enforced when set in environment)
+GATEWAY_API_KEY = os.getenv("GATEWAY_API_KEY", "")
+GATEWAY_ADMIN_TOKEN = os.getenv("GATEWAY_ADMIN_TOKEN", "")
+
+
+def verify_api_auth(request: Request):
+    expected = os.getenv("GATEWAY_API_KEY", GATEWAY_API_KEY)
+    if not expected:
+        return
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ", 1)[1].strip() if auth_header.startswith("Bearer ") else request.headers.get("X-API-Key", "").strip()
+    if not token or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized gateway API request")
+
+
+def verify_admin_auth(request: Request):
+    expected = os.getenv("GATEWAY_ADMIN_TOKEN", GATEWAY_ADMIN_TOKEN) or os.getenv("GATEWAY_API_KEY", GATEWAY_API_KEY)
+    if not expected:
+        return
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ", 1)[1].strip() if auth_header.startswith("Bearer ") else request.headers.get("X-Admin-Token", "").strip()
+    if not token or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized gateway admin request")
+
 
 # Configuration
 # 'ollama' or 'vllm' - strictly defined for this instance. Do not switch at runtime.
@@ -156,7 +182,7 @@ async def get_sessions():
 
 
 @app.post("/api/sessions/{session_id}/kill")
-async def kill_session(session_id: str):
+async def kill_session(session_id: str, _auth: None = Depends(verify_admin_auth)):
     global ACTIVE_SESSIONS
     if session_id in ACTIVE_SESSIONS:
         ACTIVE_SESSIONS[session_id]["killed"] = True
@@ -198,7 +224,7 @@ async def get_config():
     return CURRENT_STATE
 
 @app.post("/api/config")
-async def update_config(config: UpdateConfigRequest):
+async def update_config(config: UpdateConfigRequest, _auth: None = Depends(verify_admin_auth)):
     global CURRENT_STATE
     if config.temperature is not None: CURRENT_STATE["temperature"] = config.temperature
     if config.top_p is not None: CURRENT_STATE["top_p"] = config.top_p
@@ -274,7 +300,7 @@ def classify_prompt_complexity(payload: dict) -> str:
 
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: Request):
+async def chat_completions(request: Request, _auth: None = Depends(verify_api_auth)):
     """
     OpenAI-compatible proxy endpoint.
     Routes to Ollama or vLLM based on the current configuration.

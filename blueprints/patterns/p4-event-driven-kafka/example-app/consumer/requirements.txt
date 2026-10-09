@@ -1,2 +1,2 @@
-kafka-python
-psycopg2-binary
+kafka-python==2.3.2
+psycopg2-binary==2.9.10

@@ -50,6 +50,10 @@ spec:
         #   value: "us-central1-aiplatform.googleapis.com" # Uncomment to override
         - name: GEMINI_MODEL
           value: "gemini-2.5-flash"
+        - name: ENABLE_OIDC
+          value: "true"
+        - name: KEYCLOAK_URL
+          value: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
 ---
 apiVersion: v1
 kind: Service

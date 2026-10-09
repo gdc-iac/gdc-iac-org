@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import re
+import hmac
 import time
 import psycopg2
 import pandas as pd
@@ -28,10 +30,50 @@ LLM_URL = os.environ.get('LLM_URL', LLM_GATEWAY_URL)
 GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemma-2-27b-it')
 AO_PROJECT_ID = os.environ.get('AO_PROJECT_ID', 'projects/your-project-id')
 GDC_TOKEN = os.environ.get('GDC_TOKEN')
+AGENT_API_KEY = os.environ.get('AGENT_API_KEY', '')
 DB_HOST = os.environ.get('DB_HOST', 'postgres-svc')
 DB_NAME = os.environ.get('DB_NAME', 'postgres')
 DB_USER = os.environ.get('DB_USER', 'postgres')
 DB_PASS = os.environ.get('DB_PASS', 'password')
+
+FORBIDDEN_SQL_KEYWORDS = re.compile(
+    r'\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|CALL|DO|'
+    r'EXECUTE|PREPARE|SET|RESET|SHOW|VACUUM|ANALYZE|LOCK|LISTEN|NOTIFY|LOAD|IMPORT|'
+    r'PG_SLEEP|PG_READ_FILE|PG_READ_BINARY_FILE|PG_LS_DIR|PG_STAT_FILE|LO_IMPORT|'
+    r'LO_EXPORT|DBLINK|PG_TERMINATE_BACKEND|PG_CANCEL_BACKEND|PG_RELOAD_CONF|'
+    r'PG_CATALOG|INFORMATION_SCHEMA|PG_SHADOW|PG_AUTHID|PG_USER|PG_ROLES|PG_SETTINGS|PG_STAT_ACTIVITY)\b',
+    re.IGNORECASE,
+)
+
+
+def validate_readonly_sql(raw_sql: str):
+    """
+    Strictly validate that LLM-generated SQL is a single read-only SELECT statement
+    against allowed application tables, with no stacked queries, comments, or system functions.
+    Returns (is_valid: bool, cleaned_sql_or_error: str).
+    """
+    if not raw_sql or not raw_sql.strip():
+        return False, "Empty SQL query"
+
+    # Strip trailing semicolon(s), then reject any remaining semicolons (stacked queries)
+    sql_clean = raw_sql.strip().rstrip(";").strip()
+    if ";" in sql_clean:
+        return False, "Multiple SQL statements (stacked queries) are prohibited"
+
+    # Reject SQL comments that could mask payloads
+    if "--" in sql_clean or "/*" in sql_clean or "*/" in sql_clean:
+        return False, "SQL comments are prohibited"
+
+    # Must begin with SELECT
+    if not re.match(r'^SELECT\b', sql_clean, re.IGNORECASE):
+        return False, "Only SELECT queries allowed"
+
+    # Reject any DDL/DML, administrative commands, or dangerous PostgreSQL functions/catalogs
+    if FORBIDDEN_SQL_KEYWORDS.search(sql_clean):
+        return False, "Prohibited SQL keyword or system catalog detected"
+
+    return True, sql_clean
+
 
 def get_db_connection():
     return psycopg2.connect(
@@ -40,6 +82,7 @@ def get_db_connection():
         user=DB_USER,
         password=DB_PASS
     )
+
 
 def init_db():
     try:
@@ -67,6 +110,7 @@ def init_db():
         print("Database initialized.")
     except Exception as e:
         print(f"DB Init Error: {e}")
+
 
 def ask_llm(prompt):
     provider = os.environ.get('LLM_PROVIDER', LLM_PROVIDER).lower()
@@ -145,9 +189,11 @@ def ask_llm(prompt):
         return "SELECT count(*) FROM sales;"
     return "SELECT * FROM sales LIMIT 5;"
 
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "healthy"}), 200
+
 
 @app.route('/ready', methods=['GET'])
 def ready():
@@ -156,17 +202,30 @@ def ready():
         conn.close()
         return jsonify({"status": "ready"}), 200
     except Exception as e:
-        return jsonify({"status": "not ready", "error": str(e)}), 503
+        print(f"Readiness check error: {e}")
+        return jsonify({"status": "not ready", "error": "Database connection unavailable"}), 503
+
 
 @app.route('/query', methods=['POST'])
 def query():
-    data = request.get_json()
+    expected_key = os.environ.get('AGENT_API_KEY', AGENT_API_KEY)
+    if expected_key:
+        auth_header = request.headers.get('Authorization', '')
+        provided_key = ''
+        if auth_header.startswith('Bearer '):
+            provided_key = auth_header.split(' ', 1)[1].strip()
+        elif request.headers.get('X-API-Key'):
+            provided_key = request.headers.get('X-API-Key', '').strip()
+        if not provided_key or not hmac.compare_digest(provided_key, expected_key):
+            return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
     question = data.get('question', '')
     if not question:
         return jsonify({"error": "No question provided"}), 400
 
     print(f"Received question: {question}")
-    
+
     # 1. Get SQL from LLM
     prompt_context = f"""
 You are a PostgreSQL expert. Write a query to answer the user's question.
@@ -183,45 +242,48 @@ Question: {question}
 """
     sql_query = ask_llm(prompt_context)
     print(f"LLM suggested SQL: {sql_query}")
-    
+
     # 2. Extract SQL if formatted in markdown
-    import re
     sql_query = sql_query.strip()
     match = re.search(r'```sql\s*(.*?)\s*```', sql_query, re.DOTALL | re.IGNORECASE)
     if match:
         sql_query = match.group(1).strip()
     else:
-        # Fallback to stripping generic code blocks
         match = re.search(r'```\s*(.*?)\s*```', sql_query, re.DOTALL)
         if match:
             sql_query = match.group(1).strip()
-            
+
     # 2.5 Bruteforce fail-safes against LLM hallucination despite strict prompts
-    # Catch any singular/plural variants and force it back to the exact 'amount' column
     sql_query = re.sub(r'(?i)\b(total_amount|sales_amount|sale_amount)\b', 'amount', sql_query)
-    # 3. Execute SQL
+
+    # 3. Validate read-only SQL before connecting
+    is_valid, validated_or_err = validate_readonly_sql(sql_query)
+    if not is_valid:
+        return jsonify({"error": validated_or_err}), 400
+
+    sql_clean = validated_or_err
+
+    # 4. Execute SQL inside a strictly read-only, time-bounded session
     try:
         conn = get_db_connection()
-        # Basic safety: only allow SELECT
-        if not sql_query.upper().startswith("SELECT"):
-             conn.close()
-             return jsonify({"error": "Only SELECT queries allowed", "sql": sql_query}), 400
-             
+        conn.set_session(readonly=True, autocommit=True)
         cur = conn.cursor()
-        cur.execute(sql_query)
+        cur.execute("SET statement_timeout = 5000;")
+        cur.execute(sql_clean)
         columns = [desc[0] for desc in cur.description] if cur.description else []
         rows = cur.fetchall() if cur.description else []
         cur.close()
         conn.close()
-        
+
         result = [dict(zip(columns, row)) for row in rows]
-        return jsonify({"answer": result, "sql": sql_query})
-            
+        return jsonify({"answer": result, "sql": sql_clean})
+
     except Exception as e:
-        return jsonify({"error": str(e), "sql": sql_query}), 500
+        print(f"Query execution error: {e}")
+        return jsonify({"error": "Query execution failed"}), 500
+
 
 if __name__ == "__main__":
-    # Initialize DB on start
-    time.sleep(2) # Wait a bit for DB
+    time.sleep(2)
     init_db()
     app.run(host='0.0.0.0', port=8080)
