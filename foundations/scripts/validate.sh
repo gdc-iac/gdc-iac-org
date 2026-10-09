@@ -30,7 +30,7 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0;0m'
 
-ENV="${1:-dev}"
+ENV=${1:-"dev"}
 
 echo -e "${BLUE}====================================================${NC}"
 echo -e "${BLUE}   GDC AG IaC Foundations Validation Harness (${ENV})${NC}"
@@ -53,12 +53,13 @@ done
 
 # Step 2: Helmfile Linting
 echo -e "\n${YELLOW}[Step 2/3] Performing Helmfile Environment Linting...${NC}"
-if helmfile -e "$ENV" lint; then
+if helmfile -e "${ENV}" lint; then
   echo -e "${GREEN}Helmfile configuration lint successful.${NC}"
 else
   echo -e "${RED}Helmfile lint failed.${NC}"
   exit 1
 fi
+
 
 # Step 3: Rendering & Dry-Run Compilation Checks
 echo -e "\n${YELLOW}[Step 3/3] Validating Dynamic Go Templates & Schema Rules...${NC}"
