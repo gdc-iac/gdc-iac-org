@@ -17,7 +17,12 @@ bases:
   - ../../bases/environments.yaml.gotmpl
   - ../../bases/helmDefaults.yaml.gotmpl
 
+---
 helmfiles:
+{{- range $zone := .Values.zones }}
   - path: notebooks.yaml.gotmpl
     values:
-      - {{ toYaml .Values | nindent 8 }}
+      - {{ toYaml $.Values | nindent 8 }}
+      - zone: {{ $zone | quote }}
+      - gdc_context_zone: {{ index $.Values.gdc_contexts $zone | quote }}
+{{- end }}
