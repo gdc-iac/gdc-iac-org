@@ -13,7 +13,7 @@
 # limitations under the License.
 
 ---
-dev-zone1:
+dev:
   gdc_tenants:
     tenant-1:
         admin_subject_name: &admin_subject_name "fop-iac@example.com"
@@ -62,10 +62,10 @@ dev-zone1:
                         projects:
                           match_names:
                           - "bunny-prj"
-              dashboards:
-                - name: "mellons-dashboard"
-                  json_model: '{"title": "mellons Dashboard Overview"}'
-                - json_model_dir: "mydashboards"
+              # dashboards:
+              #   - name: "mellons-dashboard"
+              #     json_model: '{"title": "mellons Dashboard Overview"}'
+              #   - json_model_dir: "zone1/mydashboards"
               backup_plans: # TODO: uncomment once backup repositories are created
                 namespace: "mellons-prj"
                 vm: []

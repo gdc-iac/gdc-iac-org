@@ -13,4 +13,8 @@
 # limitations under the License.
 
 ---
-# Production configuration options manual overrides hooks
+gdc_release_namespace: "iac-root"
+gdc_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
+gdc_contexts:
+  zone1: "zone1-api-gdch_console-org-1-zone1-google-gdch-test_zone1-api"
+  zone2: "zone2-api-gdch_console-org-1-zone2-google-gdch-test_zone2-api"

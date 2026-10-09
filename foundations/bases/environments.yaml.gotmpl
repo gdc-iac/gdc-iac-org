@@ -42,7 +42,9 @@ environments:
       {{- $zones := list }}
       {{- range (readDirEntries $envPath) }}
         {{- if .IsDir }}
-          {{- $zones = append $zones .Name }}
+          {{- if ne .Name "global" }}
+            {{- $zones = append $zones .Name }}
+          {{- end }}
         {{- end }}
       {{- end }}
       - zones: {{ $zones | toJson }}

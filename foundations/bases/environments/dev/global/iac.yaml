@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 ---
-gdc_release_namespace: "iac-root"
----
-dev-global:
+dev:
   iac:
     global:
       namespace: "platform"
