@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: legacy-app
-        image: python:3.9-slim
+        image: python:3.11-slim
         command: ["/bin/sh", "-c", "while true; do echo 'Simulating legacy app...'; sleep 10; done"]
         env:
         - name: DB_HOST

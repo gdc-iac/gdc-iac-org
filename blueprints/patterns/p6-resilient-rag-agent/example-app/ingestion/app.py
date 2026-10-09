@@ -119,7 +119,6 @@ def get_s3_client():
     )
 
 GEMINI_ENDPOINT = os.environ.get('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta/models')
-GEMINI_ENDPOINT = os.environ.get('GEMINI_ENDPOINT', 'https://generativelanguage.googleapis.com/v1beta/models')
 GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
 EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'text-embedding-004')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') # Optional if using ADC
@@ -349,6 +348,9 @@ def process_files():
                 # Structure: shared/doc.txt or users/<user_id>/doc.txt
                 owner_id = None
                 parts = key.split('/')
+                if '..' in parts:
+                    print(f'Skipping suspicious object key: {key}')
+                    continue
                 if len(parts) > 2 and parts[0] == 'users':
                     owner_id = parts[1]
                 

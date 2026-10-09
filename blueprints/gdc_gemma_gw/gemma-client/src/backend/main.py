@@ -25,10 +25,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # CORS
+import os as _os
+_CORS_ORIGINS = [o.strip() for o in _os.getenv("CORS_ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=("*" not in _CORS_ORIGINS),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -140,7 +142,7 @@ async def get_file_content(file_id: str, user: User = Depends(get_current_user))
         content = get_blob_content(row['gcs_path'])
     except Exception as e:
         print(f"ERROR: Failed to read file {file_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error reading file: {e}")
+        raise HTTPException(status_code=500, detail="Error reading file")
 
     # Return as stream/file
     from fastapi.responses import Response

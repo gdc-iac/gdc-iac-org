@@ -4,7 +4,9 @@ import logging
 import urllib.request
 from fastapi import Request, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWKSet
+from jwt.exceptions import PyJWTError as JWTError
 from models import User
 
 logger = logging.getLogger("auth")
@@ -30,6 +32,27 @@ def get_jwks():
             logger.error(f"OIDC: Failed to pull certificates: {e}")
     return jwks_cache
 
+def _resolve_signing_key(token: str, jwks):
+    """Resolve signing key from a JWKS dictionary or return raw key directly."""
+    global jwks_cache
+    if isinstance(jwks, dict) and "keys" in jwks:
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+        jwk_set = PyJWKSet.from_dict(jwks)
+        if kid:
+            try:
+                return jwk_set[kid].key
+            except KeyError:
+                jwks_cache = None
+                refreshed = get_jwks()
+                if refreshed and isinstance(refreshed, dict) and "keys" in refreshed:
+                    return PyJWKSet.from_dict(refreshed)[kid].key
+                raise JWTError(f"Signing key ID '{kid}' not found in JWKS")
+        if jwk_set.keys:
+            return jwk_set.keys[0].key
+        raise JWTError("No signing keys present in JWKS")
+    return jwks
+
 async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)) -> User:
     if ENABLE_OIDC:
         if not token:
@@ -51,15 +74,22 @@ async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)
                         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                         detail="Identity certificates provider offline"
                     )
-            
+
+            signing_key = _resolve_signing_key(token, jwks)
             # Verify cryptography signature (verify_aud=False aligns with default GDC OIDC client payloads)
-            payload = jwt.decode(token, jwks, algorithms=ALGORITHMS, options={"verify_aud": False, "leeway": 300})
+            payload = jwt.decode(
+                token,
+                signing_key,
+                algorithms=ALGORITHMS,
+                leeway=300,
+                options={"verify_aud": False},
+            )
             user_id = payload.get("preferred_username") or payload.get("sub")
-            
+
             # Extract roles and construct user model
             roles = payload.get("realm_access", {}).get("roles", [])
             user_role = "admin" if "admin" in roles else "user"
-            
+
             if not user_id:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,

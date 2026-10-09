@@ -12,18 +12,112 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from fastapi import Request, HTTPException
+import os
+import json
+import logging
+import urllib.request
+from fastapi import Request, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+import jwt
+from jwt import PyJWKSet
+from jwt.exceptions import PyJWTError as JWTError
 from models import User
 
-async def get_current_user(request: Request) -> User:
-    # In a real app, this would validate a JWT.
-    # For Stepping Stone / Dev, we use headers.
-    user_id = request.headers.get("X-User-ID")
-    user_role = request.headers.get("X-User-Role", "user")
+logger = logging.getLogger("auth")
 
-    if not user_id:
-        # Fallback for local testing or if header missing
-        user_id = "anonymous"
-        # In production, raise HTTPException(status_code=401, detail="Missing User ID")
+# Staging/Production Feature Flags
+ENABLE_OIDC = os.getenv("ENABLE_OIDC", "false").lower() == "true"
+KEYCLOAK_URL = os.getenv("KEYCLOAK_URL", "http://keycloak-svc:8080/auth/realms/gdc-rag-realm")
+ALGORITHMS = ["RS256"]
 
-    return User(id=user_id, role=user_role)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+jwks_cache = None
+
+
+def get_jwks():
+    """Fetches public verification certs from Keycloak using python stdlib."""
+    global jwks_cache
+    if jwks_cache is None and ENABLE_OIDC:
+        try:
+            certs_url = f"{KEYCLOAK_URL}/protocol/openid-connect/certs"
+            with urllib.request.urlopen(certs_url, timeout=5) as response:
+                jwks_cache = json.loads(response.read().decode())
+                logger.info("OIDC: Loaded verification signature keys from Keycloak")
+        except Exception as e:
+            logger.error(f"OIDC: Failed to pull certificates: {e}")
+    return jwks_cache
+
+
+def _resolve_signing_key(token: str, jwks):
+    """Resolve signing key from a JWKS dictionary or return raw key directly."""
+    global jwks_cache
+    if isinstance(jwks, dict) and "keys" in jwks:
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+        jwk_set = PyJWKSet.from_dict(jwks)
+        if kid:
+            try:
+                return jwk_set[kid].key
+            except KeyError:
+                jwks_cache = None
+                refreshed = get_jwks()
+                if refreshed and isinstance(refreshed, dict) and "keys" in refreshed:
+                    return PyJWKSet.from_dict(refreshed)[kid].key
+                raise JWTError(f"Signing key ID '{kid}' not found in JWKS")
+        if jwk_set.keys:
+            return jwk_set.keys[0].key
+        raise JWTError("No signing keys present in JWKS")
+    return jwks
+
+
+async def get_current_user(request: Request, token: str = Depends(oauth2_scheme)) -> User:
+    if ENABLE_OIDC:
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Missing dynamic identity validation bearer token"
+                )
+        try:
+            jwks = get_jwks()
+            if not jwks:
+                jwks = get_jwks()  # Retry once
+                if not jwks:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Identity certificates provider offline"
+                    )
+
+            signing_key = _resolve_signing_key(token, jwks)
+            payload = jwt.decode(
+                token,
+                signing_key,
+                algorithms=ALGORITHMS,
+                leeway=300,
+                options={"verify_aud": False},
+            )
+            user_id = payload.get("preferred_username") or payload.get("sub")
+            roles = payload.get("realm_access", {}).get("roles", [])
+            user_role = "admin" if "admin" in roles else "user"
+
+            if not user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid verification credentials claims"
+                )
+            return User(id=user_id, role=user_role)
+        except JWTError as e:
+            logger.error(f"OIDC Claim Check Failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Cryptographic credentials validation failed: {str(e)}"
+            )
+    else:
+        user_id = request.headers.get("X-User-ID")
+        user_role = request.headers.get("X-User-Role", "user")
+        if not user_id:
+            user_id = "anonymous"
+        return User(id=user_id, role=user_role)

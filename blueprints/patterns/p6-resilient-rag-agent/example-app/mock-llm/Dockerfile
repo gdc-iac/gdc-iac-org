@@ -1,7 +1,12 @@
 FROM python:3.11-slim
 
 WORKDIR /app
-RUN pip install fastapi uvicorn pydantic
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+    fastapi==0.142.2 \
+    starlette==1.7.0 \
+    uvicorn==0.34.0 \
+    pydantic==2.11.1
 
 # Create a non-root user
 RUN useradd -m -u 1000 appuser

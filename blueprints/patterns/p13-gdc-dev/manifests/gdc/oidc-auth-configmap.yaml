@@ -21,7 +21,17 @@ metadata:
     app.kubernetes.io/name: gdc-dev
 data:
   AUTH_MODE: "oidc"
+  ALLOW_SIMULATED_OIDC: "false"
   HEADER_USER_KEY: "X-Forwarded-User"
+  HEADER_ROLES_KEY: "X-Forwarded-Groups"
+  ADMIN_ROLES: "gdc-admin,dev-admin,admin"
   OIDC_AUTHORITY: "https://keycloak.gdc.local/realms/gdc-dev-realm"
   OIDC_CLIENT_ID: "gdc-dev-client"
   OIDC_REDIRECT_URI: "https://dev.gdc.local/auth/callback"
+  ADMIN_PORT: "8081"
+  REDIRECT_ADMIN_PORT: "true"
+  AI_ENABLED: "true"
+  AI_AGENT_MODE: "agentic"
+  AI_SWARM_ENABLED: "true"
+  AI_DEFAULT_ROLE: "swarm"
+  AI_DEFAULT_MODEL: "gemma4:31b"

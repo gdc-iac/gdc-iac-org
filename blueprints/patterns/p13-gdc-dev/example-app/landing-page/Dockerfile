@@ -15,7 +15,7 @@
 FROM python:3.11-slim
 
 # Install system dependencies, Git, and utilities
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get dist-upgrade -y && apt-get install -y --no-install-recommends \
     git \
     git-lfs \
     curl \
@@ -26,27 +26,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install static kubectl binary (v1.30.0)
-ARG KUBECTL_VERSION="v1.30.0"
-RUN (curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
-    && chmod +x /usr/local/bin/kubectl) \
-    || echo "Notice: kubectl download fallback for offline builds"
+# Upgrade core Python packaging tools (CVE-2026-1703, CVE-2026-24049) and pre-install pytest
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir pytest pytest-mock
 
-# Install static helm binary (v3.15.2)
-ARG HELM_VERSION="v3.15.2"
-RUN (curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp \
+# Install static kubectl binary (v1.37.1, Go >= 1.26.2) with SHA256 verification
+ARG KUBECTL_VERSION="v1.37.1"
+ARG KUBECTL_SHA256="65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8"
+RUN curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+    && echo "${KUBECTL_SHA256}  /usr/local/bin/kubectl" | sha256sum -c - \
+    && chmod +x /usr/local/bin/kubectl
+
+# Install static helm binary (v3.22.0, Go >= 1.26.2) with SHA256 verification
+ARG HELM_VERSION="v3.22.0"
+ARG HELM_SHA256="1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb"
+RUN curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o /tmp/helm.tar.gz \
+    && echo "${HELM_SHA256}  /tmp/helm.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/helm.tar.gz -C /tmp \
     && mv /tmp/linux-amd64/helm /usr/local/bin/helm \
-    && rm -rf /tmp/linux-amd64 \
-    && chmod +x /usr/local/bin/helm) \
-    || echo "Notice: helm download fallback for offline builds"
+    && rm -rf /tmp/linux-amd64 /tmp/helm.tar.gz \
+    && chmod +x /usr/local/bin/helm
 
-# Install static docker CLI client (v26.1.4)
-ARG DOCKER_VERSION="26.1.4"
-RUN (curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" | tar -xz -C /tmp \
+# Install static docker CLI client (v29.8.2)
+ARG DOCKER_VERSION="29.8.2"
+RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /tmp \
     && mv /tmp/docker/docker /usr/local/bin/docker \
-    && rm -rf /tmp/docker \
-    && chmod +x /usr/local/bin/docker) \
-    || echo "Notice: docker CLI download fallback for offline builds"
+    && rm -rf /tmp/docker /tmp/docker.tgz \
+    && chmod +x /usr/local/bin/docker
 
 # Install gdcloud CLI (GDC Air-Gapped archive support with emulation stub fallback)
 COPY binaries/ /tmp/binaries/

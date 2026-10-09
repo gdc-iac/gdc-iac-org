@@ -501,6 +501,7 @@ metadata:
     {{- include "p13-gdc-dev.labels" . | nindent 4 }}
 data:
   AUTH_MODE: oidc
+  ALLOW_SIMULATED_OIDC: "false"
   HEADER_USER_KEY: X-Forwarded-User
   OIDC_AUTHORITY: https://keycloak.gdc.local/realms/gdc-dev-realm
   OIDC_CLIENT_ID: gdc-dev-client

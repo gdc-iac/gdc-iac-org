@@ -77,7 +77,7 @@ TELEMETRY_TEMPLATES = {
             "summary": "Low-frequency cavitation detected along harbor mouth approaches. Unscheduled autonomous underwater vessel suspected.",
             "threat_level": "HIGH",
             "lat": 36.4200, "lon": -116.1500,
-            "payload": {"depth_meters": 45, "bearing_deg": 045, "snr_db": 18.2}
+            "payload": {"depth_meters": 45, "bearing_deg": 45, "snr_db": 18.2}
         }
     ],
     "SPACE": [

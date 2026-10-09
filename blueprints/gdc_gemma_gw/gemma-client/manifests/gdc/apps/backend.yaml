@@ -40,6 +40,10 @@ spec:
           value: "gemma4:26b"
         - name: GATEWAY_URL
           value: "http://gemma-gateway/v1"
+        - name: ENABLE_OIDC
+          value: "true"
+        - name: KEYCLOAK_URL
+          value: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
 ---
 apiVersion: v1
 kind: Service

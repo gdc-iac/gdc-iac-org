@@ -101,7 +101,7 @@ spec:
           mountPath: /mnt/kafka
       containers:
       - name: kafka
-        image: {{ include "p4-event-driven-kafka.registry" . }}/library/apache/kafka:3.7.0
+        image: {{ include "p4-event-driven-kafka.registry" . }}/library/apache/kafka:3.9.0
         ports:
         - containerPort: 9092
           name: client

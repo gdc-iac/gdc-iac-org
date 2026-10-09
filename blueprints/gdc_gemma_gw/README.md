@@ -14,8 +14,9 @@ To navigate this repository smoothly, follow the designated path of guides depen
 If you are a developer validating features, testing prompt classifiers, or building application integrations inside GKE standard/sandbox environments:
 1. 📂 **[GCP Quickstart Guide](docs/quickstart_on_GCP.md)**: Read first to provision dynamic GKE GPU node pools, compile local containers, and deploy the Ollama sandboxes or vLLM mock serving releases.
 2. 🔐 **[Keycloak OIDC Staging Strategy](docs/gcp-sandbox-keycloak-testing-strategy.md)**: Master blueprint detailing browser preview sandbox cookie bypass, single-port NGINX proxy overlays, and zero-dependency PKCE auth engines.
-3. 🧪 **[Automated Testing & QA Guide](docs/automated-testing-guide.md)**: Learn how to run local mock backend test fixtures, execute the complete Pytest unit/integration matrix, and track streaming metrics in Locust.
-4. 🧠 **[FAQ & Operational Troubleshooting](docs/faq-troubleshooting.md)**: Refer to this guide during development to resolve Workstation proxy connection conflicts, dynamic storage claims, regional GPU exhaustion stock traps, and aggressive browser refreshes.
+3. 🎯 **[End-to-End Tutorial: Multi-Blueprint Intelligence Synthesis (GCP Emulation)](docs/tutorials/e2e_intelligence_synthesis_gcp_emulation.md)**: Step-by-step walkthrough of *Operation Vanguard Shield* (Kafka P4, RAG P6, SQL Analyst P7, Gemma Gateway, and Keycloak OIDC) covering both NGINX Staging Ingress and GKE Gateway API (`HTTPRoute` + `gdc-gateway-tunnel`) paths.
+4. 🧪 **[Automated Testing & QA Guide](docs/automated-testing-guide.md)**: Learn how to run local mock backend test fixtures, execute the complete Pytest unit/integration matrix, and track streaming metrics in Locust.
+5. 🧠 **[FAQ & Operational Troubleshooting](docs/faq-troubleshooting.md)**: Refer to this guide during development to resolve Workstation proxy connection conflicts, dynamic storage claims, regional GPU exhaustion stock traps, and aggressive browser refreshes.
 
 ---
 
@@ -23,11 +24,12 @@ If you are a developer validating features, testing prompt classifiers, or build
 If you are a platform operator packaging cluster assets or deploying to disconnected GDC air-gapped production rack locations:
 1. 📂 **[Gemma 4 Dedicated Inference Gateway Reference Manual](docs/Solution-Reference-Implementation-Gemma4-Inference-Gateway.md)**: Master blueprint detailing architecture, proxy classifier setup, serving engine pools (vLLM/Ollama), and HTTPRoute configuration on GDC-ag user clusters.
 2. 📂 **[Gemma 4 Client Application Reference Manual](docs/Solution-Reference-Implementation-Gemma4-Client-Application.md)**: Master blueprint for deploying the three-tier client web application, whitelisting cross-namespace ingress, database and object storage integration, and configuring native Keycloak OIDC.
-3. 📦 **[Air-Gapped Packaging & Sideloading Guide](docs/sideloading-guide.md)**: Read first to package container image archives, stage gated Hugging Face model weights, and ingest assets into dynamic internal Harbor registries offline.
-4. 🔐 **[Keycloak OIDC Integration Guide](docs/keycloak_integration_guide.md)**: Master integration guide on establishing Keycloak boundaries, locking down Web Origins, deploying GDC standard Gateway API HTTPRoute resources, and optimizing internal KubeDNS resolution.
-5. 💾 **[GDC Production Serving Guide: vLLM & Gemma 4](docs/vllm-serving-guide.md)**: Read to dynamically provision PersistentVolumeClaims via temporary helper staging pods, mount unquantized weights, and configure concurrent dual-model serving under SAN constraints.
-6. 🔌 **[GDC Air-Gapped Testing Methodology](docs/testing-methodology.md)**: Follow these terminal-only commands to launch isolated test pods in the cluster and verify completions directly over internal GKE DNS.
-7. 🧠 **[FAQ & Operational Troubleshooting](docs/faq-troubleshooting.md)**: Refer to this guide to clear PVC finalizer deadlocks, provision HF secrets, and establish selector-instance affinity to prevent round-robin cross-talk.
+3. 🎯 **[End-to-End Tutorial: Multi-Blueprint Intelligence Synthesis (GDC-ag Production)](docs/tutorials/e2e_intelligence_synthesis_gdc_production.md)**: Complete production runbook for packaging, sideloading to internal Harbor, provisioning GDC Managed PostgreSQL (`DBCluster`) & SAN (`standard-rwx`), and exposing services via Kubernetes Gateway API (`HTTPRoute`) or GDC Internal Load Balancer `Ingress`.
+4. 📦 **[Air-Gapped Packaging & Sideloading Guide](docs/sideloading-guide.md)**: Read first to package container image archives, stage gated Hugging Face model weights, and ingest assets into dynamic internal Harbor registries offline.
+5. 🔐 **[Keycloak OIDC Integration Guide](docs/keycloak_integration_guide.md)**: Master integration guide on establishing Keycloak boundaries, locking down Web Origins, deploying GDC standard Gateway API HTTPRoute resources, and optimizing internal KubeDNS resolution.
+6. 💾 **[GDC Production Serving Guide: vLLM & Gemma 4](docs/vllm-serving-guide.md)**: Read to dynamically provision PersistentVolumeClaims via temporary helper staging pods, mount unquantized weights, and configure concurrent dual-model serving under SAN constraints.
+7. 🔌 **[GDC Air-Gapped Testing Methodology](docs/testing-methodology.md)**: Follow these terminal-only commands to launch isolated test pods in the cluster and verify completions directly over internal GKE DNS.
+8. 🧠 **[FAQ & Operational Troubleshooting](docs/faq-troubleshooting.md)**: Refer to this guide to clear PVC finalizer deadlocks, provision HF secrets, and establish selector-instance affinity to prevent round-robin cross-talk.
 
 ---
 
