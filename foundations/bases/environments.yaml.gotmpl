@@ -13,45 +13,43 @@
 # limitations under the License.
 
 ---
+# bases/environments.yaml.gotmpl
+---
 environments:
-  dev-global:
+{{- $root := requiredEnv "PWD" }}
+{{- range (readDirEntries (printf "%s/bases/environments" $root)) }}
+  {{- if .IsDir }}
+  {{- $envName := .Name }}
+  {{ $envName }}:
     values:
-      - {{ env "PWD" }}/bases/environments/dev/global/context.yaml
-      - {{ env "PWD" }}/bases/environments/dev/global/iac.yaml
-      - {{ env "PWD" }}/bases/environments/dev/global/tenant-1.yaml
-      - {{ env "PWD" }}/bases/environments/dev/charts.yaml
-      - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
-      - environment_name: "dev"
-  dev-zone1:
-    values:
-      - {{ env "PWD" }}/bases/environments/dev/zone1/contexts.yaml
-      - {{ env "PWD" }}/bases/environments/dev/zone1/tenant-1.yaml
-      - {{ env "PWD" }}/bases/environments/dev/charts.yaml
-      - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
-      - environment_name: "dev"
-  dev-zone2:
-    values:
-      - {{ env "PWD" }}/bases/environments/dev/zone2/contexts.yaml
-      - {{ env "PWD" }}/bases/environments/dev/zone2/tenant-1.yaml
-      - {{ env "PWD" }}/bases/environments/dev/charts.yaml
-      - {{ env "PWD" }}/bases/environments/dev/overrides.yaml
-      - environment_name: "dev"
-  stg:
-    values:
-      - {{ env "PWD" }}/bases/environments/stg/globals.yaml
-      - {{ env "PWD" }}/bases/environments/stg/charts.yaml
-      - {{ env "PWD" }}/bases/environments/stg/iac.yaml
-      - {{ env "PWD" }}/bases/environments/stg/tenant-1.yaml
-      - {{ env "PWD" }}/bases/environments/stg/overrides.yaml
-      - environment_name: "stg"
-  prd:
-    values:
-      - {{ env "PWD" }}/bases/environments/prd/globals.yaml
-      - {{ env "PWD" }}/bases/environments/prd/charts.yaml
-      - {{ env "PWD" }}/bases/environments/prd/iac.yaml
-      - {{ env "PWD" }}/bases/environments/prd/tenant-1.yaml
-      - {{ env "PWD" }}/bases/environments/prd/overrides.yaml
-      - environment_name: "prd"
+      {{- $envPath := printf "%s/bases/environments/%s" $root $envName }}
+      {{- range (readDirEntries $envPath) }}
+        {{- if and (not .IsDir) (hasSuffix ".yaml" .Name) }}
+      - {{ $root }}/bases/environments/{{ $envName }}/{{ .Name }}
+        {{- end }}
+      {{- end }}
+      {{- range (readDirEntries $envPath) }}
+        {{- if .IsDir }}
+          {{- $subDirName := .Name }}
+          {{- $subDirPath := printf "%s/%s" $envPath $subDirName }}
+          {{- range (readDirEntries $subDirPath) }}
+            {{- if and (not .IsDir) (hasSuffix ".yaml" .Name) }}
+      - {{ $root }}/bases/environments/{{ $envName }}/{{ $subDirName }}/{{ .Name }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- $zones := list }}
+      {{- range (readDirEntries $envPath) }}
+        {{- if .IsDir }}
+          {{- $zones = append $zones .Name }}
+        {{- end }}
+      {{- end }}
+      - zones: {{ $zones | toJson }}
+      - environment_name: {{ $envName }}
+
+  {{- end }}
+{{- end }}
 
 
 
