@@ -508,36 +508,82 @@ kubectl logs -n gemma-inference deploy/gemma-gateway --tail=200 | grep -E "Class
 > **Full Demo Script & Copy-Paste Prompts:**  
 > For a complete click-by-click walkthrough with copy-pasteable prompts, sample RAG upload files, and expected UI badges for live demonstrations, see [GUI Functional Walkthrough & Live Demo Playbook](./gui_demo_walkthrough_and_prompts.md).
 
-1. **`https://ai-gateway.gdc.local` (or Port `8080` — `🧠 Gemma 4 Gateway Control Plane`)**:
-   * **OIDC Authentication Bar (Top Strip)**: Click **`🔑 Keycloak SSO Login (/auth)`** (`charlie` / `password`) or **`🛡️ One-Click Admin (charlie)`** to sign in (`Role: ADMIN`).
-   * **Card 1 — `⚡ Live System Performance & Telemetry`**: Verify live `CPU Load` and `GPU Core Load` gauges, `Tokens Out/Sec`, `Active DB Pools`, and the `VRAM Consumption` progress bar.
-   * **Card 2 — `🎛️ Gateway Parameters Override`**: Adjust `Temperature`, `Top-P`, `Max Vision Tokens (Vision Budgets)`, or **`Model Variant Hot-Swap`** (`Gemma 4 26B A4B (MoE)` vs. `Gemma 4 31B (Dense)`), then click **`Save Gateway Configuration`**.
-   * **Card 3 — `🕵️ Active User Session Oversight & Kill-Switch`**: Displays `User ID`, `Client IP`, `Status`, `Last Active`, and the **`Kill Session`** button.
-     > **Note on When Users Appear in `Active User Session Oversight & Kill-Switch`:** Logging into Keycloak on `https://intel.gdc.local` (`alice`) or `https://intel-ingress.gdc.local` (`charlie`) authenticates the browser with the frontend, but `gemma-gateway` records a session in this table **only when that user submits an AI inference request** (`/v1/chat/completions`) via **Tactical Chat**, **All-Source Intel (RAG)**, **Operational Readiness (SQL)**, or the **GDC Dev AI Swarm**.
-   * **Card 4 — `👥 User Access Blocklist Management`**: Enter a `User ID` (e.g., `alice`) and click **`Block User`** to test instant `403 Forbidden` revocation, then click **`Unblock`** to restore access.
+#### 1. `https://ai-gateway.gdc.local` (or Port `8080` — `🧠 Gemma 4 Gateway Control Plane`)
+* **OIDC Authentication Bar (Top Strip)**: Click **`🔑 Keycloak SSO Login (/auth)`** (`charlie` / `password`) or **`🛡️ One-Click Admin (charlie)`** to sign in (`Role: ADMIN`).
+* **Card 1 — `⚡ Live System Performance & Telemetry`**: Verify live `CPU Load` and `GPU Core Load` gauges, `Tokens Out/Sec`, `Active DB Pools`, and the `VRAM Consumption` progress bar.
+* **Card 2 — `🎛️ Gateway Parameters Override` (True Gateway-Enforced Overrides)**:
+  * All parameters saved in this card (`Temperature`, `Top-P`, `Max Vision Tokens`, and `Model Variant Hot-Swap`) are persisted across Gateway workers in `/tmp/gemma_gateway_state.json` and **unconditionally enforced** on every `/v1/chat/completions` call across `intel.gdc.local`, `intel-ingress.gdc.local`, and `dev.gdc.local` (overriding any client-supplied defaults) and echoed in `X-Gemma-Temperature`, `X-Gemma-Top-P`, and `X-Gemma-Vision-Budget` response headers.
+  * **Interactive Override Check**: Set **`Sampling Temperature`** to `0.2` and **`Model Variant Hot-Swap`** to **`Gemma 4 31B (Dense)`**, click **`Save Gateway Configuration`**, send a simple conversational prompt on `https://intel.gdc.local` (`Tactical Chat` with **`Gemma 4 Gateway (Auto)`** selected), and verify the navbar routing badge updates to **`→ gemma4:31b`**. Then click **`↺ Reset to Auto`** on `https://ai-gateway.gdc.local` to restore **`Gemma 4 Gateway (Auto: 26B MoE → 31B Dense)`** and **`Temperature`** `0.7`.
+* **Card 3 — `🕵️ Active User Session Oversight & Kill-Switch`**: Displays `User ID`, `Client IP`, `Status`, `Last Active`, and the **`Kill Session`** button.
+  > **Note on When Users Appear in `Active User Session Oversight & Kill-Switch`:** Logging into Keycloak on `https://intel.gdc.local` (`alice`) or `https://intel-ingress.gdc.local` (`charlie`) authenticates the browser with the frontend, but `gemma-gateway` records a session in this table **only when that user submits an AI inference request** (`/v1/chat/completions`) via **Tactical Chat**, **All-Source Intel (RAG)**, **Operational Readiness (SQL)**, or the **GDC Dev AI Swarm**.
+* **Card 4 — `👥 User Access Blocklist Management`**: Enter a `User ID` (e.g., `alice`) and click **`Block User`** to test instant `403 Forbidden` revocation, then click **`Unblock`** to restore access.
 
-2. **`https://intel.gdc.local` (Gateway API / Port `8081`) & `https://intel-ingress.gdc.local` (Ingress / Port `8082`) — `Joint Intelligence & Readiness Console` / `Gemma Client`**:
-   * Open `https://intel.gdc.local` (log in via **Sign In with Keycloak SSO** as `alice` / `password`) and `https://intel-ingress.gdc.local` (log in as `charlie` / `password`) to verify identical behavior across **Kubernetes Gateway API** (`HTTPRoute`) and **Kubernetes Ingress**.
-   * **Top Navigation Bar Controls**:
-     * **Mode Switcher (`🛡️ Intel Console` | `💬 Gemma Client`)**: Click **`🛡️ Intel Console`** for the 4-tab Joint Intelligence Console, or click **`💬 Gemma Client`** to switch to the standard multi-turn chat and document RAG upload view (`Upload File` $\rightarrow$ `gs://gemma-rag-bucket`) without redeploying any pods.
-     * **Model Routing Dropdown**: Select **`Gemma 4 Gateway (Auto)`** (automatic Tier 1 / Tier 2 complexity routing), **`Gemma 4 26B A4B (MoE)`** (manual Tier 1 pin), or **`Gemma 4 31B (Dense)`** (manual Tier 2 pin). When **`Gemma 4 Gateway (Auto)`** is active, after a response completes, a routing badge (`→ gemma4:26b` or `→ gemma4:31b`) appears next to the dropdown showing which model tier executed the prompt.
-     * **`🧠 CoT` Checkbox**: Toggle Chain-of-Thought reasoning traces on or off.
-   * **The 4 Tabs in `🛡️ Intel Console`**:
-     * **Tab 1 — `Tactical Feeds (Kafka)` (`Live Stream`)**: Inspect multi-domain telemetry (`LAND`, `AIR`, `SEA`, `SPACE`, `CYBER`) and click **`⚡ Ingest Sensor Pings`** to inject fresh Kafka sensor frames.
-     * **Tab 2 — `All-Source Intel (RAG)` (`SITREPs`)**: Click one of the **`Suggested Inquiries`** pills (or type a custom query) and click **`Synthesize`** to execute pgvector semantic retrieval and generate a **`Tactical Intelligence Synthesis`** with `[SITREP-...]` citations and a `Model: ...` badge.
-     * **Tab 3 — `Operational Readiness (SQL)` (`Agentic`)**: Click a **`Command Questions`** pill (or enter a readiness question) and click **`Audit`** to generate and execute a read-only PostgreSQL query and executive readiness summary. Verify SQL guardrails by submitting `DROP TABLE military_units;` and confirming it returns **`Rejected by Security Gate`**.
-     * **Tab 4 — `Tactical Chat` (`Gemma 4`)**: Submit a chat prompt as `alice` on `intel.gdc.local` and a chat prompt as `charlie` on `intel-ingress.gdc.local`. Then return to **`https://ai-gateway.gdc.local`** and confirm that **both `alice` and `charlie` now appear** in the **`🕵️ Active User Session Oversight & Kill-Switch`** table.
+---
 
-3. **`https://admin.dev.gdc.local` (or Port `8083` — `gdc-dev` Sovereign Admin & Telemetry Console)**:
-   * Sign in with an `admin` / `gdc-admin` Keycloak OIDC identity to inspect live PVC storage (`gdc-block-storage`), observe the initial 5 seeded baseline events, publish a real-time **Cluster Broadcast Banner**, and monitor live AI Swarm telemetry.
+#### 2. `https://intel.gdc.local` (Gateway API / Port `8081`) & `https://intel-ingress.gdc.local` (Ingress / Port `8082`) — `Joint Intelligence & Readiness Console` / `Gemma Client`
+* Open `https://intel.gdc.local` (log in via **Sign In with Keycloak SSO** as `alice` / `password`) and `https://intel-ingress.gdc.local` (log in as `charlie` / `password`) to verify identical behavior across **Kubernetes Gateway API** (`HTTPRoute`) and **Kubernetes Ingress**.
+* **Top Navigation Bar Controls**:
+  * **Mode Switcher (`🛡️ Intel Console` | `💬 Gemma Client`)**: Click **`🛡️ Intel Console`** for the 4-tab Joint Intelligence Console, or click **`💬 Gemma Client`** to switch to the standard multi-turn chat and document RAG upload view (`Upload File` $\rightarrow$ `s3://gemma-rag-bucket`) without redeploying any pods.
+  * **Model Routing Dropdown**: Select **`Gemma 4 Gateway (Auto)`** (automatic Tier 1 / Tier 2 complexity routing), **`Gemma 4 26B A4B (MoE)`** (manual Tier 1 pin), or **`Gemma 4 31B (Dense)`** (manual Tier 2 pin). When **`Gemma 4 Gateway (Auto)`** is active, after a response completes, a routing badge (`→ gemma4:26b` or `→ gemma4:31b`) appears next to the dropdown showing which model tier executed the prompt.
+  * **`🧠 CoT` Checkbox**: Toggle Chain-of-Thought reasoning traces on or off.
+* **The 4 Tabs in `🛡️ Intel Console` (with Copy-Paste Verification Prompts)**:
+  * **Tab 1 — `Tactical Feeds (Kafka)` (`Live Stream`)**: Inspect multi-domain telemetry (`LAND`, `AIR`, `SEA`, `SPACE`, `CYBER`) and click **`⚡ Ingest Sensor Pings`** to inject fresh Kafka sensor frames.
+  * **Tab 2 — `All-Source Intel (RAG)` (`SITREPs`)**: Click one of the **`Suggested Inquiries`** pills or paste:
+    ```text
+    Correlate all electronic warfare (EW) jamming incidents with adversarial UAV reconnaissance flights and identify affected grid coordinates.
+    ```
+    Click **`Synthesize`** to execute pgvector semantic retrieval and generate a **`Tactical Intelligence Synthesis`** with `[SITREP-...]` citations and a `Model: ...` badge.
+  * **Tab 3 — `Operational Readiness (SQL)` (`Agentic`)**: Click a **`Command Questions`** pill or paste:
+    ```text
+    Which deployed units have status 'DEGRADED' or 'COMBAT INEFFECTIVE' and readiness_pct below 75%? List their unit name, domain, grid location, and commander notes.
+    ```
+    Click **`Audit`** to generate and execute a read-only PostgreSQL query and executive readiness summary. Verify SQL guardrails by submitting `DROP TABLE military_units;` and confirming it returns **`Rejected by Security Gate`**.
+  * **Tab 4 — `Tactical Chat` (`Gemma 4`)**: Test automatic complexity routing (`Gemma 4 Gateway (Auto)`):
+    * **Tier 1 (`→ gemma4:26b`) Fast Prompt**:
+      ```text
+      Give a 2-sentence definition of Electronic Protection (EP) in tactical communications.
+      ```
+    * **Tier 2 (`→ gemma4:31b`) Complex Architecture / Code Prompt**:
+      ```text
+      Design a distributed Byzantine-fault-tolerant Python telemetry aggregator for air-gapped tactical nodes with formal big-O complexity analysis and async retry code.
+      ```
+    * Submit a prompt as `alice` on `intel.gdc.local` and as `charlie` on `intel-ingress.gdc.local`, then return to **`https://ai-gateway.gdc.local`** and confirm that **both `alice` and `charlie` now appear** in **`🕵️ Active User Session Oversight & Kill-Switch`**.
 
-4. **`https://dev.gdc.local` (or Port `8084` — `gdc-dev` Developer IDE & Multi-Agent Swarm)**:
-   * Open `https://dev.gdc.local/instances/default-workspace`, verify that the broadcast banner published on the Admin Console appears at the top of the IDE, and run a coding prompt in **`🤖 GDC Dev AI Swarm`** (`💻 Coder` or `🐝 Swarm`) or execute the automated 10-stage CLI swarm verification harness:
-     ```bash
-     ./blueprints/patterns/p13-gdc-dev/scripts/test-swarm.py \
-       --endpoint "https://dev.gdc.local/instances/default-workspace/ai-chat" \
-       --host-header dev.gdc.local
-     ```
+---
+
+#### 3. `https://admin.dev.gdc.local` (or Port `8083` — `gdc-dev` Sovereign Admin & Telemetry Console)
+* Sign in with an `admin` / `gdc-admin` Keycloak OIDC identity (`cluster-admin@gdc.local`).
+* **Initial Baseline Telemetry**: Out of the box, the Admin Console seeds **5 realistic baseline AI telemetry events** (`Total AI Requests`: `5`, `Swarm Runs`: `1`, `Avg Latency`: `1092 ms`) across `Architect`, `Coder`, `Reviewer`, and `Swarm` personas so the charts and audit table are populated immediately before any manual IDE actions.
+* **Live Cluster Broadcast Banner**: In **`📢 Cluster Broadcast Banner`**, enter:
+  ```text
+  GDC-ag Upgrade Validation Active - All AI Gateways Operational
+  ```
+  Select **`Info (Blue)`** and click **`Publish Banner`**. Verify the banner appears at the top of **`https://dev.gdc.local`** within 10 seconds.
+
+---
+
+#### 4. `https://dev.gdc.local` (or Port `8084` — `gdc-dev` Developer IDE & Multi-Agent Swarm)
+* Open `https://dev.gdc.local/instances/default-workspace` (`oidc-developer@gdc.local`) and verify that the broadcast banner published on the Admin Console appears at the top of the IDE.
+* **Step-by-Step Interactive Walkthrough of `🤖 GDC Dev AI Swarm`**:
+  * The right-hand **`🤖 GDC Dev AI Swarm`** panel provides **4 persona buttons** that always include **inline source code blocks** directly in the chat response, while `💻 Coder` and `🐝 Swarm` also stage surgical diffs that you can apply to the editor with one click:
+
+  | Persona Button | Role & Model Tier | Copy-Paste Verification Prompt | Expected Inline Output & Action |
+  | :--- | :--- | :--- | :--- |
+  | **`📐 Architect`** | System Design & Read-Only Analysis (`gemma4:26b` Tier 1) | `Design a fault-tolerant token-bucket rate limiter architecture for our air-gapped GDC API gateway.` | Returns component breakdown, interface contracts, and **reference Python class skeleton** in chat + **`💾 Save to architecture.md`** button. |
+  | **`💻 Coder`** | Surgical Code Synthesis & Diff Proposal (`gemma4:31b` Tier 2) | `Add a helper function is_prime(n) to main.py and call it in main().` | Displays **full syntax-highlighted Python code inline in chat** AND opens the yellow **`⚠️ Action Required: Tool write_file`** approval card (`[✓ Approve & Execute]` / `[✗ Reject]`). Clicking **`✓ Approve & Execute`** writes the change into the left-hand code editor and enables **`↩️ 1-Click Rollback`**. |
+  | **`🔍 Reviewer`** | QA & Automated Unit Test Suite (`gemma4:26b` Tier 1) | `Synthesize a comprehensive pytest unit test suite for main.py covering edge cases (0, 1, negatives, primes).` | Returns a complete **`pytest` unit test suite inline in chat** + audit checklist (`Security & PoLP`, `Edge Cases`, `Determinism`). |
+  | **`🐝 Swarm`** | 3-Stage Autonomous Pipeline (`Architect` $\rightarrow$ `Coder` $\rightarrow$ `Reviewer`) | `Design, implement, and write unit tests for a Python rate_limiter.py module.` | Executes all 3 agents sequentially in one click: **Stage 1 (`📐 Architect`)** design, **Stage 2 (`💻 Coder`)** full implementation code block, and **Stage 3 (`🔍 Reviewer`)** `pytest` suite + **`✨ Apply Swarm Code to main.py`** button. |
+
+* **Verify Live Cross-Pod Telemetry Sync (`https://dev.gdc.local` $\rightarrow$ `https://admin.dev.gdc.local`)**:
+  1. After running **`💻 Coder`** or **`🐝 Swarm`** on `https://dev.gdc.local` (or Port `8084`), switch to **`https://admin.dev.gdc.local`** (or Port `8083` — which auto-refreshes every 5 seconds, or click **`🔄 Refresh Now`**).
+  2. In multi-pod GDC-ag deployments, `gdc-dev-operator` (`:3000`) automatically forwards every recorded AI telemetry event to `http://gdc-dev-landing-page:8081/admin/telemetry/record` (deduplicated by `event_id`).
+  3. Confirm that **`Total AI Requests`** and **`Swarm Runs`** increment live, the **`Persona Invocation Breakdown`** and **`Model Tier Distribution`** bar charts update, and the **`Recent AI Swarm Audit Log`** table lists your new requests at the top.
+* **Optional Automated 10-Stage CLI Swarm Verification Harness**:
+  ```bash
+  ./blueprints/patterns/p13-gdc-dev/scripts/test-swarm.py \
+    --endpoint "https://dev.gdc.local/instances/default-workspace/ai-chat" \
+    --host-header dev.gdc.local
+  ```
 
 ### 7.4. Final Pre-Cleanup Test: Serving Framework Flip (`vLLM` $\leftrightarrow$ `Ollama` Edge Fallback) & Verification
 

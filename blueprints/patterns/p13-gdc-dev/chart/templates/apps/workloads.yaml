@@ -79,6 +79,12 @@ spec:
     allowedRoutes:
       namespaces:
         from: Same
+  - name: admin
+    protocol: HTTP
+    port: 8081
+    allowedRoutes:
+      namespaces:
+        from: Same
   - name: https-selfsigned
     protocol: HTTPS
     port: 443
@@ -135,6 +141,29 @@ spec:
     backendRefs:
     - name: gdc-dev-session-service
       port: 3000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gdc-dev-admin-route
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - name: gdc-dev-gateway
+    namespace: {{ include "p13-gdc-dev.namespace" . }}
+  hostnames:
+  - admin.dev.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: gdc-dev-landing-page
+      port: 8081
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -307,6 +336,9 @@ spec:
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: admin
         envFrom:
         - configMapRef:
             name: gdc-dev-oidc-auth-config
@@ -335,8 +367,12 @@ spec:
   selector:
     app: gdc-dev-landing-page
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
+  - name: admin
+    port: 8081
+    targetPort: 8081
 ---
 apiVersion: v1
 kind: Service
@@ -375,6 +411,10 @@ spec:
   - name: https
     port: 443
     targetPort: 8080
+    protocol: TCP
+  - name: admin
+    port: 8081
+    targetPort: 8081
     protocol: TCP
 ---
 apiVersion: v1
@@ -461,9 +501,14 @@ spec:
     - podSelector:
         matchLabels:
           app: gdc-dev-operator
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-landing-page
     ports:
     - protocol: TCP
       port: 8080
+    - protocol: TCP
+      port: 8081
     - protocol: TCP
       port: 3000
   egress:
@@ -491,7 +536,14 @@ spec:
     - podSelector:
         matchLabels:
           app: gdc-dev-operator
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-landing-page
     ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
     - protocol: TCP
       port: 3000
 ---

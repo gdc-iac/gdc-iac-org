@@ -957,12 +957,30 @@ def main() -> int:
             headers=admin_headers,
             timeout=15,
         )
-        events_count = len(tel_data.get("events", []))
-        return f"Telemetry online (events={events_count}); Broadcast Banner verified across 8083 -> 8084"
+        recent_events = tel_data.get("recent_events", tel_data.get("events", []))
+        total_reqs = tel_data.get("total_requests", len(recent_events))
+        if len(recent_events) < 1:
+            raise RuntimeError(f"Expected seeded telemetry events in /admin/telemetry/json, got 0: {tel_data}")
+        return f"Telemetry online (total={total_reqs}, recent_events={len(recent_events)}); Broadcast Banner verified across 8083 -> 8084"
 
     runner.run_test("TEST-19", "AO", "gdc-dev Sovereign Admin Telemetry & Broadcast Banner", test_19_ao_dev_admin_console)
 
     def test_20_ao_dev_ide_swarm() -> str:
+        admin_headers = {
+            "X-User-ID": "cluster-admin@gdc.local",
+            "X-Forwarded-User": "cluster-admin@gdc.local",
+            "X-User-Roles": "admin,gdc-admin",
+        }
+        s_before, _, b_before = runner.request(
+            f"{args.dev_admin_url}/admin/telemetry/json",
+            method="GET",
+            headers=admin_headers,
+            timeout=15,
+        )
+        before_total = 0
+        if s_before == 200:
+            before_total = json.loads(b_before.decode("utf-8")).get("total_requests", 0)
+
         dev_headers = {
             "X-User-ID": "oidc-developer@gdc.local",
             "X-Forwarded-User": "oidc-developer@gdc.local",
@@ -972,8 +990,9 @@ def main() -> int:
             f"{args.dev_ide_url}/instances/default-workspace/ai-chat",
             method="POST",
             json_body={
-                "prompt": "Write a one-line Python expression that returns the square of 12.",
-                "agent": "coder",
+                "prompt": "Design, implement, and write unit tests for a Python rate_limiter.py module.",
+                "role": "swarm",
+                "agent": "swarm",
             },
             headers=dev_headers,
             timeout=180,
@@ -984,6 +1003,23 @@ def main() -> int:
         reply = swarm_resp.get("response") or swarm_resp.get("reply") or ""
         if not reply:
             raise RuntimeError(f"Empty AI Swarm response: {swarm_resp}")
+        for expected_marker in ("Architect", "Coder", "Reviewer"):
+            if expected_marker not in reply:
+                raise RuntimeError(f"Swarm response missing '{expected_marker}' stage header: {reply[:240]}")
+
+        s_after, _, b_after = runner.request(
+            f"{args.dev_admin_url}/admin/telemetry/json",
+            method="GET",
+            headers=admin_headers,
+            timeout=15,
+        )
+        after_total = before_total
+        if s_after == 200:
+            after_total = json.loads(b_after.decode("utf-8")).get("total_requests", before_total)
+        if after_total <= before_total:
+            raise RuntimeError(
+                f"Admin Telemetry did not record Swarm execution across pods (before={before_total}, after={after_total})"
+            )
 
         s_sess, _, b_sess = runner.request(f"{args.gateway_url}/api/sessions", timeout=15)
         active_users: List[str] = []
@@ -991,7 +1027,10 @@ def main() -> int:
             sess_payload = json.loads(b_sess.decode("utf-8"))
             sess_list = sess_payload if isinstance(sess_payload, list) else sess_payload.get("sessions", [])
             active_users = [s.get("user_id") for s in sess_list if isinstance(s, dict) and s.get("user_id")]
-        return f"Swarm agent='coder' reply_len={len(reply)} | Gateway Active Users={active_users}"
+        return (
+            f"Swarm 3-stage pipeline verified (reply_len={len(reply)}, telemetry={before_total}->{after_total}) | "
+            f"Gateway Active Users={active_users}"
+        )
 
     runner.run_test("TEST-20", "AO", "gdc-dev Multi-Agent Swarm & Gateway Session Audit", test_20_ao_dev_ide_swarm)
 

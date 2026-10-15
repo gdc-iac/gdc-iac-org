@@ -25,7 +25,7 @@ tests:
     template: templates/apps/workloads.yaml
     asserts:
       - hasDocuments:
-          count: 19
+          count: 20
       - isKind:
           of: ConfigMap
         documentIndex: 0

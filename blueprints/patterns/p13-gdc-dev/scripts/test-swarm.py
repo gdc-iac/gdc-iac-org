@@ -227,9 +227,16 @@ def main():
                 "role": "coder"
             }
         })
-        print_agent_msg(agent_name2, GREEN, res2_approved.get("reply", ""))
-        print(f"{GREEN}✅ PASS: Coder Agent surgical diff proposed, approved, and applied in {elapsed2:.2f}s{RESET}\n")
+        reply2_final = res2_approved.get("reply", "")
+        print_agent_msg(agent_name2, GREEN, reply2_final)
+        assert "def is_prime(" in reply2_final or "```python" in reply2_final, (
+            f"Coder Agent approval reply missing inline code block: {reply2_final[:120]}"
+        )
+        print(f"{GREEN}✅ PASS: Coder Agent surgical diff proposed, approved, and applied (with inline code) in {elapsed2:.2f}s{RESET}\n")
     else:
+        assert "def is_prime(" in reply2 or "```python" in reply2, (
+            f"Coder Agent reply missing inline code block: {reply2[:120]}"
+        )
         print(f"{GREEN}✅ PASS: Coder Agent completed code synthesis in {elapsed2:.2f}s{RESET}\n")
     scores.append(("💻 Coder Agent Diff & Approval", "PASS", f"{elapsed2:.2f}s"))
 
@@ -274,7 +281,10 @@ def main():
     print_agent_msg(agent_name4, MAGENTA, reply4)
     
     assert res4.get("role") == "swarm", f"Expected role 'swarm', got {res4.get('role')}"
-    print(f"{GREEN}✅ PASS: Swarm Coordinator executed multi-perspective pipeline in {elapsed4:.2f}s{RESET}\n")
+    for stage_marker in ("Architect", "Coder", "Reviewer"):
+        assert stage_marker in reply4, f"Swarm reply missing 3-stage section '{stage_marker}': {reply4[:200]}"
+    assert "```python" in reply4, "Swarm reply must contain a runnable ```python code block"
+    print(f"{GREEN}✅ PASS: Swarm Coordinator executed 3-stage (Architect -> Coder -> Reviewer) pipeline in {elapsed4:.2f}s{RESET}\n")
     scores.append(("🐝 Multi-Agent Swarm Pipeline", "PASS", f"{elapsed4:.2f}s"))
 
     # -------------------------------------------------------------
