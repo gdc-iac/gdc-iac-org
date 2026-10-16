@@ -25,6 +25,12 @@
         }
       }
     },
+    "namespace": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "string"
+    },
     "gdc": {
       "type": "object",
       "properties": {
@@ -47,6 +53,9 @@
         "enabled": {
           "type": "boolean"
         },
+        "replicas": {
+          "type": "integer"
+        },
         "activeFramework": {
           "type": "string"
         },
@@ -54,6 +63,27 @@
           "type": "string"
         },
         "modelRoutingConfig": {
+          "type": "string"
+        },
+        "gpuVramTotalGb": {
+          "type": ["string", "number"]
+        },
+        "vllmGpuMemoryUtilization": {
+          "type": ["string", "number"]
+        },
+        "dcgmMetricsUrl": {
+          "type": "string"
+        },
+        "enableOidc": {
+          "type": ["boolean", "string"]
+        },
+        "adminRequireOidc": {
+          "type": ["boolean", "string"]
+        },
+        "keycloakUrl": {
+          "type": "string"
+        },
+        "gatewayStateFile": {
           "type": "string"
         },
         "redisUrl": {
@@ -75,6 +105,9 @@
               "type": "boolean"
             },
             "serviceUrl": {
+              "type": "string"
+            },
+            "url": {
               "type": "string"
             }
           }

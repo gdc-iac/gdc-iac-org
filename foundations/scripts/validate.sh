@@ -37,10 +37,10 @@ echo -e "${BLUE}   GDC AG IaC Foundations Validation Harness (${ENV})${NC}"
 echo -e "${BLUE}====================================================${NC}"
 
 # Step 1: Helm Chart Linting
-echo -e "\n${YELLOW}[Step 1/3] Linting Local Custom Charts...${NC}"
-for chart_dir in "${REPO_ROOT}/charts"/*; do
+echo -e "\n${YELLOW}[Step 1/3] Linting Local Custom & Blueprint Charts...${NC}"
+for chart_dir in "${REPO_ROOT}/charts"/* "${REPO_ROOT}/blueprints/patterns"/*/chart "${REPO_ROOT}/blueprints/gdc_gemma_gw"/*/chart "${REPO_ROOT}/blueprints/gdc_gemma_gw/blueprints"/*; do
   if [ -d "$chart_dir" ] && [ -f "$chart_dir/Chart.yaml" ]; then
-    echo -n "Linting $(basename "$chart_dir")... "
+    echo -n "Linting ${chart_dir#${REPO_ROOT}/}... "
     if helm lint "$chart_dir" >/dev/null 2>&1; then
       echo -e "${GREEN}PASSED${NC}"
     else

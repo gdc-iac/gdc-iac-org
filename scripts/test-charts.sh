@@ -42,8 +42,8 @@ for chart in charts/* blueprints/patterns/*/chart blueprints/gdc_gemma_gw/*/char
 
     echo ""
     echo "3. Structural & Schema Validation (kubeconform)..."
-    # Note: Skipping custom GDC and Gateway/Cert-Manager CRDs until OpenAPI schemas are supplied.
-    helm template test-release "$chart" | kubeconform -strict -summary -skip ProjectNetworkPolicy,DBCluster,Failover,VirtualMachine,Network,ProjectPolicy,CertificateRequest,GatewayClass,Gateway,HTTPRoute,Certificate
+    # Note: Skipping custom GDC, Gateway/Cert-Manager, and Envoy AI Gateway / Inference Extension CRDs until OpenAPI schemas are supplied.
+    helm template test-release "$chart" | kubeconform -strict -summary -skip ProjectNetworkPolicy,DBCluster,Failover,VirtualMachine,Network,ProjectPolicy,CertificateRequest,GatewayClass,Gateway,HTTPRoute,Certificate,InferencePool,InferenceObjective,ClientTrafficPolicy,AIGatewayRoute,BackendTrafficPolicy
     echo "✅ Kubeconform structural validation passed."
 
     echo ""

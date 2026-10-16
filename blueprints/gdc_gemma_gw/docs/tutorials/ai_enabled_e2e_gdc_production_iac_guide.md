@@ -256,16 +256,15 @@ prd:
                 registry: "harbor.infra.gdc.local/gdc-iac"
                 deploy_gdc_resources: false
                 deploy_apps: true
+                values_files:
+                  - "../../../blueprints/gdc_gemma_gw/blueprints/vllm-gke/values-gdc.yaml"
                 values:
-                  fullnameOverride: "vllm-26b"
                   model:
-                    id: "google/gemma-4-26b-it"
-                    tier: "26b"
+                    name: "/models/gemma-4-26B-A4B-it-weights"
+                    servedModelName: "gemma4:26b"
                     maxModelLen: 32768
-                    dtype: "bfloat16"
-                  pvc:
-                    useExisting: true
-                    name: "gemma-weights-rwx-pvc"
+                  persistence:
+                    existingClaim: "gemma-weights-rwx-pvc"
                   nodeSelector:
                     pool: "gpu-moe"
 
@@ -277,16 +276,15 @@ prd:
                 registry: "harbor.infra.gdc.local/gdc-iac"
                 deploy_gdc_resources: false
                 deploy_apps: true
+                values_files:
+                  - "../../../blueprints/gdc_gemma_gw/blueprints/vllm-gke/values-gdc.yaml"
                 values:
-                  fullnameOverride: "vllm-31b"
                   model:
-                    id: "google/gemma-4-31b-it"
-                    tier: "31b"
+                    name: "/models/gemma-4-31B-it-weights"
+                    servedModelName: "gemma4:31b"
                     maxModelLen: 32768
-                    dtype: "bfloat16"
-                  pvc:
-                    useExisting: true
-                    name: "gemma-weights-rwx-pvc"
+                  persistence:
+                    existingClaim: "gemma-weights-rwx-pvc"
                   nodeSelector:
                     pool: "gpu-dense"
 
@@ -531,10 +529,15 @@ kubectl logs -n gemma-inference deploy/gemma-gateway --tail=200 | grep -E "Class
      * **Tab 4 — `Tactical Chat` (`Gemma 4`)**: Submit a chat prompt as `alice` on `intel.gdc.local` and a chat prompt as `charlie` on `intel-ingress.gdc.local`. Then return to **`https://ai-gateway.gdc.local`** and confirm that **both `alice` and `charlie` now appear** in the **`🕵️ Active User Session Oversight & Kill-Switch`** table.
 
 3. **`https://admin.dev.gdc.local` (or Port `8083` — `gdc-dev` Sovereign Admin & Telemetry Console)**:
-   * Sign in with an `admin` / `gdc-admin` Keycloak OIDC identity to inspect live PVC storage (`gdc-block-storage`), observe the initial 5 seeded baseline events, publish a real-time **Cluster Broadcast Banner**, and monitor live AI Swarm telemetry.
+   * Sign in with an `admin` / `gdc-admin` Keycloak OIDC identity (`cluster-admin@gdc.local`), inspect live PVC storage (`gdc-block-storage`), observe the initial 5 seeded baseline events, publish a real-time **Cluster Broadcast Banner**, and monitor live AI Swarm telemetry.
 
 4. **`https://dev.gdc.local` (or Port `8084` — `gdc-dev` Developer IDE & Multi-Agent Swarm)**:
-   * Open `https://dev.gdc.local/instances/default-workspace`, verify that the broadcast banner published on the Admin Console appears at the top of the IDE, and run a coding prompt in **`🤖 GDC Dev AI Swarm`** (`💻 Coder` or `🐝 Swarm`) or execute the automated 10-stage CLI swarm verification harness:
+   * Open `https://dev.gdc.local/instances/default-workspace`, verify that the broadcast banner published on the Admin Console appears at the top of the IDE, and test the 4 personas in **`🤖 GDC Dev AI Swarm`**:
+     * **`📐 Architect`** (`gemma4:26b` Tier 1): Generates Markdown architecture specifications (`💾 Save as File` $\rightarrow$ `architecture.md`).
+     * **`💻 Coder`** (`gemma4:31b` Tier 2): Generates implementation code with **`📥 Insert into Editor`**, **`💾 Save as File`**, and **`↩ Rollback Changes`**.
+     * **`🔍 Reviewer`** (`gemma4:26b` Tier 1): Synthesizes `pytest` / `unittest` suites (`💾 Save as File` $\rightarrow$ `test_main.py`).
+     * **`🐝 Swarm`** (`Architect` $\rightarrow$ `Coder` $\rightarrow$ `Reviewer`): Renders all 3 stages with per-stage **`💾 Save as...`** buttons on each persona header, **`💾 Save As...`** on every code block, and a 1-click **`⚡ Auto-Create All Swarm Files (3)`** button in the **`🐝 Swarm Persona Deliverables (3 Agents)`** bar that creates `<module>_architecture.md`, `<module>.py`, and `test_<module>.py` directly in the workspace.
+   * Execute the automated 10-stage CLI swarm verification harness:
      ```bash
      ./blueprints/patterns/p13-gdc-dev/scripts/test-swarm.py \
        --endpoint "https://dev.gdc.local/instances/default-workspace/ai-chat" \

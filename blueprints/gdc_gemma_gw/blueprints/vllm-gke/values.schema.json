@@ -49,6 +49,12 @@
         }
       }
     },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "model": {
       "type": "object",
       "properties": {

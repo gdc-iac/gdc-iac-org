@@ -25,6 +25,12 @@
         }
       }
     },
+    "namespace": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "string"
+    },
     "gdc": {
       "type": "object",
       "properties": {
@@ -101,6 +107,12 @@
         "createClusterRBAC": {
           "type": "boolean"
         },
+        "envoyGatewayNamespace": {
+          "type": "string"
+        },
+        "envoyGatewayServiceAccount": {
+          "type": "string"
+        },
         "scorers": {
           "type": "object",
           "properties": {
@@ -114,6 +126,9 @@
               "type": "integer"
             }
           }
+        },
+        "resources": {
+          "type": "object"
         }
       }
     },
@@ -139,6 +154,12 @@
           "type": "integer"
         },
         "unit": {
+          "type": "string"
+        },
+        "costMetadataNamespace": {
+          "type": "string"
+        },
+        "costMetadataKey": {
           "type": "string"
         }
       }
