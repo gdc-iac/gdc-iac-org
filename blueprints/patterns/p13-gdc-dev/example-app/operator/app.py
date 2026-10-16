@@ -411,37 +411,68 @@ def reset_project(template_name, session_id="default-workspace", user_id="oidc-d
     return files_to_create
 
 PROJECTS_ROOT = os.environ.get("DEV_PROJECTS_ROOT", os.environ.get("THEIA_PROJECTS_ROOT", "/tmp/dev-projects"))
+SHARED_CODEBASE_ROOT = os.environ.get(
+    "SHARED_CODEBASE_ROOT",
+    os.environ.get("DEV_SHARED_CODEBASE_ROOT", "/tmp/shared-codebase"),
+)
+
+def ensure_shared_codebase_dir():
+    """Ensures the shared team codebase directory (RWX mount) exists and has an initial README."""
+    os.makedirs(SHARED_CODEBASE_ROOT, exist_ok=True)
+    readme_path = os.path.join(SHARED_CODEBASE_ROOT, "README.md")
+    if not os.path.exists(readme_path):
+        with open(readme_path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "# Shared Team Codebase (standard-rwx)\n\n"
+                "This directory is backed by the shared ReadWriteMany (RWX) volume for cross-team collaboration,\n"
+                "Git/GitLab repository clones, and shared libraries across isolated developer workspaces.\n"
+            )
+    return SHARED_CODEBASE_ROOT
 
 def get_workspace_dir(session_id="default-workspace"):
-    """Returns the workspace directory for a specific project/session."""
+    """Returns the workspace directory for a specific project/session or the shared team codebase."""
     clean_id = "".join(c for c in str(session_id) if c.isalnum() or c in ("-", "_")).strip()
     if not clean_id or clean_id == "default-workspace":
         return WORKSPACE_ROOT
+    if clean_id in ("shared", "shared-codebase", "team-shared"):
+        return ensure_shared_codebase_dir()
     proj_dir = os.path.join(PROJECTS_ROOT, clean_id)
     os.makedirs(proj_dir, exist_ok=True)
     return proj_dir
 
 def list_projects():
-    """Lists all available projects and their file counts."""
+    """Lists all available projects (isolated RWO workspaces + shared RWX codebase) and their file counts."""
     projects = []
-    # 1. default-workspace
+    # 1. default-workspace (User-Isolated RWO)
     ensure_workspace_dir(workspace_dir=WORKSPACE_ROOT, session_id="default-workspace")
     def_files = load_workspace_files(workspace_dir=WORKSPACE_ROOT)
     projects.append({
         "name": "default-workspace",
         "path": WORKSPACE_ROOT,
+        "scope": "user-rwo",
         "file_count": len(def_files),
         "files": sorted(list(def_files.keys()))
     })
-    # 2. Named projects under PROJECTS_ROOT
+    # 2. shared-codebase (Team-Shared RWX)
+    shared_dir = ensure_shared_codebase_dir()
+    shared_files = load_workspace_files(workspace_dir=shared_dir)
+    projects.append({
+        "name": "shared-codebase",
+        "path": shared_dir,
+        "scope": "shared-rwx",
+        "file_count": len(shared_files),
+        "files": sorted(list(shared_files.keys()))
+    })
+    # 3. Named projects under PROJECTS_ROOT
     if os.path.exists(PROJECTS_ROOT):
         for item in sorted(os.listdir(PROJECTS_ROOT)):
             full_item = os.path.join(PROJECTS_ROOT, item)
-            if os.path.isdir(full_item) and item != "default-workspace":
+            if os.path.isdir(full_item) and item not in ("default-workspace", "shared-codebase"):
                 p_files = load_workspace_files(workspace_dir=full_item)
                 projects.append({
                     "name": item,
                     "path": full_item,
+                    "scope": "user-rwo",
                     "file_count": len(p_files),
                     "files": sorted(list(p_files.keys()))
                 })
@@ -2159,10 +2190,10 @@ def _handle_ai_chat_inner(post_data, user_id, workspace_dir=None):
     coder_model = os.environ.get("AI_CODER_MODEL", "gemma4:31b")
     tier1_model = os.environ.get("AI_TIER1_MODEL", "gemma4:26b")
     
-    # Model Tiering Dynamic Routing Logic
+    # Model Tiering Dynamic Routing Logic (evaluate user prompt intent rather than active file size)
     if req_model == "auto":
-        reasoning_triggers = ("fix", "error", "traceback", "repair", "diff", "patch", "test", "assert", "fail", "create", "refactor")
-        if any(w in prompt.lower() for w in reasoning_triggers) or (context and len(context) > 500):
+        reasoning_triggers = ("fix", "error", "traceback", "repair", "diff", "patch", "test", "assert", "fail", "create", "refactor", "architect", "optimize", "debug")
+        if any(w in prompt.lower() for w in reasoning_triggers) or len(prompt) > 800:
             model = coder_model
             print(f"[MODEL-TIERING] Escalated to Tier 2 reasoning model: {model}", flush=True)
         else:

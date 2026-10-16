@@ -111,6 +111,8 @@ CURRENT_STATE: Dict[str, Any] = {
     "frequency_penalty": 0.0,
     "vision_token_budget": 280,  # Gemma 4 specific token budget
     "model_variant": os.getenv("OLLAMA_MODEL_VARIANT", "26b"),  # Hot-swappable variant
+    "enforce_parameter_overrides": os.getenv("ENFORCE_PARAMETER_OVERRIDES", "true").lower()
+    == "true",
 }
 
 # System role capability register and payload message flattener
@@ -120,66 +122,93 @@ UNSUPPORTED_SYSTEM_ROLE_MODELS: Set[str] = set()
 
 
 # =====================================================================
-# Shared Multi-Replica State Persistence (Atomic File Store)
+# Shared Multi-Replica State Persistence (Redis RESP + Atomic File Store)
 # =====================================================================
 GATEWAY_STATE_FILE = os.getenv("GATEWAY_STATE_FILE", "")
+REDIS_URL = os.getenv("REDIS_URL", "")
+REDIS_STATE_KEY = os.getenv("REDIS_STATE_KEY", "gemma:gateway:shared_state")
+_LAST_STATE_SYNC_TS: float = 0.0
+_LAST_STATE_FILE_SIGNATURE: Tuple[str, int, int] = ("", 0, 0)
 
 
-def persist_shared_state() -> None:
-    """Persists gateway configuration, sessions, and blocklists to an atomic state file."""
-    state_file = os.getenv("GATEWAY_STATE_FILE", GATEWAY_STATE_FILE)
-    if not state_file:
-        return
-
-    snapshot = {
-        "current_state": CURRENT_STATE,
-        "active_sessions": ACTIVE_SESSIONS,
-        "blocked_users": sorted(list(BLOCKED_USERS)),
-        "unsupported_system_role_models": sorted(list(UNSUPPORTED_SYSTEM_ROLE_MODELS)),
-    }
-    serialized = json.dumps(snapshot)
-
-    try:
-        parent_dir = os.path.dirname(os.path.abspath(state_file))
-        os.makedirs(parent_dir, exist_ok=True)
-        lock_path = f"{state_file}.lock"
-        with open(lock_path, "w", encoding="utf-8") as lock_fp:
-            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
-            try:
-                fd, tmp_path = tempfile.mkstemp(dir=parent_dir, prefix=".gw_state_")
-                with os.fdopen(fd, "w", encoding="utf-8") as tmp_fp:
-                    tmp_fp.write(serialized)
-                    tmp_fp.flush()
-                    os.fsync(tmp_fp.fileno())
-                os.replace(tmp_path, state_file)
-            finally:
-                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
-    except Exception as e:
-        logger.warning(f"Failed to persist gateway state to file ({state_file}): {e}")
+def _parse_redis_endpoint(redis_url: str) -> Optional[Tuple[str, int, Optional[str], int]]:
+    """Parses redis://[:password@]host[:port][/db] into (host, port, password, db)."""
+    raw = (redis_url or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = f"redis://{raw}"
+    parsed = urllib.parse.urlparse(raw)
+    host = parsed.hostname
+    if not host:
+        return None
+    port = parsed.port or 6379
+    password = parsed.password
+    db_idx = 0
+    if parsed.path and parsed.path.strip("/").isdigit():
+        db_idx = int(parsed.path.strip("/"))
+    return host, port, password, db_idx
 
 
-def sync_shared_state() -> None:
-    """Synchronizes in-memory state from the shared state file when configured."""
-    state_file = os.getenv("GATEWAY_STATE_FILE", GATEWAY_STATE_FILE)
-    if not state_file or not os.path.exists(state_file):
-        return
+def _send_redis_resp_command(sock: socket.socket, args: List[str]) -> Optional[str]:
+    """Sends a single RESP array command over a socket and reads the reply."""
+    parts = [f"*{len(args)}\r\n".encode("utf-8")]
+    for arg in args:
+        encoded = arg.encode("utf-8")
+        parts.append(f"${len(encoded)}\r\n".encode("utf-8") + encoded + b"\r\n")
+    sock.sendall(b"".join(parts))
 
-    raw_json: Optional[str] = None
-    try:
-        lock_path = f"{state_file}.lock"
-        with open(lock_path, "w", encoding="utf-8") as lock_fp:
-            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_SH)
-            try:
-                with open(state_file, "r", encoding="utf-8") as fp:
-                    raw_json = fp.read()
-            finally:
-                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
-    except Exception as e:
-        logger.warning(f"Failed to read gateway state from file ({state_file}): {e}")
+    def _read_line() -> bytes:
+        buf = bytearray()
+        while not buf.endswith(b"\r\n"):
+            chunk = sock.recv(1)
+            if not chunk:
+                break
+            buf.extend(chunk)
+        return bytes(buf[:-2])
 
-    if not raw_json:
-        return
+    prefix = sock.recv(1)
+    if not prefix:
+        return None
+    if prefix == b"+":
+        return _read_line().decode("utf-8", errors="replace")
+    if prefix == b"-":
+        err_msg = _read_line().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Redis error: {err_msg}")
+    if prefix == b":":
+        return _read_line().decode("utf-8", errors="replace")
+    if prefix == b"$":
+        length = int(_read_line().decode("utf-8"))
+        if length < 0:
+            return None
+        data = bytearray()
+        while len(data) < length + 2:
+            chunk = sock.recv(length + 2 - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        return bytes(data[:-2]).decode("utf-8", errors="replace")
+    return None
 
+
+def _redis_exec(redis_url: str, *cmd_args: str) -> Optional[str]:
+    """Executes a Redis command using pure-Python stdlib sockets (zero external dependencies)."""
+    endpoint = _parse_redis_endpoint(redis_url)
+    if not endpoint:
+        return None
+    host, port, password, db_idx = endpoint
+    timeout_sec = float(os.getenv("REDIS_SOCKET_TIMEOUT", "0.5"))
+    with socket.create_connection((host, port), timeout=timeout_sec) as sock:
+        sock.settimeout(timeout_sec)
+        if password:
+            _send_redis_resp_command(sock, ["AUTH", password])
+        if db_idx > 0:
+            _send_redis_resp_command(sock, ["SELECT", str(db_idx)])
+        return _send_redis_resp_command(sock, list(cmd_args))
+
+
+def _apply_serialized_state(raw_json: str) -> None:
+    """Applies a serialized JSON state payload to the in-memory gateway registries."""
     try:
         data = json.loads(raw_json)
         if isinstance(data.get("current_state"), dict):
@@ -195,6 +224,115 @@ def sync_shared_state() -> None:
             UNSUPPORTED_SYSTEM_ROLE_MODELS.update(data["unsupported_system_role_models"])
     except Exception as e:
         logger.warning(f"Failed to decode shared gateway state: {e}")
+
+
+def persist_shared_state() -> None:
+    """Persists gateway configuration, sessions, and blocklists to Redis and/or an atomic state file."""
+    global _LAST_STATE_SYNC_TS, _LAST_STATE_FILE_SIGNATURE
+    redis_url = os.getenv("REDIS_URL", REDIS_URL).strip()
+    state_file = os.getenv("GATEWAY_STATE_FILE", GATEWAY_STATE_FILE).strip()
+    if not redis_url and not state_file:
+        return
+
+    snapshot = {
+        "current_state": CURRENT_STATE,
+        "active_sessions": ACTIVE_SESSIONS,
+        "blocked_users": sorted(list(BLOCKED_USERS)),
+        "unsupported_system_role_models": sorted(list(UNSUPPORTED_SYSTEM_ROLE_MODELS)),
+    }
+    serialized = json.dumps(snapshot)
+
+    if redis_url:
+        try:
+            state_key = os.getenv("REDIS_STATE_KEY", REDIS_STATE_KEY)
+            _redis_exec(redis_url, "SET", state_key, serialized)
+            _LAST_STATE_SYNC_TS = time.monotonic()
+        except Exception as e:
+            logger.warning(f"Failed to persist gateway state to Redis ({redis_url}): {e}")
+
+    if state_file:
+        try:
+            parent_dir = os.path.dirname(os.path.abspath(state_file))
+            os.makedirs(parent_dir, exist_ok=True)
+            lock_path = f"{state_file}.lock"
+            with open(lock_path, "w", encoding="utf-8") as lock_fp:
+                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_EX)
+                try:
+                    fd, tmp_path = tempfile.mkstemp(dir=parent_dir, prefix=".gw_state_")
+                    with os.fdopen(fd, "w", encoding="utf-8") as tmp_fp:
+                        tmp_fp.write(serialized)
+                        tmp_fp.flush()
+                        os.fsync(tmp_fp.fileno())
+                    os.replace(tmp_path, state_file)
+                    st = os.stat(state_file)
+                    _LAST_STATE_FILE_SIGNATURE = (state_file, st.st_mtime_ns, st.st_size)
+                    _LAST_STATE_SYNC_TS = time.monotonic()
+                finally:
+                    fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+        except Exception as e:
+            logger.warning(f"Failed to persist gateway state to file ({state_file}): {e}")
+
+
+def sync_shared_state(force: bool = True) -> None:
+    """
+    Synchronizes in-memory state from Redis or the shared state file when configured.
+    When force=False (inside high-frequency SSE token streaming loops), throttles external
+    I/O checks by STATE_SYNC_INTERVAL_SEC and skips file locking if file mtime/size is unchanged.
+    """
+    global _LAST_STATE_SYNC_TS, _LAST_STATE_FILE_SIGNATURE
+    redis_url = os.getenv("REDIS_URL", REDIS_URL).strip()
+    state_file = os.getenv("GATEWAY_STATE_FILE", GATEWAY_STATE_FILE).strip()
+    if not redis_url and not state_file:
+        return
+
+    now = time.monotonic()
+    if not force:
+        min_interval = float(os.getenv("STATE_SYNC_INTERVAL_SEC", "0.2"))
+        if (now - _LAST_STATE_SYNC_TS) < min_interval:
+            return
+
+    if redis_url:
+        try:
+            state_key = os.getenv("REDIS_STATE_KEY", REDIS_STATE_KEY)
+            raw_redis = _redis_exec(redis_url, "GET", state_key)
+            _LAST_STATE_SYNC_TS = now
+            if raw_redis:
+                _apply_serialized_state(raw_redis)
+                return
+        except Exception as e:
+            logger.warning(f"Failed to sync gateway state from Redis ({redis_url}): {e}")
+
+    if not state_file or not os.path.exists(state_file):
+        return
+
+    try:
+        if not force:
+            st = os.stat(state_file)
+            sig = (state_file, st.st_mtime_ns, st.st_size)
+            if sig == _LAST_STATE_FILE_SIGNATURE:
+                _LAST_STATE_SYNC_TS = now
+                return
+    except OSError:
+        return
+
+    raw_json: Optional[str] = None
+    try:
+        lock_path = f"{state_file}.lock"
+        with open(lock_path, "w", encoding="utf-8") as lock_fp:
+            fcntl.flock(lock_fp.fileno(), fcntl.LOCK_SH)
+            try:
+                with open(state_file, "r", encoding="utf-8") as fp:
+                    raw_json = fp.read()
+                st = os.stat(state_file)
+                _LAST_STATE_FILE_SIGNATURE = (state_file, st.st_mtime_ns, st.st_size)
+                _LAST_STATE_SYNC_TS = now
+            finally:
+                fcntl.flock(lock_fp.fileno(), fcntl.LOCK_UN)
+    except Exception as e:
+        logger.warning(f"Failed to read gateway state from file ({state_file}): {e}")
+
+    if raw_json:
+        _apply_serialized_state(raw_json)
 
 
 # =====================================================================
@@ -851,6 +989,7 @@ class UpdateConfigRequest(BaseModel):
     vision_token_budget: int = None
     max_vision_tokens: int = None
     model_variant: str = None
+    enforce_parameter_overrides: Optional[bool] = None
 
 
 def _get_external_origin(request: Request) -> str:
@@ -1654,6 +1793,10 @@ async def update_config(
         CURRENT_STATE["vision_token_budget"] = config.max_vision_tokens
     if config.model_variant is not None:
         CURRENT_STATE["model_variant"] = config.model_variant
+    if getattr(config, "enforce_parameter_overrides", None) is not None:
+        CURRENT_STATE["enforce_parameter_overrides"] = bool(
+            config.enforce_parameter_overrides
+        )
     persist_shared_state()
     logger.info(f"Configuration updated: {CURRENT_STATE}")
     return {"status": "success", "new_state": CURRENT_STATE}
@@ -1767,14 +1910,55 @@ _COMPLEXITY_PHRASES_RE = re.compile(
 )
 
 
+_INJECTED_CONTEXT_BLOCK_RE = re.compile(
+    r"(?:<context>[\s\S]*?</context>|"
+    r"^\s*System\s+Directive:[\s\S]*?\bUser\s+Query:\s*|"
+    r"^\s*(?:Retrieved\s+(?:Context|Documents|Intelligence|Sources)|Context|Reference\s+Material)\s*:[\s\S]*?\b(?:User\s+)?(?:Question|Query|Inquiry|Prompt)\s*:\s*)",
+    re.IGNORECASE,
+)
+
+
+def _extract_user_query_for_classification(raw_prompt: str) -> str:
+    """
+    Isolates the user's actual query from injected RAG context blocks or flattened
+    system directives so keywords buried inside retrieved documents do not force
+    every RAG or IDE request onto the 31B Dense tier.
+    """
+    if not raw_prompt:
+        return ""
+    cleaned = _INJECTED_CONTEXT_BLOCK_RE.sub("", raw_prompt).strip()
+    return cleaned if cleaned else raw_prompt
+
+
+TIER1_MODEL_TAG: str = os.getenv("TIER1_MODEL_TAG", "").strip()
+TIER2_MODEL_TAG: str = os.getenv("TIER2_MODEL_TAG", "").strip()
+
+
+def _resolve_tier_model_tags() -> Tuple[str, str]:
+    """Resolves configurable Tier 1 (Fast/MoE) and Tier 2 (Deep/Dense) model tags."""
+    raw_variant = CURRENT_STATE.get("model_variant", "26b")
+    fallback_variant = "26b" if raw_variant == "auto" else raw_variant
+    default_tier1 = (
+        fallback_variant
+        if ":" in str(fallback_variant) or "/" in str(fallback_variant)
+        else f"gemma4:{fallback_variant}"
+    )
+    tier1_tag = TIER1_MODEL_TAG or os.getenv("TIER1_MODEL_TAG", "").strip() or default_tier1
+    tier2_tag = TIER2_MODEL_TAG or os.getenv("TIER2_MODEL_TAG", "").strip() or "gemma4:31b"
+    return tier1_tag, tier2_tag
+
+
 def classify_prompt_complexity(
     payload: dict, request_headers: Optional[Dict[str, str]] = None
 ) -> str:
     """
     Parses the request messages prompt and optional routing headers.
-    Returns 'gemma4:31b' (Dense) if complex logic, code, SQL, or math is detected.
-    Returns the dynamic override variant (hot-swapped from Admin Control Plane) for general conversational queries.
+    Returns Tier 2 ('gemma4:31b' Dense by default, or TIER2_MODEL_TAG) if complex logic,
+    code, SQL, or math is detected in the user's query turn.
+    Returns Tier 1 (the dynamic override variant or TIER1_MODEL_TAG) for general conversational queries.
     """
+    tier1_tag, tier2_tag = _resolve_tier_model_tags()
+
     if request_headers:
         explicit_tier = (
             request_headers.get("X-Task-Complexity")
@@ -1783,21 +1967,21 @@ def classify_prompt_complexity(
             or request_headers.get("x-model-tier")
             or ""
         ).strip().lower()
-        if explicit_tier in ("high", "complex", "dense", "31b"):
+        if explicit_tier in ("high", "complex", "dense", "31b", "tier2"):
             logger.info(
-                f"[Classifier] Explicit complexity header '{explicit_tier}' -> gemma4:31b"
+                f"[Classifier] Explicit complexity header '{explicit_tier}' -> {tier2_tag}"
             )
-            return "gemma4:31b"
-        if explicit_tier in ("low", "simple", "moe", "26b"):
-            raw_variant = CURRENT_STATE.get("model_variant", "26b")
-            fallback_variant = "26b" if raw_variant == "auto" else raw_variant
-            return f"gemma4:{fallback_variant}"
+            return tier2_tag
+        if explicit_tier in ("low", "simple", "moe", "26b", "tier1"):
+            return tier1_tag
 
-    messages = payload.get("messages", [])
+    messages = (
+        payload.get("messages", [])
+        if isinstance(payload, dict)
+        else (payload if isinstance(payload, list) else [])
+    )
     if not messages:
-        raw_variant = CURRENT_STATE.get("model_variant", "26b")
-        fallback_variant = "26b" if raw_variant == "auto" else raw_variant
-        return f"gemma4:{fallback_variant}"
+        return tier1_tag
 
     # Evaluate only the latest user prompt content (the last user message in the array)
     full_prompt = ""
@@ -1815,31 +1999,32 @@ def classify_prompt_complexity(
                 full_prompt = content
             break
 
+    # Isolate the user's actual query turn from any injected RAG/system context preamble
+    user_query = _extract_user_query_for_classification(full_prompt)
+
     # 1. Check structural code/SQL/math/stack-trace patterns first
-    if _STRUCTURAL_COMPLEXITY_RE.search(full_prompt):
+    if _STRUCTURAL_COMPLEXITY_RE.search(user_query):
         logger.info(
-            "[Classifier] Structural code/SQL/math block detected. Routing to Gemma 4 31B Dense."
+            f"[Classifier] Structural code/SQL/math block detected. Routing to {tier2_tag}."
         )
-        return "gemma4:31b"
+        return tier2_tag
 
     # 2. Strip benign conversational idioms ('for some reason', 'zip code', etc.) before keyword matching
-    scrubbed_prompt = _BENIGN_CONVERSATIONAL_IDIOMS_RE.sub(" ", full_prompt.lower())
+    scrubbed_prompt = _BENIGN_CONVERSATIONAL_IDIOMS_RE.sub(" ", user_query.lower())
 
     # 3. Match complexity terms on strict word boundaries
     match = _COMPLEXITY_PHRASES_RE.search(scrubbed_prompt)
     if match:
         matched_kw = match.group(0)
         logger.info(
-            f"[Classifier] Complexity keyword detected: '{matched_kw}'. Routing to Gemma 4 31B Dense."
+            f"[Classifier] Complexity keyword detected: '{matched_kw}'. Routing to {tier2_tag}."
         )
-        return "gemma4:31b"
+        return tier2_tag
 
-    raw_variant = CURRENT_STATE.get("model_variant", "26b")
-    fallback_variant = "26b" if raw_variant == "auto" else raw_variant
     logger.info(
-        f"[Classifier] General conversational query detected. Routing to dynamic override: gemma4:{fallback_variant}"
+        f"[Classifier] General conversational query detected. Routing to dynamic override: {tier1_tag}"
     )
-    return f"gemma4:{fallback_variant}"
+    return tier1_tag
 
 
 @app.post("/v1/chat/completions")
@@ -1873,10 +2058,35 @@ async def chat_completions(request: Request, _auth: None = Depends(verify_api_au
 
     payload = await request.json()
 
-    # Enforce Gateway Control Plane generation parameters (Port 8080 /api/config overrides)
-    payload["temperature"] = CURRENT_STATE["temperature"]
-    payload["top_p"] = CURRENT_STATE["top_p"]
-    payload["frequency_penalty"] = CURRENT_STATE["frequency_penalty"]
+    # Generation parameter resolution:
+    # - Respect explicit client parameters when:
+    #   (a) X-Preserve-Client-Params: true header or payload preserve_client_params=true is sent, OR
+    #   (b) CURRENT_STATE["enforce_parameter_overrides"] is False, OR
+    #   (c) Client explicitly requests deterministic greedy decoding (temperature == 0.0) while
+    #       gateway temperature is still at its un-customized default (0.7).
+    # - Otherwise enforce Port 8080 Control Plane overrides (CURRENT_STATE).
+    preserve_hdr = (
+        request.headers.get("X-Preserve-Client-Params")
+        or request.headers.get("x-preserve-client-params")
+        or ""
+    ).strip().lower() == "true"
+    preserve_flag = bool(payload.pop("preserve_client_params", False))
+    enforce_overrides = CURRENT_STATE.get("enforce_parameter_overrides", True)
+    client_temp = payload.get("temperature")
+    is_deterministic_agent_call = (
+        client_temp is not None
+        and float(client_temp) == 0.0
+        and float(CURRENT_STATE.get("temperature", 0.7)) == 0.7
+    )
+
+    if preserve_hdr or preserve_flag or not enforce_overrides or is_deterministic_agent_call:
+        payload.setdefault("temperature", CURRENT_STATE["temperature"])
+        payload.setdefault("top_p", CURRENT_STATE["top_p"])
+        payload.setdefault("frequency_penalty", CURRENT_STATE["frequency_penalty"])
+    else:
+        payload["temperature"] = CURRENT_STATE["temperature"]
+        payload["top_p"] = CURRENT_STATE["top_p"]
+        payload["frequency_penalty"] = CURRENT_STATE["frequency_penalty"]
 
     # Determine target URL based on requested model and dynamic classification
     requested_model = payload.get("model", "default")
@@ -1924,9 +2134,9 @@ async def chat_completions(request: Request, _auth: None = Depends(verify_api_au
 
     response_headers = {
         "X-Model-Used": determined_tag,
-        "X-Model-Tier": "Dense" if "31b" in determined_tag else "MoE",
-        "X-Gemma-Temperature": str(CURRENT_STATE["temperature"]),
-        "X-Gemma-Top-P": str(CURRENT_STATE["top_p"]),
+        "X-Model-Tier": "Dense" if ("31b" in determined_tag or determined_tag == os.getenv("TIER2_MODEL_TAG", "")) else "MoE",
+        "X-Gemma-Temperature": str(payload["temperature"]),
+        "X-Gemma-Top-P": str(payload["top_p"]),
         "X-Gemma-Vision-Budget": str(CURRENT_STATE["vision_token_budget"]),
     }
 
@@ -2077,7 +2287,7 @@ async def chat_completions(request: Request, _auth: None = Depends(verify_api_au
                                                 return
 
                                             async for line in retry_response.aiter_lines():
-                                                sync_shared_state()
+                                                sync_shared_state(force=False)
                                                 if ACTIVE_SESSIONS.get(session_id, {}).get(
                                                     "killed", False
                                                 ):
@@ -2108,8 +2318,8 @@ async def chat_completions(request: Request, _auth: None = Depends(verify_api_au
                                     return
 
                                 async for line in response.aiter_lines():
-                                    # Synchronize shared state so multi-replica kill-switches take effect immediately
-                                    sync_shared_state()
+                                    # Synchronize shared state (stat-gated / throttled) so multi-replica kill-switches take effect without per-token lock contention
+                                    sync_shared_state(force=False)
                                     if ACTIVE_SESSIONS.get(session_id, {}).get("killed", False):
                                         logger.warning(
                                             f"Streaming connection killed in-flight for session: {session_id}"

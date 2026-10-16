@@ -56,15 +56,26 @@ spec:
           kind: InferencePool
     {{- end }}
     {{- end }}
-    {{- if .Values.pools.vllm26b.enabled }}
-    # Default fallback route to fast 26B MoE InferencePool
+    {{- $defaultPoolKey := .Values.defaultPool | default "vllm26b" -}}
+    {{- $fallbackPoolName := "" -}}
+    {{- if and (hasKey .Values.pools $defaultPoolKey) (index .Values.pools $defaultPoolKey).enabled -}}
+      {{- $fallbackPoolName = (index .Values.pools $defaultPoolKey).name -}}
+    {{- else -}}
+      {{- range $poolKey, $pool := .Values.pools -}}
+        {{- if and $pool.enabled (eq $fallbackPoolName "") -}}
+          {{- $fallbackPoolName = $pool.name -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $fallbackPoolName }}
+    # Default fallback route to primary fast tier InferencePool ({{ $fallbackPoolName }})
     - matches:
         - headers:
             - type: RegularExpression
               name: x-ai-eg-model
               value: ".*"
       backendRefs:
-        - name: {{ .Values.pools.vllm26b.name }}
+        - name: {{ $fallbackPoolName }}
           group: inference.networking.k8s.io
           kind: InferencePool
     {{- end }}
@@ -90,7 +101,28 @@ spec:
       kind: Gateway
       group: gateway.networking.k8s.io
   rateLimit:
-    type: Local
+    {{- $rlType := .Values.tokenRateLimit.type | default "Local" }}
+    type: {{ $rlType }}
+    {{- if eq $rlType "Global" }}
+    global:
+      rules:
+        - clientSelectors:
+            - headers:
+                - name: {{ .Values.tokenRateLimit.userHeader | default "X-User-ID" }}
+                  type: Distinct
+          limit:
+            requests: {{ .Values.tokenRateLimit.limit | default 50000 }}
+            unit: {{ .Values.tokenRateLimit.unit | default "Hour" }}
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: {{ .Values.tokenRateLimit.costMetadataNamespace | default "io.envoy.ai_gateway" }}
+                key: {{ .Values.tokenRateLimit.costMetadataKey | default "llm_total_tokens" }}
+    {{- else }}
     local:
       rules:
         - clientSelectors:
@@ -109,5 +141,6 @@ spec:
               metadata:
                 namespace: {{ .Values.tokenRateLimit.costMetadataNamespace | default "io.envoy.ai_gateway" }}
                 key: {{ .Values.tokenRateLimit.costMetadataKey | default "llm_total_tokens" }}
+    {{- end }}
 {{- end }}
 {{- end }}

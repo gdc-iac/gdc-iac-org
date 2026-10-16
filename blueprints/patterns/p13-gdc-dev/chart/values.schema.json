@@ -48,6 +48,9 @@
           "type": "boolean"
         }
       }
+    },
+    "storage": {
+      "type": "object"
     }
   }
 }

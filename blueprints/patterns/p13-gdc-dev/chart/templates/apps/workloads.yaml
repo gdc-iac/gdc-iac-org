@@ -191,8 +191,28 @@ data:
   AI_DEFAULT_MODEL: gemma4:31b
   AI_GEMINI_TIER2_MODEL: gemini-2.0-pro
   AI_VISION_TOKEN_BUDGET: '280'
+  SHARED_CODEBASE_ROOT: {{ (and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.mountPath) | default "/workspace/shared" | quote }}
   NO_PROXY: '*.gemma-inference.svc.cluster.local,*.gemma-inference,*.svc.cluster.local,localhost,127.0.0.1'
 ---
+{{- if and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.usePvc }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gdc-dev-shared-codebase-pvc
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: shared-codebase-storage
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  storageClassName: {{ .Values.storage.sharedCodebase.storageClassName | default "standard-rwx" | quote }}
+  accessModes:
+  - {{ .Values.storage.sharedCodebase.accessMode | default "ReadWriteMany" }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.sharedCodebase.size | default "50Gi" | quote }}
+---
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -303,6 +323,9 @@ spec:
           name: session
         - containerPort: 8080
           name: health
+        volumeMounts:
+        - name: shared-codebase
+          mountPath: {{ (and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.mountPath) | default "/workspace/shared" | quote }}
         resources:
           requests:
             cpu: 100m
@@ -310,6 +333,14 @@ spec:
           limits:
             cpu: 500m
             memory: 512Mi
+      volumes:
+      - name: shared-codebase
+        {{- if and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.usePvc }}
+        persistentVolumeClaim:
+          claimName: gdc-dev-shared-codebase-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -348,6 +379,9 @@ spec:
         - configMapRef:
             name: gdc-dev-agent-config
             optional: true
+        volumeMounts:
+        - name: shared-codebase
+          mountPath: {{ (and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.mountPath) | default "/workspace/shared" | quote }}
         resources:
           requests:
             cpu: 50m
@@ -355,6 +389,14 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
+      volumes:
+      - name: shared-codebase
+        {{- if and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.usePvc }}
+        persistentVolumeClaim:
+          claimName: gdc-dev-shared-codebase-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

@@ -67,7 +67,11 @@ epp:
       cpu: "1000m"
       memory: "512Mi"
 
-# Model-Tier InferencePools (Gemma 4 26B MoE + Gemma 4 31B Dense)
+# Default fallback pool key when x-ai-eg-model does not match an explicit pool rule
+# Automatically falls back to the first enabled pool in .Values.pools if this key is absent
+defaultPool: "vllm26b"
+
+# Model-Tier InferencePools (Gemma 4 26B MoE + Gemma 4 31B Dense, or custom model pools)
 pools:
   vllm26b:
     enabled: true
@@ -99,6 +103,7 @@ pools:
 # Per-User Token Rate Limiting via Envoy BackendTrafficPolicy + llmRequestCosts
 tokenRateLimit:
   enabled: true
+  type: "Local" # Set to "Global" when Envoy Gateway is backed by a cluster Redis rate-limit service
   userHeader: "X-User-ID"
   limit: 50000
   unit: "Hour"

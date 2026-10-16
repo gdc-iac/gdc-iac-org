@@ -56,6 +56,18 @@
         "modelRoutingConfig": {
           "type": "string"
         },
+        "redisUrl": {
+          "type": "string"
+        },
+        "tier1ModelTag": {
+          "type": "string"
+        },
+        "tier2ModelTag": {
+          "type": "string"
+        },
+        "enforceParameterOverrides": {
+          "type": "boolean"
+        },
         "envoyInferencePool": {
           "type": "object",
           "properties": {

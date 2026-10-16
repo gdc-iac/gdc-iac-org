@@ -72,6 +72,14 @@ spec:
           value: {{ .Values.apps.keycloakUrl | default "http://keycloak-svc:8080/auth/realms/gdc-rag-realm" | quote }}
         - name: GATEWAY_STATE_FILE
           value: {{ .Values.apps.gatewayStateFile | default "/tmp/gemma_gateway_state.json" | quote }}
+        - name: REDIS_URL
+          value: {{ .Values.apps.redisUrl | default "" | quote }}
+        - name: TIER1_MODEL_TAG
+          value: {{ .Values.apps.tier1ModelTag | default "gemma4:26b" | quote }}
+        - name: TIER2_MODEL_TAG
+          value: {{ .Values.apps.tier2ModelTag | default "gemma4:31b" | quote }}
+        - name: ENFORCE_PARAMETER_OVERRIDES
+          value: {{ if hasKey .Values.apps "enforceParameterOverrides" }}{{ .Values.apps.enforceParameterOverrides | quote }}{{ else }}"true"{{ end }}
         {{- $rawEnvoyUrl := "" }}
         {{- if .Values.apps.envoyInferencePool }}
         {{- $rawEnvoyUrl = coalesce .Values.apps.envoyInferencePool.serviceUrl .Values.apps.envoyInferencePool.url "" }}
