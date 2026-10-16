@@ -787,6 +787,19 @@ def verify_api_auth(request: Request) -> None:
     # 2. If Keycloak OIDC is enabled, require and verify the Bearer JWT, signed session cookie,
     #    or verified identity header forwarded by an in-cluster backend (gemma-client / p13-gdc-dev).
     if enable_oidc:
+        effective_bearer = "" if bearer_token == "gdc-no-auth-required" else bearer_token
+        if effective_bearer:
+            claims = _verify_oidc_jwt(effective_bearer)
+            verified_user = claims.get("preferred_username") or claims.get("sub")
+            if not verified_user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="OIDC token missing subject/username claim",
+                )
+            request.state.verified_user_id = str(verified_user)
+            request.state.verified_roles = claims.get("realm_access", {}).get("roles", [])
+            return
+
         cookie_user = request.cookies.get("gateway_auth_user", "").strip()
         cookie_role = request.cookies.get("gateway_auth_role", "").strip().lower()
         cookie_sig = request.cookies.get("gateway_auth_sig", "").strip()
@@ -795,8 +808,7 @@ def verify_api_auth(request: Request) -> None:
             request.state.verified_roles = [cookie_role]
             return
 
-        effective_bearer = "" if bearer_token == "gdc-no-auth-required" else bearer_token
-        token_candidate = effective_bearer or request.cookies.get("gateway_oidc_token", "").strip()
+        token_candidate = request.cookies.get("gateway_oidc_token", "").strip()
         if not token_candidate:
             forwarded_user = (
                 request.headers.get("X-Authenticated-User")
@@ -983,6 +995,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 
 class UpdateConfigRequest(BaseModel):
+    model_config = {"protected_namespaces": ()}
     temperature: float = None
     top_p: float = None
     frequency_penalty: float = None
@@ -1799,7 +1812,7 @@ async def update_config(
         )
     persist_shared_state()
     logger.info(f"Configuration updated: {CURRENT_STATE}")
-    return {"status": "success", "new_state": CURRENT_STATE}
+    return {"status": "success", "new_state": CURRENT_STATE, "state": CURRENT_STATE}
 
 
 class AdminBlockBody(BaseModel):
