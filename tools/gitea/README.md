@@ -129,6 +129,7 @@ For workflow job images not referenced directly in the Pod `image:` fields (such
 
 ```bash
 for IMAGE in \
+  "alpine:latest" \
   "gitea/runner:nightly" \
   "gitea/runner-images:ubuntu-latest" \
   "ghcr.io/helmfile/helmfile:v1.2.1" \
@@ -398,7 +399,7 @@ kubectl apply -n "${NAMESPACE:?}" -f gitea-runner.yaml
 
 ## 6. Verify Runner Registration and Test CI Workflow
 
-### Check Runner Logs and Status
+### Step 6.1: Check Runner Logs and Status
 
 ```bash
 kubectl logs -n "${NAMESPACE:?}" statefulset/gitea-runner -c runner
@@ -414,13 +415,18 @@ level=info msg="poller: waiting for tasks..."
 
 In the Gitea Web UI (**Site Administration** -> **Actions** -> **Runners**), verify that `k8s-standard-runner` appears with status **Idle**.
 
-### Run a Sample Workflow
+### Step 6.2: Run a Sample Workflow
 
 Create `.gitea/workflows/verify.yaml` in any Gitea repository with Actions enabled:
 
 ```yaml
 name: Verify GDC Standard Cluster Runner
-on: [push]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   job-test:
@@ -439,10 +445,44 @@ jobs:
       - name: kubectl crds
         run: |
           kubectl get crds
+      - name: Clone Repository
+        uses: builtin:checkout
 ```
 ---
 
-## 7. Prepare Gitea repository
+## 7. Prepare Gitea actions repository
+
+This is an optional step that allows you to use pre built gitea actions in your workflows. In an air-gapped environment, this means you need to manually mirror the action repositories to your Gitea instance.
+
+
+### Step 7.1: Create an actions Organization
+In your air-gapped Gitea instance, create a new organization exactly named `actions`.
+### Step 7.2: Manually Import/Mirror the Action Repositories
+Since you cannot use Gitea's automatic online pull mirror feature in a completely disconnected network, you must manually bring the repositories into your air-gapped system (via a USB drive, secure transfer gateway, or internal registry):
+On an internet-connected machine, clone the action repo with its tags:
+
+ ```bash
+
+ git clone --mirror https://github.com/actions/checkout.git
+```
+Transfer the mirrored repository into your air-gapped network.
+
+Push the repository to your local Gitea instance under the actions organization you created:
+
+ ```bash
+git -c safe.bareRepository=all push ssh://<<GITEA_SSH_URL>>/actions/checkout.git 'refs/heads/*:refs/heads/*'
+git -c safe.bareRepository=all push ssh://<<GITEA_SSH_URL>>/actions/checkout.git 'refs/tags/*:refs/tags/*'
+```
+### Step 7.3: Configure your app.ini
+By default, Gitea looks for actions on GitHub. You must configure your Gitea instance's configuration file (`custom/conf/app.ini`) to search locally first:
+
+```ini 
+[actions]
+ENABLED = true
+DEFAULT_ACTIONS_URL = self
+```
+
+## 8. Prepare Foundations repository
 
 Once Gitea and `act_runner` are operational, you can host and automate your GDC Landing Zone configuration by initializing a dedicated Git repository from [`../../foundations/`](../../foundations/README.md) (driven by [`../../foundations/helmfile.yaml`](../../foundations/helmfile.yaml)).
 
