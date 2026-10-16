@@ -237,6 +237,13 @@ admission webhook "customroles.iam.global.gdc.goog" denied the request: error wh
 
 ## CI/CD Automation Strategy (Staged Execution Samples)
 
+### Argo CD
+ArgoCD has support for kustomize/manifests/helm chart by itself however [Argo CD integration with Helmfile](https://helmfile.readthedocs.io/en/latest/integrations/#argocd-integration) allows to use Helmfile features (like variable interpolation, multiple environment support, etc.) with ArgoCD. One of the patterns is to manage applications with ArgoCD, while letting Helmfile manage infrastructure-related components (e.g Projects, clusters, IAM roles, etc) and deploying ArgoCD itself.
+
+### Gitea
+Detailed Gitea installation and Helmfile foundations CD guide is available [here](../tools/gitea/README.md).
+
+### Gitlab CI/CD Jobs
 Deploy orchestrated stages configurations sequentially via this GitLab Pipeline Job sample (`.gitlab-ci.yml`):
 
 ```yaml
