@@ -284,6 +284,10 @@ def main():
     for stage_marker in ("Architect", "Coder", "Reviewer"):
         assert stage_marker in reply4, f"Swarm reply missing 3-stage section '{stage_marker}': {reply4[:200]}"
     assert "```python" in reply4, "Swarm reply must contain a runnable ```python code block"
+    swarm_artifacts = res4.get("swarm_artifacts") or []
+    if swarm_artifacts:
+        assert len(swarm_artifacts) == 3, f"Expected 3 swarm_artifacts, got {len(swarm_artifacts)}"
+        print(f"  {GREEN}✓ Swarm Persona Deliverables verified: {[a.get('filename') for a in swarm_artifacts]}{RESET}")
     print(f"{GREEN}✅ PASS: Swarm Coordinator executed 3-stage (Architect -> Coder -> Reviewer) pipeline in {elapsed4:.2f}s{RESET}\n")
     scores.append(("🐝 Multi-Agent Swarm Pipeline", "PASS", f"{elapsed4:.2f}s"))
 
@@ -426,6 +430,9 @@ def main():
     # UI actions verification
     html_actions = mod.render_workspace_ui("default-workspace", "dev-user")
     assert "saveResponseAsFile(" in html_actions, "saveResponseAsFile JS handler missing"
+    assert "saveSwarmPersonaOutput(" in html_actions, "saveSwarmPersonaOutput JS handler missing"
+    assert "autoCreateAllSwarmFiles(" in html_actions, "autoCreateAllSwarmFiles JS handler missing"
+    assert "saveCodeBlockAsFile(" in html_actions, "saveCodeBlockAsFile JS handler missing"
     assert "💾 Save as File" in html_actions, "Save as File button missing"
     assert "📋 Copy All" in html_actions, "Copy All button missing"
     assert "architecture.md" in html_actions, "Default architecture.md target missing"

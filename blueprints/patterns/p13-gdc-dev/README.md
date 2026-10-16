@@ -612,15 +612,17 @@ To test and demonstrate the Multi-Agent Swarm directly in the web browser interf
   * Synthesizes `test_main.py` with parametrized assertions.
   * Possesses sandbox execution permissions (`run_terminal_command`) for running test suites, without direct code mutation permissions.
 
-#### Step 4: 🐝 Multi-Agent Swarm Mode — Autonomous 3-Stage Pipeline
+#### Step 4: 🐝 Multi-Agent Swarm Mode — Autonomous 3-Stage Pipeline & 1-Click Auto-Create All Files
 * **Dropdown Selection:** Role = `[ 🐝 Swarm (Collaborative) ]` | Model = `[ 🚀 26b (Fast MoE) ]`
 * **Prompt to Enter:**
   ```text
-  Build a sovereign key-value cache with TTL expiration in cache.py and verify it with a unit test.
+  Build a complete CLI utility in rate_limiter.py with argument parsing and unit tests that calculates token rate-limit budgets per tenant.
   ```
 * **Expected UI Result:**
   * Displays `[ 🐝 Multi-Agent Swarm ]` badge in purple.
-  * Coordinates the 3-stage lifecycle: Architect designs architecture -> Coder generates implementation and diff card -> Reviewer generates test suite.
+  * Coordinates the 3-stage lifecycle (`### 📐 1. [Architect Plan]`, `### 💻 2. [Coder Implementation]`, `### 🔍 3. [Reviewer QA & Verification]`) with 3 distinct persona deliverables (`rate_limiter_architecture.md`, `rate_limiter.py`, and `test_rate_limiter.py`).
+  * **1-Click `⚡ Auto-Create All Swarm Files (3)`:** Clicking **`⚡ Auto-Create All Swarm Files (3)`** in the **`🐝 Swarm Persona Deliverables (3 Agents)`** bar creates and saves all 3 files directly to the workspace in one click, updates the Explorer tree, and opens `rate_limiter.py` in the editor.
+  * **Per-Persona `💾 Save as...` Controls:** Each persona stage header (`📐 Architect`, `💻 Coder`, `🔍 Reviewer`), each fenced code block header, and the Swarm Deliverables bar provide individual **`💾 Save as...`** buttons pre-filled with that persona's target filename.
 
 #### Step 5: ↩️ 1-Click Code Rollback
 * **Action:**
