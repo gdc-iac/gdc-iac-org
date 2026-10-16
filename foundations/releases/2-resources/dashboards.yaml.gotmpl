@@ -31,8 +31,11 @@ releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
     {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
     {{- $zonalProjects := $tenantConfig | get "projects" list }}
-    {{- $allProjects := concat $globalProjects $zonalProjects }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenProjects := dict }}
     {{- range $project := $allProjects }}
+      {{- if not (hasKey $seenProjects $project.name) }}
+        {{- $_ := set $seenProjects $project.name true }}
       {{- $dashboards := list }}
       {{- $hasExplicitDashboards := false }}
       
@@ -229,6 +232,7 @@ releases:
           {{- end }}
           - dashboards: {{ $dedupedDashboards | toJson }}
             namespace: {{ $project.name }}
+      {{- end }}
       {{- end }}
     {{- end }}
   {{- end }}

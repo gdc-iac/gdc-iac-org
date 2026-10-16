@@ -30,10 +30,12 @@ releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
     {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
     {{- $zonalProjects := $tenantConfig | get "projects" list }}
-    {{- $allProjects := concat $globalProjects $zonalProjects }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenProjects := dict }}
 
     {{- range $project := $allProjects }}
-      {{- if and $project.resources (hasKey $project.resources "backup_repositories") }}
+      {{- if and (not (hasKey $seenProjects $project.name)) $project.resources (hasKey $project.resources "backup_repositories") }}
+        {{- $_ := set $seenProjects $project.name true }}
       - name: {{ $project.name }}-backup-repos
         chart: {{ $vals | get "gdc_backup_repositories_chart_path" "../../../charts/gdc-backup-repositories" }}
         {{- if ($vals | get "gdc_backup_repositories_chart_version" "") }}
