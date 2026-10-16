@@ -19,15 +19,19 @@ environments:
 {{- $root := requiredEnv "PWD" }}
 {{- range (readDirEntries (printf "%s/bases/environments" $root)) }}
   {{- if .IsDir }}
-  {{- $envName := .Name }}
+    {{- $envName := .Name }}
   {{ $envName }}:
     values:
       {{- $envPath := printf "%s/bases/environments/%s" $root $envName }}
+      
+      # 1. Load standard environment config YAML files
       {{- range (readDirEntries $envPath) }}
         {{- if and (not .IsDir) (hasSuffix ".yaml" .Name) }}
       - {{ $root }}/bases/environments/{{ $envName }}/{{ .Name }}
         {{- end }}
       {{- end }}
+      
+      # 2. Load nested sub-directory config YAML files
       {{- range (readDirEntries $envPath) }}
         {{- if .IsDir }}
           {{- $subDirName := .Name }}
@@ -39,6 +43,8 @@ environments:
           {{- end }}
         {{- end }}
       {{- end }}
+      
+      # 3. Inject global environment metadata
       {{- $zones := list }}
       {{- range (readDirEntries $envPath) }}
         {{- if .IsDir }}
@@ -50,10 +56,41 @@ environments:
       - zones: {{ $zones | toJson }}
       - environment_name: {{ $envName }}
 
-  {{- end }}
+      # 4. Dynamically generate chart paths and version variables (Aligned to exactly 4 spaces under values:)
+      {{- $chartsConfig := readFile (printf "%s/charts.yaml" $envPath) | fromYaml }}
+      {{- if and (hasKey $chartsConfig "gdc_charts") (hasKey $chartsConfig "gdc_charts_root") }}
+        {{- $gdcChartsRoot := $chartsConfig.gdc_charts_root }}
+        {{- $gdcCharts := $chartsConfig.gdc_charts }}
+        {{- range $item := $gdcCharts }}
+          {{- $chartName := "" }}
+          {{- $chartVersion := "" }}
+          {{- if kindIs "string" $item }}
+            {{- $chartName = $item }}
+          {{- else if kindIs "map" $item }}
+            {{- if hasKey $item "version" }}
+              {{- $chartVersion = index $item "version" }}
+              {{- range $k, $v := $item }}
+                {{- if ne $k "version" }}
+                  {{- $chartName = $k }}
+                {{- end }}
+              {{- end }}
+            {{- else }}
+              {{- range $k, $v := $item }}
+                {{- $chartName = $k }}
+                {{- if kindIs "map" $v }}
+                  {{- $chartVersion = index $v "version" }}
+                {{- else if kindIs "string" $v }}
+                  {{- $chartVersion = $v }}
+                {{- end }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+          {{- $chartVarPrefix := $chartName | replace "-" "_" }}
+      - {{ $chartVarPrefix }}_chart_path: "{{ $gdcChartsRoot }}/{{ $chartName }}"
+          {{- if $chartVersion }}
+      - {{ $chartVarPrefix }}_chart_version: "{{ $chartVersion }}"
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
 {{- end }}
-
-
-
-
-
