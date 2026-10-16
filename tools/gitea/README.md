@@ -256,14 +256,30 @@ data:
                   items:
                     - key: config
                       path: config
+              - name: trust-store-volume
+                secret:
+                  secretName: trust-store-root-ext
+              - name: harbor-creds-volume
+                secret:
+                  secretName: harbor001-creds
+                  items:
+                    - key: .dockerconfigjson
+                      path: config.json
             containers:
               - name: job
                 env:
                   - name: KUBECONFIG
                     value: /root/.kube/config
+                  - name: DOCKER_CONFIG
+                    value: /root/.docker
                 volumeMounts:
                   - name: kubeconfig-volume
                     mountPath: /root/.kube
+                  - name: trust-store-volume
+                    mountPath: /etc/ssl/certs/
+                  - name: harbor-creds-volume
+                    mountPath: /root/.docker
+
 EOF
 ```
 
