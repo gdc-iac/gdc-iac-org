@@ -1,9 +1,12 @@
-# GDC AG Foundations
+# GDC AG Foundations with Helmfile
 
 Infrastructure-as-Code implementation for automating operational configurations inside [Google Distributed Cloud air gapped Organization](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/resource-hierarchy#organization) utilizing Helmfile pipelines orchestrations. The organization is the top-level resource in the GDC resource hierarchy and defines a security boundary that encloses infrastructure resources to be administered together by this code.
 
 ---
+## Foundations (Helmfile) vs Foundations-argo (ArgoCD)
+For side by side comparison and detailed differences between the two approaches see [Foundations-argo (ArgoCD) vs Foundations (Helmfile)](../foundations-argo/README.md).
 
+---
 ## Core Concepts
 
 The system groups environment resources and setups into execution layers triggered sequentially:

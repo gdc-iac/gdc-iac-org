@@ -1,0 +1,166 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Alternative single-resource ApplicationSet that generates all Foundations stage Applications
+# across Global, Zonal, and User Cluster endpoints with ordered sync waves.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: gdc-foundations-dev
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          # Stage 0: 0-bootstrap (Wave 0 -> Global API)
+          - name: 0-bootstrap-iac-iam-global
+            stage: 0-bootstrap
+            wave: "0"
+            cluster: gdc-global
+            namespace: platform
+            chartPath: charts/gdc-iam-role-bindings
+            valuesFile: foundations-argo/environments/dev/0-bootstrap/iac-iam-global.yaml
+          - name: 0-bootstrap-iac-iam-project
+            stage: 0-bootstrap
+            wave: "0"
+            cluster: gdc-global
+            namespace: iac-root
+            chartPath: charts/gdc-iam-role-bindings
+            valuesFile: foundations-argo/environments/dev/0-bootstrap/iac-iam-project.yaml
+
+          # Stage 1: 0-org-setup (Wave 1 -> Global API)
+          - name: 0-org-setup-tenant-1-iam
+            stage: 0-org-setup
+            wave: "1"
+            cluster: gdc-global
+            namespace: platform
+            chartPath: charts/gdc-iam-role-bindings
+            valuesFile: foundations-argo/environments/dev/0-org-setup/tenant-1-iam.yaml
+
+          # Stage 2: 1-project-factory (Wave 2: Projects -> Wave 3: Project IAM, SAs, NetPols -> Global API)
+          - name: 1-project-factory-mellons-prj
+            stage: 1-project-factory
+            wave: "2"
+            cluster: gdc-global
+            namespace: platform
+            chartPath: charts/gdc-projects
+            valuesFile: foundations-argo/environments/dev/1-project-factory/mellons-prj-project.yaml
+          - name: 1-project-factory-mellons-prj-iam
+            stage: 1-project-factory
+            wave: "3"
+            cluster: gdc-global
+            namespace: mellons-prj
+            chartPath: charts/gdc-iam-role-bindings
+            valuesFile: foundations-argo/environments/dev/1-project-factory/mellons-prj-iam.yaml
+          - name: 1-project-factory-mellons-prj-sa
+            stage: 1-project-factory
+            wave: "3"
+            cluster: gdc-global
+            namespace: mellons-prj
+            chartPath: charts/gdc-project-service-accounts
+            valuesFile: foundations-argo/environments/dev/1-project-factory/mellons-prj-sa.yaml
+          - name: 1-project-factory-mellons-prj-netpols
+            stage: 1-project-factory
+            wave: "3"
+            cluster: gdc-global
+            namespace: mellons-prj
+            chartPath: charts/gdc-project-network-policies
+            valuesFile: foundations-argo/environments/dev/1-project-factory/mellons-prj-netpols.yaml
+
+          # Stage 3: 2-resources (Wave 4 -> Zonal Management API: gdc-zone1)
+          - name: 2-resources-zone1-mellons-harbors
+            stage: 2-resources
+            wave: "4"
+            cluster: gdc-zone1
+            namespace: mellons-prj
+            chartPath: charts/gdc-harbors
+            valuesFile: foundations-argo/environments/dev/2-resources/zone1/mellons-prj-harbors.yaml
+          - name: 2-resources-zone1-mellons-buckets
+            stage: 2-resources
+            wave: "4"
+            cluster: gdc-zone1
+            namespace: mellons-prj
+            chartPath: charts/gdc-buckets
+            valuesFile: foundations-argo/environments/dev/2-resources/zone1/mellons-prj-buckets.yaml
+          - name: 2-resources-zone1-mellons-vms
+            stage: 2-resources
+            wave: "4"
+            cluster: gdc-zone1
+            namespace: mellons-prj
+            chartPath: charts/gdc-vm
+            valuesFile: foundations-argo/environments/dev/2-resources/zone1/mellons-prj-vms.yaml
+
+          # Stage 4: 3-clusters (Wave 5 -> Zonal Management API: gdc-zone1)
+          - name: 3-clusters-zone1-tenant-1
+            stage: 3-clusters
+            wave: "5"
+            cluster: gdc-zone1
+            namespace: platform
+            chartPath: charts/gdc-clusters
+            valuesFile: foundations-argo/environments/dev/3-clusters/zone1/tenant-1-clusters.yaml
+
+          # Stage 5: 4-notebooks (Wave 6 -> Zonal Management API: gdc-zone1)
+          - name: 4-notebooks-zone1-tenant-1
+            stage: 4-notebooks
+            wave: "6"
+            cluster: gdc-zone1
+            namespace: mellons-prj
+            chartPath: charts/gdc-notebooks
+            valuesFile: foundations-argo/environments/dev/4-notebooks/zone1/tenant-1-notebooks.yaml
+
+          # Stage 6: 5-workload-factory (Wave 7 -> User Cluster API: gdc-user-shared)
+          - name: 5-workload-factory-zone1-mellons-p1-webapp
+            stage: 5-workload-factory
+            wave: "7"
+            cluster: gdc-user-shared
+            namespace: mellons-prj
+            chartPath: blueprints/patterns/p1-resilient-3-tier-webapp/chart
+            valuesFile: foundations-argo/environments/dev/5-workload-factory/zone1/mellons-p1-webapp.yaml
+  template:
+    metadata:
+      name: 'dev-{{ .name }}'
+      namespace: argocd
+      labels:
+        environment: dev
+        stage: '{{ .stage }}'
+        targetCluster: '{{ .cluster }}'
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{ .wave }}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: gdc-foundations
+      sources:
+        - repoURL: http://gitea.gitea.svc:80/org-12345/gdc-iac-org.git
+          targetRevision: main
+          ref: values
+        - repoURL: http://gitea.gitea.svc:80/org-12345/gdc-iac-org.git
+          targetRevision: main
+          path: '{{ .chartPath }}'
+          helm:
+            valueFiles:
+              - '$values/{{ .valuesFile }}'
+      destination:
+        name: '{{ .cluster }}'
+        namespace: '{{ .namespace }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+          - RespectIgnoreDifferences=true
