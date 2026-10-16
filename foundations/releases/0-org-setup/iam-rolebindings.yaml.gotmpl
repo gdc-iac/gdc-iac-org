@@ -48,9 +48,9 @@ releases:
       {{- end }}
 
     - name: {{ $tenantName }}-iam-rolebindings
-      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
-      {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
-      version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
+      chart: {{ $vals | get "gdc_iam_role_bindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
+      {{- if ($vals | get "gdc_iam_role_bindings_chart_version" "") }}
+      version: {{ $vals | get "gdc_iam_role_bindings_chart_version" | quote }}
       {{- end }}
       labels:
         stage: 0-org-setup
