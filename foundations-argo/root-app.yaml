@@ -1,0 +1,42 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Root "App-of-Apps" Application that orchestrates all Foundations stages (0-bootstrap through 5-workload-factory)
+# in sequential order using argocd.argoproj.io/sync-wave annotations.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gdc-foundations-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: gdc-foundations
+  source:
+    repoURL: http://gitea.gitea.svc:80/org-12345/gdc-iac-org.git
+    targetRevision: main
+    path: foundations-argo/apps
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
