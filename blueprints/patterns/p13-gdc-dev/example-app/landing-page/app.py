@@ -25,6 +25,7 @@ import io
 import zipfile
 import difflib
 import re
+from typing import Any, Dict, List, Optional, Tuple
 from http.server import ThreadingHTTPServer, HTTPServer, BaseHTTPRequestHandler
 
 import hashlib
@@ -754,42 +755,40 @@ def synthesize_reviewer_test_code(prompt: str, target_file: str) -> str:
         )
 
 
-def synthesize_swarm_response(prompt: str, filename: str = "main.py", raw_reply: str = "", error_note: str = "") -> str:
-    """Synthesizes or formats a structured 3-stage Multi-Agent Swarm response (Architect -> Coder -> Reviewer)."""
+def _resolve_swarm_target_filenames(prompt: str, filename: str = "main.py") -> Tuple[str, str, str]:
+    """Resolves (arch_md_filename, coder_py_filename, reviewer_test_py_filename) from prompt and active file."""
     p_low = (prompt or "").lower()
     target_py = "rate_limiter.py"
     m_py = re.search(r'([a-zA-Z0-9_\-\./]+\.py)', prompt or "")
     if m_py:
         candidate = m_py.group(1).split("/")[-1]
+        if candidate.startswith("test_"):
+            candidate = candidate[5:] or "solution.py"
         if candidate != "main.py" or "main.py" in p_low:
             target_py = candidate
     elif "retry" in p_low or "backoff" in p_low:
         target_py = "retry_backoff.py"
     elif "cache" in p_low or "ttl" in p_low:
         target_py = "cache.py"
+    elif "health" in p_low:
+        target_py = "health_check.py"
     elif filename and filename.endswith(".py") and filename != "main.py":
-        target_py = filename
+        target_py = filename.split("/")[-1]
 
-    clean_reply = (raw_reply or "").strip()
-    if clean_reply and not clean_reply.startswith("⚙️ Tool executed:"):
-        has_arch = any(k in clean_reply for k in ("Architect", "📐"))
-        has_coder = any(k in clean_reply for k in ("Coder", "💻"))
-        has_rev = any(k in clean_reply for k in ("Reviewer", "🔍"))
-        if has_arch and has_coder and has_rev:
-            return clean_reply
-        return (
-            f"### 📐 1. [Architect Plan] — System Design & Module Specification (`{target_py}`)\n"
-            f"- **Target Module**: `{target_py}` (self-contained Python standard-library module for air-gapped GDC)\n"
-            f"- **Architecture**: Separation of core domain logic, CLI entrypoint, and automated `unittest` verification suite.\n\n"
-            f"### 💻 2. [Coder Implementation] & 🔍 3. [Reviewer QA Suite]\n\n"
-            f"{clean_reply}\n\n"
-            f"*Click **`💾 Save as File`** below to save `{target_py}` to the workspace, then click **`▶ Run Code`** to execute both the implementation and unit test suite.*"
-        )
+    base_stem = target_py[:-3] if target_py.endswith(".py") else target_py
+    arch_md = f"{base_stem}_architecture.md"
+    test_py = f"test_{base_stem}.py" if not base_stem.startswith("test_") else f"{base_stem}.py"
+    return arch_md, target_py, test_py
 
-    prefix = f"*({error_note})*\n\n" if error_note else ""
+
+def _build_default_swarm_stage_contents(prompt: str, arch_md: str, target_py: str, test_py: str) -> Tuple[str, str, str]:
+    """Returns (arch_markdown_doc, coder_py_code, reviewer_test_py_code) for a given target module."""
+    p_low = (prompt or "").lower()
+    base_stem = target_py[:-3] if target_py.endswith(".py") else target_py
+
     if "retry" in p_low or "backoff" in p_low or target_py == "retry_backoff.py":
-        code_body = (
-            f"# {target_py} - Sovereign Exponential Backoff Retry Decorator & QA Suite\n"
+        coder_code = (
+            f"# {target_py} - Sovereign Exponential Backoff Retry Decorator\n"
             f"import functools\n"
             f"import time\n"
             f"import unittest\n"
@@ -839,13 +838,37 @@ def synthesize_swarm_response(prompt: str, filename: str = "main.py", raw_reply:
             f"    print('Running Sovereign Retry Decorator QA Suite...')\n"
             f"    unittest.main(verbosity=2)\n"
         )
+        reviewer_code = (
+            f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+            f"import unittest\n"
+            f"from {base_stem} import retry_with_backoff\n\n"
+            f"class TestRetryBackoffQA(unittest.TestCase):\n"
+            f"    def test_transient_recovery(self):\n"
+            f"        attempts = {{'n': 0}}\n"
+            f"        @retry_with_backoff(max_retries=3, base_delay=0.01)\n"
+            f"        def op():\n"
+            f"            attempts['n'] += 1\n"
+            f"            if attempts['n'] < 2:\n"
+            f"                raise ValueError('temporary fault')\n"
+            f"            return 'recovered'\n"
+            f"        self.assertEqual(op(), 'recovered')\n"
+            f"        self.assertEqual(attempts['n'], 2)\n\n"
+            f"    def test_exhaustion_raises_original_exception(self):\n"
+            f"        @retry_with_backoff(max_retries=1, base_delay=0.01)\n"
+            f"        def fail_op():\n"
+            f"            raise RuntimeError('hard failure')\n"
+            f"        with self.assertRaises(RuntimeError):\n"
+            f"            fail_op()\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
         arch_points = (
-            f"- **Target Artifact**: `{target_py}`\n"
+            f"- **Target Artifacts**: `{arch_md}` (Architecture), `{target_py}` (Implementation), `{test_py}` (QA Tests)\n"
             f"- **Design Pattern**: Parametrized `@retry_with_backoff(max_retries, base_delay, backoff_factor, exceptions)` decorator preserving function metadata via `functools.wraps`.\n"
             f"- **Air-Gapped Compliance**: Pure Python standard library (`functools`, `time`, `unittest`) with zero external dependencies."
         )
     elif "cache" in p_low or "ttl" in p_low or target_py == "cache.py":
-        code_body = (
+        coder_code = (
             f"# {target_py} - Sovereign In-Memory TTL Cache & QA Suite\n"
             f"import time\n"
             f"import unittest\n"
@@ -885,13 +908,33 @@ def synthesize_swarm_response(prompt: str, filename: str = "main.py", raw_reply:
             f"    print('Running Sovereign CacheService QA Suite...')\n"
             f"    unittest.main(verbosity=2)\n"
         )
+        reviewer_code = (
+            f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+            f"import time\n"
+            f"import unittest\n"
+            f"from {base_stem} import CacheService\n\n"
+            f"class TestCacheServiceQA(unittest.TestCase):\n"
+            f"    def test_crud_lifecycle(self):\n"
+            f"        cache = CacheService(default_ttl=5.0)\n"
+            f"        self.assertTrue(cache.set('k1', 'v1'))\n"
+            f"        self.assertEqual(cache.get('k1'), 'v1')\n"
+            f"        self.assertTrue(cache.delete('k1'))\n"
+            f"        self.assertIsNone(cache.get('k1'))\n\n"
+            f"    def test_ttl_boundary_eviction(self):\n"
+            f"        cache = CacheService(default_ttl=0.05)\n"
+            f"        cache.set('short_lived', 'data', ttl=0.05)\n"
+            f"        time.sleep(0.08)\n"
+            f"        self.assertIsNone(cache.get('short_lived'))\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
         arch_points = (
-            f"- **Target Artifact**: `{target_py}`\n"
+            f"- **Target Artifacts**: `{arch_md}` (Architecture), `{target_py}` (Implementation), `{test_py}` (QA Tests)\n"
             f"- **Design Pattern**: O(1) dictionary store mapping `key -> (value, expiry_epoch)` with lazy TTL eviction on `get()`.\n"
             f"- **Air-Gapped Compliance**: Pure Python standard library (`time`, `unittest`, `typing`)."
         )
     else:
-        code_body = (
+        coder_code = (
             f"# {target_py} - Sovereign Tenant Token Rate-Limiter CLI & QA Suite\n"
             f"import argparse\n"
             f"import json\n"
@@ -936,23 +979,198 @@ def synthesize_swarm_response(prompt: str, filename: str = "main.py", raw_reply:
             f"        if not result.wasSuccessful():\n"
             f"            raise SystemExit(1)\n"
         )
+        reviewer_code = (
+            f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+            f"import unittest\n"
+            f"from {base_stem} import calculate_tenant_budget\n\n"
+            f"class TestTenantRateLimiterQA(unittest.TestCase):\n"
+            f"    def test_nominal_budget_calculation(self):\n"
+            f"        res = calculate_tenant_budget('sector-9-intel', rpm_limit=60, avg_tokens_per_req=500)\n"
+            f"        self.assertEqual(res['tokens_per_minute_budget'], 30000)\n"
+            f"        self.assertEqual(res['burst_token_ceiling'], 37500)\n\n"
+            f"    def test_zero_or_negative_limits_rejected(self):\n"
+            f"        with self.assertRaises(ValueError):\n"
+            f"            calculate_tenant_budget('invalid-tenant', rpm_limit=0)\n"
+            f"        with self.assertRaises(ValueError):\n"
+            f"            calculate_tenant_budget('invalid-tenant', rpm_limit=10, avg_tokens_per_req=-1)\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
         arch_points = (
-            f"- **Target Artifact**: `{target_py}`\n"
-            f"- **Design Pattern**: Deterministic token-budget calculator (`calculate_tenant_budget`) paired with `argparse` CLI flags and embedded `unittest.TestCase` verification.\n"
+            f"- **Target Artifacts**: `{arch_md}` (Architecture), `{target_py}` (Implementation), `{test_py}` (QA Tests)\n"
+            f"- **Design Pattern**: Deterministic token-budget calculator (`calculate_tenant_budget`) paired with `argparse` CLI flags and standalone `unittest.TestCase` verification.\n"
             f"- **Air-Gapped Compliance**: Uses only Python standard library modules (`argparse`, `json`, `unittest`, `typing`)."
         )
+    return arch_points, coder_code, reviewer_code
 
+
+def build_swarm_artifacts(prompt: str, filename: str = "main.py", reply_text: str = "") -> List[Dict[str, str]]:
+    """
+    Extracts structured per-persona file artifacts from a 3-stage Swarm response so the user can
+    either save each persona's output individually or click 'Auto-Create All Swarm Files' at once.
+    """
+    arch_md, target_py, test_py = _resolve_swarm_target_filenames(prompt, filename)
+    default_arch, default_coder, default_reviewer = _build_default_swarm_stage_contents(
+        prompt, arch_md, target_py, test_py
+    )
+
+    text = (reply_text or "").strip()
+    # Split response into the 3 persona sections if present
+    arch_sec = ""
+    coder_sec = ""
+    rev_sec = ""
+
+    m_arch = re.search(
+        r"###\s*(?:📐\s*)?(?:1\.\s*)?\[?Architect[^\n]*\n([\s\S]*?)(?=###\s*(?:💻\s*)?(?:2\.\s*)?\[?Coder|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if m_arch:
+        arch_sec = m_arch.group(1).strip()
+
+    m_coder = re.search(
+        r"###\s*(?:💻\s*)?(?:2\.\s*)?\[?Coder[^\n]*\n([\s\S]*?)(?=###\s*(?:🔍\s*)?(?:3\.\s*)?\[?Reviewer|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if m_coder:
+        coder_sec = m_coder.group(1).strip()
+
+    m_rev = re.search(
+        r"###\s*(?:🔍\s*)?(?:3\.\s*)?\[?Reviewer[^\n]*\n([\s\S]*?)$",
+        text,
+        re.IGNORECASE,
+    )
+    if m_rev:
+        rev_sec = m_rev.group(1).strip()
+
+    # 1. Architect Markdown content
+    arch_body = arch_sec if arch_sec else default_arch
+    m_md_block = re.search(r"```(?:markdown|md)?\s*([\s\S]*?)```", arch_body, re.IGNORECASE)
+    if m_md_block and len(m_md_block.group(1).strip()) > 20:
+        arch_content = m_md_block.group(1).strip() + "\n"
+    else:
+        arch_content = (
+            f"# Architectural Design Specification: `{target_py}`\n\n"
+            f"## 1. Overview & Module Boundaries\n"
+            f"{arch_body}\n\n"
+            f"## 2. Generated Swarm Deliverables\n"
+            f"- **📐 Architect Specification**: `{arch_md}`\n"
+            f"- **💻 Coder Implementation**: `{target_py}`\n"
+            f"- **🔍 Reviewer QA Test Suite**: `{test_py}`\n"
+        )
+
+    # 2. Coder Python content
+    coder_blocks = re.findall(r"```(?:python|py)?\s*([\s\S]*?)```", coder_sec or text, re.IGNORECASE)
+    if coder_blocks:
+        # Pick the primary implementation block from coder_sec (or largest block overall)
+        chosen_coder = max(coder_blocks, key=lambda b: len(b.strip())).strip()
+        coder_content = sanitize_python_code(chosen_coder) + "\n"
+    else:
+        coder_content = default_coder
+
+    # 3. Reviewer QA Python test suite content
+    rev_blocks = re.findall(r"```(?:python|py)?\s*([\s\S]*?)```", rev_sec, re.IGNORECASE)
+    if rev_blocks:
+        chosen_rev = max(rev_blocks, key=lambda b: len(b.strip())).strip()
+        reviewer_content = sanitize_python_code(chosen_rev) + "\n"
+    else:
+        # Check if there is a second distinct Python block in the full text
+        all_py_blocks = re.findall(r"```(?:python|py)\s*([\s\S]*?)```", text, re.IGNORECASE)
+        if len(all_py_blocks) >= 2 and all_py_blocks[-1].strip() != coder_content.strip():
+            reviewer_content = sanitize_python_code(all_py_blocks[-1].strip()) + "\n"
+        elif "class Test" in coder_content or "def test_" in coder_content:
+            # Extract or wrap the test suite so test_<base>.py is a runnable standalone test module
+            base_stem = target_py[:-3] if target_py.endswith(".py") else target_py
+            m_test_cls = re.search(r"(class\s+Test[a-zA-Z0-9_]*\s*\([\s\S]*)", coder_content)
+            if m_test_cls:
+                reviewer_content = (
+                    f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+                    f"import unittest\n"
+                    f"from {base_stem} import *\n\n"
+                    f"{m_test_cls.group(1).strip()}\n"
+                )
+            else:
+                reviewer_content = default_reviewer
+        else:
+            reviewer_content = default_reviewer
+
+    return [
+        {
+            "stage": "architect",
+            "persona": "architect",
+            "label": "📐 Architect Agent",
+            "filename": arch_md,
+            "content": arch_content,
+            "description": "System Design & Architectural Specification (Markdown)",
+        },
+        {
+            "stage": "coder",
+            "persona": "coder",
+            "label": "💻 Coder Agent",
+            "filename": target_py,
+            "content": coder_content,
+            "description": "Runnable Python Implementation Module",
+        },
+        {
+            "stage": "reviewer",
+            "persona": "reviewer",
+            "label": "🔍 Reviewer / QA Agent",
+            "filename": test_py,
+            "content": reviewer_content,
+            "description": "Standalone Unit Test & QA Verification Suite",
+        },
+    ]
+
+
+def synthesize_swarm_response(prompt: str, filename: str = "main.py", raw_reply: str = "", error_note: str = "") -> str:
+    """Synthesizes or formats a structured 3-stage Multi-Agent Swarm response (Architect -> Coder -> Reviewer)."""
+    arch_md, target_py, test_py = _resolve_swarm_target_filenames(prompt, filename)
+    arch_points, coder_code, reviewer_code = _build_default_swarm_stage_contents(
+        prompt, arch_md, target_py, test_py
+    )
+
+    clean_reply = (raw_reply or "").strip()
+    if clean_reply and not clean_reply.startswith("⚙️ Tool executed:"):
+        has_arch = any(k in clean_reply for k in ("Architect", "📐"))
+        has_coder = any(k in clean_reply for k in ("Coder", "💻"))
+        has_rev = any(k in clean_reply for k in ("Reviewer", "🔍"))
+        if has_arch and has_coder and has_rev:
+            # Ensure Stage 3 (Reviewer) includes a standalone test code block if the model only output prose bullets
+            m_rev = re.search(r"(###\s*(?:🔍\s*)?(?:3\.\s*)?\[?Reviewer[\s\S]*$)", clean_reply, re.IGNORECASE)
+            if m_rev and "```" not in m_rev.group(1):
+                artifacts = build_swarm_artifacts(prompt, filename, clean_reply)
+                rev_art = next((a for a in artifacts if a["stage"] == "reviewer"), None)
+                rev_py = rev_art["content"].strip() if rev_art else reviewer_code.strip()
+                clean_reply = (
+                    clean_reply.rstrip()
+                    + f"\n\n```python\n{rev_py}\n```\n\n"
+                    + f"*Use **`⚡ Auto-Create All Swarm Files`** to generate `{arch_md}`, `{target_py}`, and `{test_py}` at once, or click any persona's **`💾 Save`** button.*"
+                )
+            return clean_reply
+        return (
+            f"### 📐 1. [Architect Plan] — System Design Specification (`{arch_md}`)\n"
+            f"{arch_points}\n\n"
+            f"### 💻 2. [Coder Implementation] — Module (`{target_py}`)\n\n"
+            f"{clean_reply}\n\n"
+            f"### 🔍 3. [Reviewer QA & Verification] — Test Suite (`{test_py}`)\n\n"
+            f"```python\n{reviewer_code.strip()}\n```\n\n"
+            f"*Use **`⚡ Auto-Create All Swarm Files`** below to create `{arch_md}`, `{target_py}`, and `{test_py}` in one click, or save each persona's output individually.*"
+        )
+
+    prefix = f"*({error_note})*\n\n" if error_note else ""
     return (
         f"{prefix}"
-        f"### 📐 1. [Architect Plan] — System Design & Modular Strategy\n"
+        f"### 📐 1. [Architect Plan] — System Design Specification (`{arch_md}`)\n"
         f"{arch_points}\n\n"
         f"### 💻 2. [Coder Implementation] — Self-Contained Module (`{target_py}`)\n\n"
-        f"```python\n{code_body}```\n\n"
-        f"### 🔍 3. [Reviewer QA & Verification]\n"
-        f"- **Boundary & Edge Cases Verified**: Nominal execution path, parameter validation, and failure/expiration handling.\n"
+        f"```python\n{coder_code}```\n\n"
+        f"### 🔍 3. [Reviewer QA & Verification] — Standalone Test Suite (`{test_py}`)\n"
+        f"- **Boundary & Edge Cases Verified**: Nominal execution path, parameter validation, and failure/expiration handling.\n\n"
+        f"```python\n{reviewer_code}```\n\n"
         f"- **How to Save & Execute**:\n"
-        f"  1. Click **`💾 Save as File`** below and confirm **`{target_py}`**.\n"
-        f"  2. Click **`▶ Run Code`** in the top-right editor bar (or run `python3 {target_py}` in the bottom terminal) to execute the implementation and unit tests."
+        f"  1. Click **`⚡ Auto-Create All Swarm Files`** below to automatically create **`{arch_md}`**, **`{target_py}`**, and **`{test_py}`** (or use the per-persona **`💾 Save`** buttons on each stage).\n"
+        f"  2. Click **`▶ Run Code`** in the top-right editor bar (or run `python3 {target_py}` / `pytest {test_py}` in the bottom terminal)."
     )
 
 
@@ -1275,13 +1493,13 @@ SWARM_PERSONAS = {
         "system_prompt": (
             "You are the GDC Dev Multi-Agent Swarm Coordinator in Google Distributed Cloud (gdc-dev) Air-Gapped. "
             "You orchestrate a specialized 3-agent developer team (📐 Architect, 💻 Coder, 🔍 Reviewer). "
-            "For every engineering request, coordinate all 3 perspectives in a single comprehensive response with these exact section headers:\n"
+            "For every engineering request, coordinate all 3 perspectives in a single comprehensive response with these exact section headers so each persona's output can be saved individually or auto-created as a 3-file bundle:\n"
             "### 📐 1. [Architect Plan]\n"
-            "Analyze the requirements, module boundaries, and technical strategy.\n\n"
+            "Analyze the requirements, module boundaries, API contracts, and technical strategy in structured Markdown suitable for saving as `<module>_architecture.md`.\n\n"
             "### 💻 2. [Coder Implementation]\n"
-            "Provide a complete, self-contained, runnable Python module (using only the Python standard library) inside a single ```python code block, including an embedded `unittest.TestCase` verification suite in the `if __name__ == '__main__':` block so the file can be saved and executed directly.\n\n"
+            "Provide a complete, self-contained, runnable Python implementation module (using only the Python standard library) inside a ```python code block starting with `# <module>.py`, including a CLI or smoke-test demo in `if __name__ == '__main__':`.\n\n"
             "### 🔍 3. [Reviewer QA & Verification]\n"
-            "Summarize the unit test coverage, edge-case assertions, and instructions to click '💾 Save as File' and '▶ Run Code'."
+            "Provide a standalone Python `unittest` verification suite inside a separate ```python code block starting with `# test_<module>.py` that imports `<module>` and tests all core methods and edge cases."
         ),
         "tools": ["read_file", "write_file", "apply_diff", "run_terminal_command", "list_directory", "create_directory"]
     }
@@ -1315,13 +1533,24 @@ AI_CSS = """
 .ai-code-container { margin: 8px 0; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; background: #0d1117; }
 .ai-code-header { background: #161b22; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; font-size: 11px; }
 .ai-code-lang { color: #8b949e; font-family: monospace; font-weight: bold; text-transform: uppercase; font-size: 10px; }
-.ai-code-actions { display: flex; gap: 4px; }
+.ai-code-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .btn-code-action { background: #21262d; border: 1px solid #363b42; color: #c9d1d9; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
 .btn-code-action:hover { background: #30363d; color: #58a6ff; border-color: #58a6ff; }
 .ai-inline-code { background: #21262d; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 11px; color: #79c0ff; }
-.ai-msg-actions { display: flex; gap: 6px; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 6px; }
+.ai-msg-actions { display: flex; gap: 6px; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 6px; flex-wrap: wrap; }
 .btn-msg-action { background: #21262d; border: 1px solid #363b42; color: #c9d1d9; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 500; }
 .btn-msg-action:hover { background: #30363d; color: #58a6ff; border-color: #58a6ff; }
+.ai-swarm-stage-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #161b22; border: 1px solid #30363d; border-left: 3px solid #a371f7; border-radius: 5px; padding: 5px 8px; margin: 10px 0 6px 0; font-size: 11px; font-weight: 600; color: #e6edf3; flex-wrap: wrap; }
+.ai-swarm-stage-architect { border-left-color: #58a6ff; }
+.ai-swarm-stage-coder { border-left-color: #3fb950; }
+.ai-swarm-stage-reviewer { border-left-color: #d29922; }
+.ai-swarm-deliverables-bar { margin-top: 10px; padding: 8px; background: #161b22; border: 1px solid #a371f755; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; }
+.ai-swarm-deliverables-title { font-size: 11px; font-weight: 700; color: #d2a8ff; display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ai-swarm-persona-buttons { display: flex; gap: 5px; flex-wrap: wrap; }
+.btn-swarm-autocreate { background: #238636; border: 1px solid #2ea043; color: #ffffff; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s ease; }
+.btn-swarm-autocreate:hover { background: #2ea043; border-color: #3fb950; }
+.btn-swarm-persona-save { background: #21262d; border: 1px solid #388bfd55; color: #c9d1d9; border-radius: 4px; padding: 3px 7px; font-size: 10px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; transition: all 0.15s ease; }
+.btn-swarm-persona-save:hover { background: #30363d; color: #58a6ff; border-color: #58a6ff; }
 .ai-input-box { display: flex; padding: 8px; background: #1e1e1e; border-top: 1px solid #383838; gap: 6px; align-items: center; }
 .ai-input { flex: 1; background: #2a2d2e; border: 1px solid #383838; color: #ffffff; padding: 6px 8px; border-radius: 4px; font-size: 12px; outline: none; }
 .ai-input:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -1483,7 +1712,13 @@ function extractCodeSnippet(text) {
     return sanitizeCodeSnippet(chosen);
 }
 
-function formatAiResponse(text) {
+function formatAiResponse(text, role, swarmArtifacts) {
+    const artifactMap = {};
+    if (Array.isArray(swarmArtifacts)) {
+        swarmArtifacts.forEach(item => {
+            if (item && item.persona) artifactMap[item.persona] = item;
+        });
+    }
     const parts = text.split(/(```[\\s\\S]*?```)/g);
     return parts.map(part => {
         const m = part.match(/```(\\w+)?\\s*([\\s\\S]*?)```/);
@@ -1491,7 +1726,7 @@ function formatAiResponse(text) {
             const lang = (m[1] || "code").toLowerCase();
             const rawCode = m[2].trim();
             const escapedCode = rawCode.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            const isCode = ["python", "py", "code", "json", "js", "sh", "bash"].includes(lang) || rawCode.includes("def ") || rawCode.includes("import ") || rawCode.includes("class ");
+            const isCode = ["python", "py", "code", "json", "js", "sh", "bash", "markdown", "md"].includes(lang) || rawCode.includes("def ") || rawCode.includes("import ") || rawCode.includes("class ");
             const insertBtn = isCode ?
                 '<button class="btn-code-action" onclick="insertCodeBlock(this)">📥 Insert into Editor</button>' : '';
             return '<div class="ai-code-container">' +
@@ -1499,15 +1734,46 @@ function formatAiResponse(text) {
                    '    <span class="ai-code-lang">' + lang + '</span>' +
                    '    <div class="ai-code-actions">' +
                    '      <button class="btn-code-action" onclick="copyCodeBlock(this)">📋 Copy</button>' +
+                   '      <button class="btn-code-action" onclick="saveCodeBlockAsFile(this)" title="Save this code block to a workspace file">💾 Save As...</button>' +
                    insertBtn +
                    '    </div>' +
                    '  </div>' +
                    '  <pre class="ai-code-block" style="margin:0; border:none; border-radius:0;"><code>' + escapedCode + '</code></pre>' +
                    '</div>';
         }
-        return part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                   .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
-                   .replace(/\\n/g, '<br>');
+        let htmlPart = part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                           .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>');
+        const archFile = (artifactMap.architect && artifactMap.architect.filename) ? artifactMap.architect.filename : "architecture.md";
+        const coderFile = (artifactMap.coder && artifactMap.coder.filename) ? artifactMap.coder.filename : "module.py";
+        const revFile = (artifactMap.reviewer && artifactMap.reviewer.filename) ? artifactMap.reviewer.filename : "test_module.py";
+        htmlPart = htmlPart.replace(
+            /###\\s*(?:📐\\s*)?(?:1[\\.\\)]\\s*)?\\[?Architect[^\\n<]*/gi,
+            function(match) {
+                return '<div class="ai-swarm-stage-header ai-swarm-stage-architect">' +
+                       '<span>' + match + '</span>' +
+                       '<button class="btn-swarm-persona-save" onclick="saveSwarmPersonaOutput(this, \\\'architect\\\', true)" title="Save Architect design specification as Markdown">💾 Save as... (' + archFile + ')</button>' +
+                       '</div>';
+            }
+        );
+        htmlPart = htmlPart.replace(
+            /###\\s*(?:💻\\s*)?(?:2[\\.\\)]\\s*)?\\[?Coder[^\\n<]*/gi,
+            function(match) {
+                return '<div class="ai-swarm-stage-header ai-swarm-stage-coder">' +
+                       '<span>' + match + '</span>' +
+                       '<button class="btn-swarm-persona-save" onclick="saveSwarmPersonaOutput(this, \\\'coder\\\', true)" title="Save Coder Python implementation module">💾 Save as... (' + coderFile + ')</button>' +
+                       '</div>';
+            }
+        );
+        htmlPart = htmlPart.replace(
+            /###\\s*(?:🔍\\s*)?(?:3[\\.\\)]\\s*)?\\[?Reviewer[^\\n<]*/gi,
+            function(match) {
+                return '<div class="ai-swarm-stage-header ai-swarm-stage-reviewer">' +
+                       '<span>' + match + '</span>' +
+                       '<button class="btn-swarm-persona-save" onclick="saveSwarmPersonaOutput(this, \\\'reviewer\\\', true)" title="Save Reviewer unit test suite">💾 Save as... (' + revFile + ')</button>' +
+                       '</div>';
+            }
+        );
+        return htmlPart.replace(/\\n/g, '<br>');
     }).join("");
 }
 
@@ -1522,6 +1788,188 @@ function copyCodeBlock(btn) {
         btn.style.color = "#3fb950";
         setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 2000);
     });
+}
+
+async function saveCodeBlockAsFile(btn) {
+    const container = btn.closest(".ai-code-container");
+    if (!container) return;
+    const codeEl = container.querySelector("code");
+    const code = codeEl ? codeEl.innerText : "";
+    if (!code) return;
+    const langEl = container.querySelector(".ai-code-lang");
+    const lang = langEl ? langEl.innerText.trim().toLowerCase() : "python";
+    let defaultName = "snippet.py";
+    const firstLineMatch = code.match(/^\\s*#\\s*([a-zA-Z0-9_\\-\\.]+\\.(?:py|md|sh|json|yaml|yml))/m);
+    if (firstLineMatch && firstLineMatch[1]) {
+        defaultName = firstLineMatch[1];
+    } else if (code.includes("unittest.TestCase") || code.includes("def test_")) {
+        defaultName = "test_module.py";
+    } else if (lang === "markdown" || lang === "md") {
+        defaultName = "architecture.md";
+    } else if (lang === "json") {
+        defaultName = "config.json";
+    } else if (lang === "sh" || lang === "bash") {
+        defaultName = "script.sh";
+    }
+    const chosen = prompt("Enter filename to save this code block to:", defaultName);
+    if (!chosen || !chosen.trim()) return;
+    const cleanFilename = chosen.trim();
+    try {
+        const data = await saveWorkspaceFile(cleanFilename, code);
+        if (typeof files !== "undefined") files[cleanFilename] = code;
+        if (typeof currentFile !== "undefined") currentFile = cleanFilename;
+        if (typeof renderFileList === "function") renderFileList();
+        if (typeof switchFile === "function") switchFile(cleanFilename);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("save " + cleanFilename, "Saved code block to " + cleanFilename + " (" + (data.bytes || code.length) + " bytes).", "");
+        }
+        const orig = btn.innerHTML;
+        btn.innerHTML = "✓ Saved " + cleanFilename;
+        btn.style.color = "#3fb950";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 2500);
+    } catch (err) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = "⚠️ Save failed";
+        btn.style.color = "#f85149";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 3000);
+    }
+}
+
+function resolveSwarmArtifactsForMsg(parentMsg) {
+    if (!parentMsg) return [];
+    const attrJson = parentMsg.getAttribute("data-swarm-artifacts");
+    if (attrJson) {
+        try {
+            const parsed = JSON.parse(attrJson);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {
+            console.warn("Failed to parse data-swarm-artifacts:", e);
+        }
+    }
+    const rawText = parentMsg.getAttribute("data-raw") || parentMsg.innerText || "";
+    let baseModule = "rate_limiter";
+    const pyMatch = rawText.match(/(?:#|`|\\b)([a-zA-Z0-9_-]+)\\.py\\b/i);
+    if (pyMatch && pyMatch[1] && pyMatch[1] !== "main" && !pyMatch[1].startsWith("test_")) {
+        baseModule = pyMatch[1];
+    } else if (rawText.toLowerCase().includes("retry") || rawText.toLowerCase().includes("backoff")) {
+        baseModule = "retry_backoff";
+    } else if (rawText.toLowerCase().includes("cache")) {
+        baseModule = "cache";
+    }
+    const archFile = baseModule + "_architecture.md";
+    const coderFile = baseModule + ".py";
+    const testFile = "test_" + baseModule + ".py";
+
+    const s1Idx = rawText.search(/###\\s*(?:📐\\s*)?(?:1[\\.\\)]\\s*)?\\[?Architect/i);
+    const s2Idx = rawText.search(/###\\s*(?:💻\\s*)?(?:2[\\.\\)]\\s*)?\\[?Coder/i);
+    const s3Idx = rawText.search(/###\\s*(?:🔍\\s*)?(?:3[\\.\\)]\\s*)?\\[?Reviewer/i);
+
+    const archChunk = (s1Idx !== -1 && s2Idx !== -1) ? rawText.slice(s1Idx, s2Idx).trim() : rawText;
+    const coderChunk = (s2Idx !== -1) ? rawText.slice(s2Idx, s3Idx !== -1 ? s3Idx : rawText.length).trim() : rawText;
+    const revChunk = (s3Idx !== -1) ? rawText.slice(s3Idx).trim() : rawText;
+
+    const coderCode = extractCodeSnippet(coderChunk) || coderChunk;
+    const revCode = extractCodeSnippet(revChunk) || revChunk;
+    return [
+        { persona: "architect", label: "📐 Architect Plan", filename: archFile, content: archChunk },
+        { persona: "coder", label: "💻 Coder Implementation", filename: coderFile, content: coderCode },
+        { persona: "reviewer", label: "🔍 Reviewer QA Suite", filename: testFile, content: revCode }
+    ];
+}
+
+async function saveSwarmPersonaOutput(btn, personaKey, askFilename = true) {
+    const parentMsg = btn.closest(".ai-msg-bot");
+    if (!parentMsg) return;
+    const artifacts = resolveSwarmArtifactsForMsg(parentMsg);
+    const target = artifacts.find(a => a.persona === personaKey);
+    if (!target) return;
+    let filename = target.filename;
+    if (askFilename) {
+        const chosen = prompt("Enter filename to save " + target.label + " output:", target.filename);
+        if (!chosen || !chosen.trim()) return;
+        filename = chosen.trim();
+    }
+    try {
+        const data = await saveWorkspaceFile(filename, target.content);
+        if (typeof files !== "undefined") files[filename] = target.content;
+        if (typeof currentFile !== "undefined") currentFile = filename;
+        if (typeof renderFileList === "function") renderFileList();
+        if (typeof switchFile === "function") switchFile(filename);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("save " + filename, "Saved " + target.label + " to " + filename + " (" + (data.bytes || target.content.length) + " bytes).", "");
+        }
+        const orig = btn.innerHTML;
+        btn.innerHTML = "✓ Saved " + filename + "!";
+        btn.style.color = "#3fb950";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 2500);
+    } catch (err) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = "⚠️ Save failed";
+        btn.style.color = "#f85149";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 3000);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("save " + filename, "", "Error saving file: " + err.message);
+        }
+    }
+}
+
+async function autoCreateAllSwarmFiles(btn) {
+    const parentMsg = btn.closest(".ai-msg-bot");
+    if (!parentMsg) return;
+    const artifacts = resolveSwarmArtifactsForMsg(parentMsg);
+    if (!artifacts || artifacts.length === 0) return;
+    const orig = btn.innerHTML;
+    btn.innerHTML = "⏳ Creating " + artifacts.length + " files...";
+    btn.disabled = true;
+    const createdSummary = [];
+    let coderFilename = null;
+    try {
+        for (const item of artifacts) {
+            const fname = item.filename;
+            const content = item.content || "";
+            const data = await saveWorkspaceFile(fname, content);
+            if (typeof files !== "undefined") {
+                files[fname] = content;
+            }
+            if (item.persona === "coder") {
+                coderFilename = fname;
+            }
+            createdSummary.push(fname + " (" + (data.bytes || content.length) + "B)");
+        }
+        if (typeof renderFileList === "function") {
+            renderFileList();
+        }
+        const fileToFocus = coderFilename || artifacts[0].filename;
+        if (fileToFocus) {
+            if (typeof currentFile !== "undefined") currentFile = fileToFocus;
+            if (typeof switchFile === "function") switchFile(fileToFocus);
+        }
+        if (typeof appendTerminal === "function") {
+            appendTerminal(
+                "swarm auto-create-all",
+                "Auto-created " + createdSummary.length + " Swarm deliverable files: " + createdSummary.join(", "),
+                ""
+            );
+        }
+        btn.innerHTML = "✓ Created All (" + createdSummary.length + " files)!";
+        btn.style.background = "#1f6feb";
+        btn.disabled = false;
+        setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.style.background = "";
+        }, 3500);
+    } catch (err) {
+        btn.innerHTML = "⚠️ Auto-create failed";
+        btn.style.background = "#da3633";
+        btn.disabled = false;
+        setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.style.background = "";
+        }, 3000);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("swarm auto-create-all", "", "Error auto-creating Swarm files: " + err.message);
+        }
+    }
 }
 
 async function saveWorkspaceFile(filename, content, targetSid) {
@@ -1973,7 +2421,31 @@ async function askAi(prompt, options = {}) {
         const headerBadge = '<span class="ai-agent-badge ai-badge-' + role + '">' + agentName + '</span><br>';
         botMsg.setAttribute("data-raw", replyText);
         botMsg.setAttribute("data-role", role);
-        botMsg.innerHTML = headerBadge + formatAiResponse(replyText) + 
+        const swarmArtifacts = Array.isArray(data.swarm_artifacts) ? data.swarm_artifacts : null;
+        if (swarmArtifacts && swarmArtifacts.length > 0) {
+            botMsg.setAttribute("data-swarm-artifacts", JSON.stringify(swarmArtifacts));
+        }
+        let swarmDeliverablesHtml = "";
+        if (role === "swarm" || (swarmArtifacts && swarmArtifacts.length > 0)) {
+            const resolvedList = (swarmArtifacts && swarmArtifacts.length > 0) ? swarmArtifacts : resolveSwarmArtifactsForMsg(botMsg);
+            const archName = (resolvedList.find(a => a.persona === "architect") || {}).filename || "architecture.md";
+            const coderName = (resolvedList.find(a => a.persona === "coder") || {}).filename || "module.py";
+            const revName = (resolvedList.find(a => a.persona === "reviewer") || {}).filename || "test_module.py";
+            swarmDeliverablesHtml =
+                '<div class="ai-swarm-deliverables-bar">' +
+                '  <div class="ai-swarm-deliverables-title">' +
+                '    <span>🐝 Swarm Persona Deliverables (3 Agents)</span>' +
+                '    <button onclick="autoCreateAllSwarmFiles(this)" class="btn-swarm-autocreate" title="Automatically create and save all 3 Swarm files (' + archName + ', ' + coderName + ', ' + revName + ') in workspace">⚡ Auto-Create All Swarm Files (3)</button>' +
+                '  </div>' +
+                '  <div class="ai-swarm-persona-buttons">' +
+                '    <button onclick="saveSwarmPersonaOutput(this, \\\'architect\\\', true)" class="btn-swarm-persona-save" title="Save Architect Markdown design specification">📐 Save Architect (' + archName + ')</button>' +
+                '    <button onclick="saveSwarmPersonaOutput(this, \\\'coder\\\', true)" class="btn-swarm-persona-save" title="Save Coder Python implementation">💻 Save Coder (' + coderName + ')</button>' +
+                '    <button onclick="saveSwarmPersonaOutput(this, \\\'reviewer\\\', true)" class="btn-swarm-persona-save" title="Save Reviewer unit test suite">🔍 Save Reviewer (' + revName + ')</button>' +
+                '  </div>' +
+                '</div>';
+        }
+        botMsg.innerHTML = headerBadge + formatAiResponse(replyText, role, swarmArtifacts) +
+            swarmDeliverablesHtml +
             '<div class="ai-msg-actions">' +
             '    <button onclick="copyResponse(this)" class="btn-msg-action" title="Copy entire response text">📋 Copy All</button>' +
             '    <button onclick="saveResponseAsFile(this)" class="btn-msg-action" title="Save entire output to a file (e.g. architecture.md)">💾 Save as File</button>' +
@@ -2504,6 +2976,16 @@ def _handle_ai_chat_inner(post_data, user_id, workspace_dir=None):
                                                 "agent_name": agent_name
                                             }
                                     elif reply2:
+                                        if req_role == "swarm":
+                                            reply2 = synthesize_swarm_response(prompt, filename, reply2)
+                                            return {
+                                                "status": "complete",
+                                                "reply": reply2,
+                                                "swarm_artifacts": build_swarm_artifacts(prompt, filename, reply2),
+                                                "updated_files": client_files,
+                                                "role": req_role,
+                                                "agent_name": agent_name
+                                            }
                                         return {
                                             "status": "complete",
                                             "reply": reply2,
@@ -2514,6 +2996,16 @@ def _handle_ai_chat_inner(post_data, user_id, workspace_dir=None):
                         except Exception as e2:
                             print(f"[AI-CHAT] ReAct second turn skipped: {e2}", flush=True)
 
+                        if req_role == "swarm":
+                            reply_text = synthesize_swarm_response(prompt, filename, reply_text or "")
+                            return {
+                                "status": "complete",
+                                "reply": reply_text,
+                                "swarm_artifacts": build_swarm_artifacts(prompt, filename, reply_text),
+                                "updated_files": client_files,
+                                "role": req_role,
+                                "agent_name": agent_name
+                            }
                         reply_text = f"⚙️ Tool executed: `{t_name}`.\nObservation: {obs}\n\n" + (reply_text or "Ready for next step.")
                         return {"status": "complete", "reply": reply_text, "updated_files": client_files, "role": req_role, "agent_name": agent_name}
                     else:
@@ -2543,6 +3035,16 @@ def _handle_ai_chat_inner(post_data, user_id, workspace_dir=None):
                                 "agent_name": agent_name
                             }
                         else:
+                            if req_role == "swarm":
+                                reply_text = synthesize_swarm_response(prompt, filename, reply_text or "")
+                                return {
+                                    "status": "complete",
+                                    "reply": reply_text,
+                                    "swarm_artifacts": build_swarm_artifacts(prompt, filename, reply_text),
+                                    "updated_files": client_files,
+                                    "role": req_role,
+                                    "agent_name": agent_name
+                                }
                             return {
                                 "status": "complete",
                                 "reply": reply_text or f"Task processed by {agent_name}.",
@@ -2815,10 +3317,16 @@ def _handle_ai_chat_inner(post_data, user_id, workspace_dir=None):
         if "QA & Test" not in reply_text and "pytest" not in reply_text.lower() and test_file not in reply_text:
             reply_text = f"### 🔍 QA & Test Suite Synthesis: `{test_file}`\n\n" + reply_text
 
-    if req_role == "swarm" and not reply_text.startswith("*(Gemma Gateway"):
-        reply_text = synthesize_swarm_response(prompt, filename, reply_text)
+    swarm_artifacts = None
+    if req_role == "swarm":
+        if not reply_text.startswith("*(Gemma Gateway"):
+            reply_text = synthesize_swarm_response(prompt, filename, reply_text)
+        swarm_artifacts = build_swarm_artifacts(prompt, filename, reply_text)
 
-    return {"status": "complete", "reply": reply_text, "updated_files": client_files, "role": req_role, "agent_name": agent_name}
+    resp_payload = {"status": "complete", "reply": reply_text, "updated_files": client_files, "role": req_role, "agent_name": agent_name}
+    if swarm_artifacts:
+        resp_payload["swarm_artifacts"] = swarm_artifacts
+    return resp_payload
 
 
 
