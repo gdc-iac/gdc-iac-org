@@ -578,278 +578,49 @@ Key design considerations for running the Foundations Helmfile pipeline on the a
 
 ```yaml
 name: GDC Air-Gapped Foundations Pipeline
-
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target GDC environment (dev, stg, prd)"
-        required: true
-        default: "dev"
-        type: choice
-        options:
-          - dev
-          - stg
-          - prd
-      action:
-        description: "Helmfile operation to execute"
-        required: true
-        default: "validate"
-        type: choice
-        options:
-          - validate
-          - diff
-          - sync
-          - apply
-          - rollback
-      stage:
-        description: "Target execution stage (or 'all' for full staged pipeline)"
-        required: true
-        default: "all"
-        type: choice
-        options:
-          - all
-          - 0-bootstrap
-          - 0-org-setup
-          - 1-project-factory
-          - 2-resources
-          - 3-clusters
-          - 4-notebooks
-          - 5-workload-factory
-
-env:
-  ENV: ${{ github.event.inputs.environment || 'dev' }}
-  ACTION: ${{ github.event.inputs.action || 'validate' }}
-  TARGET_STAGE: ${{ github.event.inputs.stage || 'all' }}
-  # Internal Gitea service endpoint on the GDC Standard Cluster
-  GITEA_INTERNAL_URL: "http://gitea.gitea.svc:80"
-  HELM_WAIT: "true"
 
 jobs:
-  # ============================================================================
-  # Job 1: Offline Static Validation (Lint & Template Rendering)
-  # Runs on every push, PR, and manual dispatch without requiring cluster access
-  # ============================================================================
-  validate:
-    name: "Validate Foundations (${{ github.event.inputs.environment || 'dev' }})"
-    runs-on: helmfile
+  job-test:
+    runs-on: self-hosted
     steps:
-      - name: Checkout Repository (Air-Gapped Native Git)
-        env:
-          GIT_TOKEN: ${{ secrets.GITEA_TOKEN || github.token }}
+      - name: Check Runner Environment
         run: |
-          set -euo pipefail
-          rm -rf ./* ./.[!.]* ./..?* 2>/dev/null || true
-          git init .
-          git remote add origin "${GITEA_INTERNAL_URL:?}/${GITHUB_REPOSITORY:?}.git"
-          git -c http.extraHeader="Authorization: token ${GIT_TOKEN:?}" fetch --depth=1 origin "${GITHUB_SHA:?}"
-          git checkout FETCH_HEAD
-
-      - name: Authenticate with Local Harbor OCI Registry (Optional)
-        if: env.HARBOR_REGISTRY != ''
-        env:
-          HARBOR_REGISTRY: ${{ vars.HARBOR_REGISTRY }}
-          HARBOR_USER: ${{ secrets.HARBOR_USER }}
-          HARBOR_SECRET: ${{ secrets.HARBOR_SECRET }}
-        run: |
-          if [ -n "${HARBOR_REGISTRY}" ] && [ -n "${HARBOR_USER}" ] && [ -n "${HARBOR_SECRET}" ]; then
-            echo "${HARBOR_SECRET:?}" | helm registry login "${HARBOR_REGISTRY:?}" \
-              --username "${HARBOR_USER:?}" \
-              --password-stdin \
-              --insecure
-          fi
-
-      - name: Verify Tooling Versions
-        run: |
-          helm version --short
-          helmfile --version
-          helm plugin list
-
-      - name: Lint & Template Foundations
-        run: |
-          set -euo pipefail
-          if [ "${TARGET_STAGE:?}" = "all" ]; then
-            echo "Running full environment lint and template validation for ENV=${ENV:?}..."
-            helmfile -e "${ENV:?}" lint
-            helmfile -e "${ENV:?}" template >/dev/null
-          else
-            echo "Running stage-scoped lint and template validation for ENV=${ENV:?}, stage=${TARGET_STAGE:?}..."
-            helmfile -e "${ENV:?}" -l "stage=${TARGET_STAGE:?}" lint
-            helmfile -e "${ENV:?}" -l "stage=${TARGET_STAGE:?}" template >/dev/null
-          fi
-          echo "Validation succeeded for ENV=${ENV:?} (stage=${TARGET_STAGE:?})."
-
-  # ============================================================================
-  # Job 2: Dry-Run Plan (helmfile diff)
-  # Requires GDC_KUBECONFIG_B64 secret containing Global and Zonal API contexts
-  # ============================================================================
-  plan:
-    name: "Plan / Diff (${{ github.event.inputs.environment || 'dev' }})"
-    needs: [validate]
-    if: >-
-      github.event.inputs.action == 'diff' ||
-      github.event.inputs.action == 'apply' ||
-      github.event.inputs.action == 'sync'
-    runs-on: helmfile
+          uname -a
+          whoami
+  kubectl-test:
+    runs-on: kubectl
     steps:
-      - name: Checkout Repository (Air-Gapped Native Git)
-        env:
-          GIT_TOKEN: ${{ secrets.GITEA_TOKEN || github.token }}
+      - name: kubectl contexts
         run: |
-          set -euo pipefail
-          rm -rf ./* ./.[!.]* ./..?* 2>/dev/null || true
-          git init .
-          git remote add origin "${GITEA_INTERNAL_URL:?}/${GITHUB_REPOSITORY:?}.git"
-          git -c http.extraHeader="Authorization: token ${GIT_TOKEN:?}" fetch --depth=1 origin "${GITHUB_SHA:?}"
-          git checkout FETCH_HEAD
-
-      - name: Configure GDC Multi-Context Kubeconfig & SOPS
-        env:
-          GDC_KUBECONFIG_B64: ${{ secrets.GDC_KUBECONFIG_B64 }}
-          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
-          CLOUDSDK_API_ENDPOINT_OVERRIDES_KMS: ${{ vars.CLOUDSDK_API_ENDPOINT_OVERRIDES_KMS }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GDC_KUBECONFIG_B64}" ]; then
-            echo "ERROR: Secret GDC_KUBECONFIG_B64 is required for cluster diff/apply operations."
-            exit 1
-          fi
-          mkdir -p ~/.kube ~/.config/sops/age
-          echo "${GDC_KUBECONFIG_B64:?}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-          if [ -n "${SOPS_AGE_KEY}" ]; then
-            echo "${SOPS_AGE_KEY:?}" > ~/.config/sops/age/keys.txt
-            chmod 600 ~/.config/sops/age/keys.txt
-          fi
           kubectl config get-contexts
-
-      - name: Authenticate with Local Harbor OCI Registry (Optional)
-        if: env.HARBOR_REGISTRY != ''
-        env:
-          HARBOR_REGISTRY: ${{ vars.HARBOR_REGISTRY }}
-          HARBOR_USER: ${{ secrets.HARBOR_USER }}
-          HARBOR_SECRET: ${{ secrets.HARBOR_SECRET }}
+      - name: kubectl crds
         run: |
-          if [ -n "${HARBOR_REGISTRY}" ] && [ -n "${HARBOR_USER}" ] && [ -n "${HARBOR_SECRET}" ]; then
-            echo "${HARBOR_SECRET:?}" | helm registry login "${HARBOR_REGISTRY:?}" \
-              --username "${HARBOR_USER:?}" \
-              --password-stdin \
-              --insecure
-          fi
-
-      - name: Execute Helmfile Diff
+          kubectl get crds
+      - name: Clone Repository
+        uses: builtin:checkout
+      - name: Look around
         run: |
-          set -euo pipefail
-          if [ "${TARGET_STAGE:?}" = "all" ]; then
-            helmfile -e "${ENV:?}" diff
-          else
-            helmfile -e "${ENV:?}" -l "stage=${TARGET_STAGE:?}" diff
-          fi
+          env
+          pwd
+          ls -la
 
-  # ============================================================================
-  # Job 3: Staged Deployment / Rollback Execution
-  # Executes stages in strict dependency order against Global & Zonal APIs
-  # ============================================================================
-  deploy:
-    name: "Execute ${{ github.event.inputs.action }} (${{ github.event.inputs.stage || 'all' }})"
-    needs: [validate]
-    if: >-
-      github.event.inputs.action == 'sync' ||
-      github.event.inputs.action == 'apply' ||
-      github.event.inputs.action == 'rollback'
+  helmfile-test:
     runs-on: helmfile
     steps:
-      - name: Checkout Repository (Air-Gapped Native Git)
-        env:
-          GIT_TOKEN: ${{ secrets.GITEA_TOKEN || github.token }}
+      - name: Clone Repository
+        uses: builtin:checkout    
+      - name: stage=0-org-setup dev
         run: |
-          set -euo pipefail
-          rm -rf ./* ./.[!.]* ./..?* 2>/dev/null || true
-          git init .
-          git remote add origin "${GITEA_INTERNAL_URL:?}/${GITHUB_REPOSITORY:?}.git"
-          git -c http.extraHeader="Authorization: token ${GIT_TOKEN:?}" fetch --depth=1 origin "${GITHUB_SHA:?}"
-          git checkout FETCH_HEAD
-
-      - name: Configure GDC Multi-Context Kubeconfig & SOPS
-        env:
-          GDC_KUBECONFIG_B64: ${{ secrets.GDC_KUBECONFIG_B64 }}
-          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
-          CLOUDSDK_API_ENDPOINT_OVERRIDES_KMS: ${{ vars.CLOUDSDK_API_ENDPOINT_OVERRIDES_KMS }}
+          helmfile -l stage=0-org-setup -e dev lint --debug
+      - name: stage=1-project-factory dev
         run: |
-          set -euo pipefail
-          if [ -z "${GDC_KUBECONFIG_B64}" ]; then
-            echo "ERROR: Secret GDC_KUBECONFIG_B64 is required for cluster deployment operations."
-            exit 1
-          fi
-          mkdir -p ~/.kube ~/.config/sops/age
-          echo "${GDC_KUBECONFIG_B64:?}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-          if [ -n "${SOPS_AGE_KEY}" ]; then
-            echo "${SOPS_AGE_KEY:?}" > ~/.config/sops/age/keys.txt
-            chmod 600 ~/.config/sops/age/keys.txt
-          fi
-          kubectl config get-contexts
-
-      - name: Authenticate with Local Harbor OCI Registry (Optional)
-        if: env.HARBOR_REGISTRY != ''
-        env:
-          HARBOR_REGISTRY: ${{ vars.HARBOR_REGISTRY }}
-          HARBOR_USER: ${{ secrets.HARBOR_USER }}
-          HARBOR_SECRET: ${{ secrets.HARBOR_SECRET }}
-        run: |
-          if [ -n "${HARBOR_REGISTRY}" ] && [ -n "${HARBOR_USER}" ] && [ -n "${HARBOR_SECRET}" ]; then
-            echo "${HARBOR_SECRET:?}" | helm registry login "${HARBOR_REGISTRY:?}" \
-              --username "${HARBOR_USER:?}" \
-              --password-stdin \
-              --insecure
-          fi
-
-      - name: Run Staged Helmfile Operation
-        run: |
-          set -euo pipefail
-
-          if [ "${TARGET_STAGE:?}" != "all" ]; then
-            echo "Executing 'helmfile -e ${ENV:?} -l stage=${TARGET_STAGE:?} ${ACTION:?}'..."
-            helmfile -e "${ENV:?}" -l "stage=${TARGET_STAGE:?}" "${ACTION:?}"
-            exit 0
-          fi
-
-          if [ "${ACTION:?}" = "rollback" ]; then
-            # Rollback in reverse dependency order
-            STAGES=(
-              "5-workload-factory"
-              "4-notebooks"
-              "3-clusters"
-              "2-resources"
-              "1-project-factory"
-              "0-org-setup"
-              "0-bootstrap"
-            )
-          else
-            # Forward deployment order (Global stages 0-1 -> Zonal stages 2-5)
-            STAGES=(
-              "0-bootstrap"
-              "0-org-setup"
-              "1-project-factory"
-              "2-resources"
-              "3-clusters"
-              "4-notebooks"
-              "5-workload-factory"
-            )
-          fi
-
-          for STAGE in "${STAGES[@]}"; do
-            echo "===================================================="
-            echo " Executing Stage: ${STAGE:?} (Action: ${ACTION:?}, Env: ${ENV:?})"
-            echo "===================================================="
-            helmfile -e "${ENV:?}" -l "stage=${STAGE:?}" "${ACTION:?}"
-          done
+          helmfile -l stage=1-project-factory -e dev lint --debug
 ```
 
 3. Commit and push the workflow to trigger validation on Gitea Actions:
