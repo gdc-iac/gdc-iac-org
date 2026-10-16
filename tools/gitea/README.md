@@ -4,6 +4,7 @@ This guide describes how to deploy **Gitea** along with **Gitea Actions Runners 
 
 In an air-gapped GDC environment, Gitea serves as an internal Git repository and CI/CD platform for GitOps tools (such as [ArgoCD](../argocd/README.md) and [Config Sync](../config-sync/README.md)) and infrastructure automation pipelines ([Helmfile](../helmfile/README.md) / [Helm CLI](../helm_cli/README.md)).
 
+![cicd-architecture](images/cicd-architecture.png)
 
 ## Prerequisites
 
@@ -14,7 +15,7 @@ In an air-gapped GDC environment, Gitea serves as an internal Git repository and
        --standard \
        --project=iac-root
    ```
-3. **Container Registry (Managed Harbor)**: A Harbor instance reachable from the Standard Cluster with TLS trust configured. See [`tools/argocd/INSTALL_HARBOR.md`](../argocd/INSTALL_HARBOR.md) for instructions on creating a Managed Harbor instance, configuring robot accounts, and setting up the cluster TLS trust store.
+3. **Container Registry (Managed Harbor)**: A Harbor instance reachable from the Standard Cluster with TLS trust configured. See [`tools/mirror-images/README.md`](../mirror-images/README.md) for instructions on creating a Managed Harbor instance, configuring robot accounts, and setting up the cluster TLS trust store.
 
 ---
 
