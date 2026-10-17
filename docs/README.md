@@ -45,19 +45,12 @@ docs/
 │   ├── vault_integration_guide.md                         # Pattern 11 HashiCorp Vault Secret Management Guide
 │   ├── envoy_gateway_guide.md                             # Envoy Gateway & Inference Pool Guide
 │   └── updating_ollama.md                                 # Updating Ollama & Sideloaded Model Weights
-├── testing/                                               # Testing, GCP Stepping-Stone Emulation & Developer Guides
-│   ├── testing_plan.md                                    # Blueprint Testing & Validation Plan
-│   ├── how-to-add-pattern.md                              # Authoring & Onboarding a New Blueprint Pattern
-│   ├── potential-gotchas-on-gdc-ag.md                     # GDC-ag Operational Gotchas & Best Practices
-│   ├── verification-results.md                            # Pattern Verification & Benchmark Ledger
-│   └── lessons-learned.md                                 # Engineering Retrospectives & Lessons Learned
-└── capacity-sizing/                                       # Interactive GDC-ag Workload & Hardware Sizing Suite
-    ├── README.md                                          # Capacity Sizing Calculator, Intake Form & CLI Guide
-    ├── gdc_ag_workload_sizing_and_intake_framework.md     # Workload Sizing Methodology & Formulas
-    ├── gdc_ag_offline_interview_questionnaire.md          # Customer Intake Questionnaire
-    ├── gdc_ag_sizing_slide_deck.md                        # Executive Sizing Presentation Deck
-    ├── MAINTENANCE.md                                     # Calculator Maintenance & Spec Update Guide
-    └── DEPENDENCY_SECURITY_REVIEW.md                      # Zero-Dependency Offline HTML Security Audit
+└── testing/                                               # Testing, GCP Stepping-Stone Emulation & Developer Guides
+    ├── testing_plan.md                                    # Blueprint Testing & Validation Plan
+    ├── how-to-add-pattern.md                              # Authoring & Onboarding a New Blueprint Pattern
+    ├── potential-gotchas-on-gdc-ag.md                     # GDC-ag Operational Gotchas & Best Practices
+    ├── verification-results.md                            # Pattern Verification & Benchmark Ledger
+    └── lessons-learned.md                                 # Engineering Retrospectives & Lessons Learned
 ```
 
 ---
@@ -130,8 +123,3 @@ docs/
 | **[Verification Results Ledger](./testing/verification-results.md)** | Historical verification logs across patterns. |
 | **[Engineering Lessons Learned](./testing/lessons-learned.md)** | Architectural retrospectives and root-cause resolutions across Patterns 1–13 and `gdc_gemma_gw`. |
 
----
-
-## 6. Interactive Capacity Sizing Suite (`docs/capacity-sizing/`)
-
-* **[Capacity Sizing Suite Overview & Calculator Guide](./capacity-sizing/README.md)** — Zero-dependency offline HTML sizing calculator, customer intake form, and Python CLI (`gdc_ag_sizing_cli.py`) for GDC-ag rack and GPU node planning.
