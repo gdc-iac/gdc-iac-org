@@ -68,6 +68,26 @@
             font-size: 14px;
         }
         .success { background-color: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid var(--success); }
+        .error { background-color: rgba(239, 68, 68, 0.15); color: #ff7b72; border: 1px solid var(--danger); }
+
+        /* gdc-dev-Style Sovereign Identity & Keycloak OIDC Strip */
+        .oidc-strip {
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+            background: #131722; border: 1px solid #262f45; border-left: 4px solid var(--accent);
+            padding: 12px 18px; border-radius: 10px; margin-bottom: 24px; font-size: 13px;
+        }
+        .oidc-strip-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .oidc-strip-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .oidc-pill {
+            display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .oidc-btn {
+            display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 6px;
+            font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer;
+            border: 1px solid #334155; background: #1e293b; color: #e2e8f0; transition: all 0.15s;
+        }
+        .oidc-btn:hover { border-color: var(--accent); background: #26354d; }
         
         /* Telemetry Dials & Progress Bars */
         .metrics-panel { display: flex; justify-content: space-around; align-items: center; flex-wrap: wrap; gap: 20px; }
@@ -94,9 +114,46 @@
         .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
         .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
         .badge-info { background: rgba(59, 130, 246, 0.15); color: var(--accent); }
+
+        /* Full-Screen Keycloak OIDC & RBAC Gate Overlay */
+        #oidc-gate-overlay {
+            position: fixed; inset: 0; z-index: 9999; background: #090d16;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .oidc-gate-card {
+            background: #111827; border: 1px solid #1f2937; border-top: 4px solid var(--accent);
+            border-radius: 12px; padding: 34px; width: 100%; max-width: 500px;
+            box-shadow: 0 20px 45px rgba(0,0,0,0.7); text-align: center;
+        }
+        .oidc-spinner {
+            width: 42px; height: 42px; border: 4px solid #1e293b; border-top-color: var(--accent);
+            border-radius: 50%; animation: oidc-spin 0.9s linear infinite; margin: 0 auto 18px;
+        }
+        @keyframes oidc-spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+
+<!-- Full-screen Keycloak OIDC Handshake & RBAC Gate Overlay -->
+<div id="oidc-gate-overlay">
+    <div id="oidc-gate-card" class="oidc-gate-card">
+        <div class="oidc-spinner"></div>
+        <h2 style="border:none; margin:0 0 8px 0; padding:0; font-size:20px; color:#f8fafc;">
+            🔒 Contacting Secure Identity Gateway (Keycloak)...
+        </h2>
+        <p id="oidc-gate-status" style="color:#94a3b8; font-size:13px; margin:0 0 18px 0;">
+            Verifying OIDC PKCE session against realm <code>gdc-rag-realm</code>...
+        </p>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+            <button type="button" class="oidc-btn" onclick="redirectToKeycloakLogin()" style="border-color:#3b82f6; color:#93c5fd;">
+                🔑 Redirect to Keycloak SSO Now
+            </button>
+            <a href="/login/oidc" class="oidc-btn" style="color:#cbd5e1;">
+                🔐 Fallback OIDC Portal
+            </a>
+        </div>
+    </div>
+</div>
 
 <div class="container">
     <header>
@@ -109,6 +166,44 @@
             <div class="meta" style="margin-top: 4px;">Cluster Registry Warm</div>
         </div>
     </header>
+
+    <!-- Sovereign Identity & Keycloak OIDC Status Strip (gdc-dev parity) -->
+    <div class="oidc-strip">
+        <div class="oidc-strip-left">
+            <span id="oidc-mode-pill" class="oidc-pill {% if auth_ctx and auth_ctx.authenticated %}badge-success{% else %}badge-info{% endif %}">
+                🔒 Auth Mode: {% if auth_ctx and auth_ctx.source == 'keycloak-jwt' %}Keycloak OIDC JWT Verified{% elif auth_ctx and auth_ctx.authenticated %}Keycloak OIDC Session Active{% else %}Keycloak OIDC Ready{% endif %}
+            </span>
+            <span>
+                Sovereign Identity:
+                <strong id="oidc-user-label" style="color: #fff;">
+                    {{ auth_ctx.user if auth_ctx else 'anonymous' }}
+                </strong>
+            </span>
+            <span id="oidc-role-badge" class="badge {% if auth_ctx and auth_ctx.is_admin %}badge-success{% elif auth_ctx and auth_ctx.authenticated %}badge-warning{% else %}badge-info{% endif %}">
+                Role: {{ auth_ctx.role if auth_ctx else 'open-default' }}
+            </span>
+            <span id="oidc-rbac-warning" style="color: var(--warning); font-size: 12px; font-weight: 600; display: {% if auth_ctx and auth_ctx.authenticated and not auth_ctx.is_admin %}inline{% else %}none{% endif %};">
+                ⚠️ Read-Only RBAC: Mutations (/api/config, Kill-Switch, Blocklist) will return 403 Forbidden
+            </span>
+        </div>
+        <div class="oidc-strip-right">
+            <button type="button" class="oidc-btn" style="border-color: rgba(99,102,241,0.6); color: #a5b4fc;" onclick="redirectToKeycloakLogin()">
+                🔑 Keycloak SSO Login (/auth)
+            </button>
+            <a href="/login/oidc" class="oidc-btn" style="border-color: rgba(59,130,246,0.5); color: #93c5fd;">
+                🔐 OIDC Portal
+            </a>
+            <button type="button" class="oidc-btn" style="border-color: rgba(16,185,129,0.45); color: #6ee7b7;" onclick="quickOidcSignIn('charlie', 'admin')">
+                🛡️ One-Click Admin (charlie)
+            </button>
+            <button type="button" class="oidc-btn" style="border-color: rgba(245,158,11,0.45); color: #fcd34d;" onclick="quickOidcSignIn('alice', 'analyst')">
+                🧪 Test Analyst RBAC (alice)
+            </button>
+            <button type="button" id="oidc-signout-btn" class="oidc-btn" style="border-color: rgba(239,68,68,0.45); color: #fca5a5;" onclick="keycloakLogout()">
+                🚪 Sign Out (Keycloak SSO)
+            </button>
+        </div>
+    </div>
 
     <div id="status-banner"></div>
 
@@ -188,11 +283,15 @@
             <div class="form-group">
                 <label>Model Variant Hot-Swap</label>
                 <select id="model_variant">
+                    <option value="auto" {% if state.model_variant == 'auto' %}selected{% endif %}>Gemma 4 Gateway (Auto: 26B MoE → 31B Dense)</option>
                     <option value="26b" {% if state.model_variant == '26b' %}selected{% endif %}>Gemma 4 26B A4B (MoE)</option>
                     <option value="31b" {% if state.model_variant == '31b' %}selected{% endif %}>Gemma 4 31B (Dense)</option>
                 </select>
             </div>
-            <button class="btn" onclick="saveConfiguration()">Save Gateway Configuration</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="flex: 1;" onclick="saveConfiguration()">Save Gateway Configuration</button>
+                <button class="btn" style="flex: 0 0 auto; width: auto; background: #1e293b; border: 1px solid #334155;" onclick="resetToDefaults()" title="Reset Temperature (0.7), Top-P (0.9), Vision Budget (280), and Routing (Auto 26B → 31B)">↺ Reset to Auto</button>
+            </div>
         </div>
 
         <!-- 🕵️ Session Oversight & Kill-Switch -->
@@ -245,6 +344,311 @@
 </div>
 
 <script>
+    // =========================================================================
+    // Native Keycloak OIDC Authorization Code + PKCE (S256) Integration
+    // Matches gemma-client/src/frontend/src/oidc.js & routes via /auth on Port 8080
+    // =========================================================================
+    const OIDC_CLIENT_ID = "rag-frontend";
+    const ADMIN_ROLES = new Set(["admin", "dev-admin", "operator", "cluster-admin"]);
+    const SERVER_AUTH_CTX = {
+        authenticated: {{ 'true' if auth_ctx and auth_ctx.authenticated else 'false' }},
+        user: "{{ auth_ctx.user if auth_ctx else 'anonymous' }}",
+        role: "{{ auth_ctx.role if auth_ctx else 'anonymous' }}",
+        is_admin: {{ 'true' if auth_ctx and auth_ctx.is_admin else 'false' }},
+        source: "{{ auth_ctx.source if auth_ctx else 'none' }}"
+    };
+
+    function getAuthority() {
+        return `${window.location.origin}/auth/realms/gdc-rag-realm`;
+    }
+
+    function getRedirectUri() {
+        return window.location.origin;
+    }
+
+    function generateRandomString(length = 64) {
+        const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+        let result = '';
+        const values = new Uint32Array(length);
+        window.crypto.getRandomValues(values);
+        for (let i = 0; i < length; i++) {
+            result += charset[values[i] % charset.length];
+        }
+        return result;
+    }
+
+    async function sha256(plain) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(plain);
+        return window.crypto.subtle.digest('SHA-256', data);
+    }
+
+    function base64urlencode(a) {
+        let str = "";
+        const bytes = new Uint8Array(a);
+        for (let i = 0; i < bytes.byteLength; i++) {
+            str += String.fromCharCode(bytes[i]);
+        }
+        return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+
+    function decodeJwt(token) {
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function getAuthHeaders(extraHeaders = {}) {
+        const headers = Object.assign({}, extraHeaders);
+        const token = sessionStorage.getItem('oidc_access_token');
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    }
+
+    async function redirectToKeycloakLogin() {
+        const verifier = generateRandomString(64);
+        const state = generateRandomString(16);
+        sessionStorage.setItem('oidc_code_verifier', verifier);
+        sessionStorage.setItem('oidc_state', state);
+
+        const params = new URLSearchParams({
+            response_type: 'code',
+            client_id: OIDC_CLIENT_ID,
+            redirect_uri: getRedirectUri(),
+            scope: 'openid profile roles',
+            state: state
+        });
+
+        if (window.crypto && window.crypto.subtle) {
+            const hashed = await sha256(verifier);
+            const challenge = base64urlencode(hashed);
+            params.set('code_challenge', challenge);
+            params.set('code_challenge_method', 'S256');
+        }
+
+        window.location.href = `${getAuthority()}/protocol/openid-connect/auth?${params.toString()}`;
+    }
+
+    async function exchangeCodeForTokens() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        if (!code) return null;
+
+        const savedState = sessionStorage.getItem('oidc_state');
+        const verifier = sessionStorage.getItem('oidc_code_verifier');
+        if (savedState && state && state !== savedState) {
+            console.warn("OIDC state mismatch; clearing stale verifier.");
+        }
+
+        const bodyParams = {
+            grant_type: 'authorization_code',
+            client_id: OIDC_CLIENT_ID,
+            code: code,
+            redirect_uri: getRedirectUri()
+        };
+        if (verifier) {
+            bodyParams.code_verifier = verifier;
+        }
+
+        const response = await fetch(`${getAuthority()}/protocol/openid-connect/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(bodyParams)
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`Token exchange failed (${response.status}): ${errText}`);
+        }
+
+        const data = await response.json();
+        sessionStorage.setItem('oidc_access_token', data.access_token);
+        if (data.id_token) {
+            sessionStorage.setItem('oidc_id_token', data.id_token);
+        }
+        document.cookie = `gateway_oidc_token=${data.access_token}; path=/; SameSite=Lax`;
+        window.history.replaceState({}, document.title, window.location.pathname);
+        return data.access_token;
+    }
+
+    async function keycloakLogout() {
+        const idToken = sessionStorage.getItem('oidc_id_token');
+        sessionStorage.removeItem('oidc_access_token');
+        sessionStorage.removeItem('oidc_id_token');
+        sessionStorage.removeItem('oidc_code_verifier');
+        sessionStorage.removeItem('oidc_state');
+        document.cookie = "gateway_oidc_token=; Max-Age=0; path=/";
+        document.cookie = "gateway_auth_user=; Max-Age=0; path=/";
+        document.cookie = "gateway_auth_role=; Max-Age=0; path=/";
+        document.cookie = "gateway_auth_sig=; Max-Age=0; path=/";
+
+        try {
+            await fetch('/logout', { method: 'GET' });
+        } catch (e) {}
+
+        const params = new URLSearchParams({
+            post_logout_redirect_uri: getRedirectUri()
+        });
+        if (idToken) {
+            params.set('id_token_hint', idToken);
+        } else {
+            params.set('client_id', OIDC_CLIENT_ID);
+        }
+        window.location.href = `${getAuthority()}/protocol/openid-connect/logout?${params.toString()}`;
+    }
+
+    function applyIdentityToHeader(user, role, isAdmin, sourceLabel) {
+        const modePill = document.getElementById('oidc-mode-pill');
+        const userLabel = document.getElementById('oidc-user-label');
+        const roleBadge = document.getElementById('oidc-role-badge');
+        const rbacWarn = document.getElementById('oidc-rbac-warning');
+
+        if (modePill) {
+            modePill.className = 'oidc-pill badge-success';
+            modePill.innerText = `🔒 Auth Mode: ${sourceLabel}`;
+        }
+        if (userLabel) {
+            userLabel.innerText = user;
+        }
+        if (roleBadge) {
+            roleBadge.className = `badge ${isAdmin ? 'badge-success' : 'badge-warning'}`;
+            roleBadge.innerText = `Role: ${role}`;
+        }
+        if (rbacWarn) {
+            rbacWarn.style.display = isAdmin ? 'none' : 'inline';
+        }
+    }
+
+    function showRbacForbiddenGate(user, role, sourceLabel) {
+        const overlay = document.getElementById('oidc-gate-overlay');
+        const card = document.getElementById('oidc-gate-card');
+        if (!overlay || !card) return;
+        overlay.style.display = 'flex';
+        card.style.borderTopColor = '#ef4444';
+        card.style.borderColor = '#ef4444';
+        card.style.textAlign = 'left';
+        card.innerHTML = `
+            <h2 style="border:none; margin:0 0 10px 0; padding:0; font-size:20px; color:#f87171;">
+                ⛔ 403 Forbidden — Admin Role Required
+            </h2>
+            <p style="font-size:13px; color:#cbd5e1; line-height:1.6; margin:0 0 16px 0;">
+                Your Keycloak OIDC identity is authenticated, but does not possess the <code>admin</code> realm role required to administer the Gemma 4 Inference Gateway Control Plane.
+            </p>
+            <div style="background:#090d16; border:1px solid #1f2937; border-radius:8px; padding:12px 14px; margin-bottom:20px; font-size:12px; font-family:monospace;">
+                <div>Keycloak Principal : <strong style="color:#fff;">${user}</strong></div>
+                <div>Assigned Realm Role: <strong style="color:#facc15;">${role}</strong> (Required: <code style="color:#4ade80;">admin</code>)</div>
+                <div>Token Verification : <strong style="color:#60a5fa;">${sourceLabel}</strong></div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button type="button" class="btn" onclick="keycloakLogout()" style="background:#2563eb;">
+                    🚪 Sign Out of Keycloak SSO &amp; Switch to Admin (charlie)
+                </button>
+                <button type="button" class="btn" onclick="dismissRbacGateReadOnly()" style="background:#1e293b; border:1px solid #334155; color:#e2e8f0;">
+                    👁️ Open Dashboard in Read-Only Mode (Test 403 API Rejections)
+                </button>
+            </div>
+        `;
+    }
+
+    function dismissRbacGateReadOnly() {
+        const overlay = document.getElementById('oidc-gate-overlay');
+        if (overlay) overlay.style.display = 'none';
+        fetchTelemetry();
+    }
+
+    async function initGatewayOidc() {
+        const overlay = document.getElementById('oidc-gate-overlay');
+        const statusEl = document.getElementById('oidc-gate-status');
+        const urlParams = new URLSearchParams(window.location.search);
+        const readonlyPreview = urlParams.get('readonly_preview') === 'true';
+
+        // 1. Handle ?code=...&state=... callback from Keycloak OIDC login screen
+        if (urlParams.has('code')) {
+            if (statusEl) statusEl.innerText = "Exchanging Keycloak OIDC authorization code for RS256 JWT...";
+            try {
+                await exchangeCodeForTokens();
+            } catch (err) {
+                console.error("Keycloak PKCE token exchange error:", err);
+                sessionStorage.removeItem('oidc_access_token');
+            }
+        }
+
+        // 2. Check active Keycloak OIDC JWT in sessionStorage
+        const token = sessionStorage.getItem('oidc_access_token');
+        if (token) {
+            const claims = decodeJwt(token);
+            if (claims && (!claims.exp || claims.exp * 1000 > Date.now())) {
+                const user = claims.preferred_username || claims.sub || 'keycloak-user';
+                const roles = (claims.realm_access && Array.isArray(claims.realm_access.roles))
+                    ? claims.realm_access.roles.map(r => String(r).toLowerCase())
+                    : ['user'];
+                const isAdmin = roles.some(r => ADMIN_ROLES.has(r));
+                const primaryRole = isAdmin ? 'admin' : (roles[0] || 'user');
+
+                document.cookie = `gateway_oidc_token=${token}; path=/; SameSite=Lax`;
+                applyIdentityToHeader(user, primaryRole, isAdmin, 'Keycloak OIDC JWT Verified (gdc-rag-realm)');
+
+                if (!isAdmin && !readonlyPreview) {
+                    showRbacForbiddenGate(user, primaryRole, 'Keycloak OIDC JWT (gdc-rag-realm)');
+                    return;
+                }
+                if (overlay) overlay.style.display = 'none';
+                fetchTelemetry();
+                return;
+            } else {
+                sessionStorage.removeItem('oidc_access_token');
+                sessionStorage.removeItem('oidc_id_token');
+            }
+        }
+
+        // 3. Check server-side session cookie fallback (from /login/oidc or /login/callback)
+        if (SERVER_AUTH_CTX.authenticated) {
+            applyIdentityToHeader(
+                SERVER_AUTH_CTX.user,
+                SERVER_AUTH_CTX.role,
+                SERVER_AUTH_CTX.is_admin,
+                SERVER_AUTH_CTX.source === 'keycloak-jwt'
+                    ? 'Keycloak OIDC JWT Verified'
+                    : 'Keycloak OIDC Session Active'
+            );
+            if (!SERVER_AUTH_CTX.is_admin && !readonlyPreview) {
+                showRbacForbiddenGate(SERVER_AUTH_CTX.user, SERVER_AUTH_CTX.role, SERVER_AUTH_CTX.source);
+                return;
+            }
+            if (overlay) overlay.style.display = 'none';
+            fetchTelemetry();
+            return;
+        }
+
+        // 4. Not authenticated -> probe Keycloak /auth discovery and redirect directly to Keycloak SSO login screen!
+        if (statusEl) statusEl.innerText = "Redirecting to Keycloak SSO Login (gdc-rag-realm)...";
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 3500);
+            const discResp = await fetch(`${getAuthority()}/.well-known/openid-configuration`, {
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            if (discResp.ok) {
+                await redirectToKeycloakLogin();
+                return;
+            }
+        } catch (e) {
+            console.warn("Keycloak discovery check failed, falling back to /login/oidc:", e);
+        }
+        window.location.href = '/login/oidc';
+    }
+
     // Set up SVG Circle parameters
     const CIRCLE_CIRCUMFERENCE = 263.89; // 2 * pi * r (r=42)
 
@@ -262,7 +666,7 @@
     async function fetchTelemetry() {
         try {
             // Fetch system metrics
-            const metricsResponse = await fetch('/api/metrics');
+            const metricsResponse = await fetch('/api/metrics', { headers: getAuthHeaders() });
             if (metricsResponse.ok) {
                 const data = await metricsResponse.json();
                 updateCircularGauge("cpu-circle", "cpu-value", data.cpu_utilization);
@@ -279,7 +683,7 @@
             }
 
             // Fetch active user sessions
-            const sessionsResponse = await fetch('/api/sessions');
+            const sessionsResponse = await fetch('/api/sessions', { headers: getAuthHeaders() });
             if (sessionsResponse.ok) {
                 const sessions = await sessionsResponse.json();
                 const tbody = document.getElementById("sessions-tbody");
@@ -320,13 +724,19 @@
     async function killSession(sessionId) {
         if (!confirm(`Are you sure you want to instantly terminate the active completion stream for session ${sessionId}?`)) return;
         try {
-            const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/kill`, { method: 'POST' });
+            const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/kill`, {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
             if (response.ok) {
                 showBanner("✅ Active session stream terminated successfully.");
                 fetchTelemetry();
+            } else {
+                const err = await response.json().catch(() => ({}));
+                showBanner(`⛔ HTTP ${response.status}: ${err.detail || 'Unauthorized to terminate session'}`, true);
             }
         } catch (error) {
-            alert("Network error terminating session.");
+            showBanner("❌ Network error terminating session.", true);
         }
     }
 
@@ -340,7 +750,7 @@
         try {
             const response = await fetch(`/api/users/${encodeURIComponent(userId)}/block`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ blocked: shouldBlock })
             });
 
@@ -349,16 +759,19 @@
                 document.getElementById("block-user-id").value = "";
                 refreshBlockedUsers();
                 fetchTelemetry();
+            } else {
+                const err = await response.json().catch(() => ({}));
+                showBanner(`⛔ HTTP ${response.status}: ${err.detail || 'Unauthorized to modify user blocklist'}`, true);
             }
         } catch (error) {
-            alert("Error blocking user.");
+            showBanner("❌ Error blocking user.", true);
         }
     }
 
     // Refresh Blocked Users List on UI
     async function refreshBlockedUsers() {
         try {
-            const response = await fetch('/api/users/blocked');
+            const response = await fetch('/api/users/blocked', { headers: getAuthHeaders() });
             if (response.ok) {
                 const blockedUsers = await response.json();
                 const tbody = document.getElementById("blocked-users-tbody");
@@ -396,31 +809,66 @@
         try {
             const response = await fetch('/api/config', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify(payload)
             });
 
             if (response.ok) {
                 showBanner("✅ Gateway Parameters updated successfully! Changes are now active globally.");
             } else {
-                alert("Error updating configuration.");
+                const err = await response.json().catch(() => ({}));
+                showBanner(`⛔ HTTP ${response.status}: ${err.detail || 'Error updating configuration'}`, true);
             }
         } catch (error) {
-            alert("Network error updating parameters.");
+            showBanner("❌ Network error updating parameters.", true);
         }
     }
 
-    function showBanner(msg) {
-        const banner = document.getElementById('status-banner');
-        banner.innerText = msg;
-        banner.className = "success";
-        banner.style.display = "block";
-        setTimeout(() => banner.style.display = "none", 5000);
+    async function resetToDefaults() {
+        document.getElementById('temperature').value = 0.7;
+        document.getElementById('temp-val').innerText = '0.7';
+        document.getElementById('top_p').value = 0.9;
+        document.getElementById('top-p-val').innerText = '0.9';
+        document.getElementById('vision_token_budget').value = '280';
+        document.getElementById('model_variant').value = 'auto';
+        await saveConfiguration();
     }
 
-    // Start Telemetry Polling Loop (every 2.5 seconds)
+    async function quickOidcSignIn(username, role) {
+        try {
+            sessionStorage.removeItem('oidc_access_token');
+            sessionStorage.removeItem('oidc_id_token');
+            document.cookie = "gateway_oidc_token=; Max-Age=0; path=/";
+            const response = await fetch('/login/oidc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, password: 'password', role: role, redirect_to: '/' })
+            });
+            if (response.ok) {
+                if (role !== 'admin' && role !== 'dev-admin') {
+                    window.location.href = '/?readonly_preview=true';
+                } else {
+                    window.location.href = '/';
+                }
+            } else {
+                showBanner("⛔ Failed to switch OIDC profile.", true);
+            }
+        } catch (e) {
+            showBanner("❌ Network error switching OIDC profile.", true);
+        }
+    }
+
+    function showBanner(msg, isError = false) {
+        const banner = document.getElementById('status-banner');
+        banner.innerText = msg;
+        banner.className = isError ? "error" : "success";
+        banner.style.display = "block";
+        setTimeout(() => banner.style.display = "none", 6000);
+    }
+
+    // Start Keycloak OIDC PKCE Gate & Telemetry Polling Loop
     setInterval(fetchTelemetry, 2500);
-    window.onload = fetchTelemetry;
+    window.onload = initGatewayOidc;
 </script>
 
 </body>

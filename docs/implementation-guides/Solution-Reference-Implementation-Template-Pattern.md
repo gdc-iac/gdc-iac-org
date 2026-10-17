@@ -172,9 +172,9 @@ spec:
 
 ### 4.2 Keycloak OIDC Authentication Integration
 For production SSO and multi-tenancy, integrate Keycloak (Pattern 12):
-1. **OIDC Provider**: Deploy Keycloak using the [P12 Keycloak Blueprint](../p12-keycloak/README.md).
+1. **OIDC Provider**: Deploy Keycloak using the [P12 Keycloak Blueprint](../../p12-keycloak/README.md).
 2. **Token Validation**: Validate OIDC JWT tokens at the Gateway API level and forward `X-User-ID` and `X-User-Role` headers to backend workloads.
-3. **Reference**: See [`docs/keycloak_integration_guide.md`](../docs/keycloak_integration_guide.md).
+3. **Reference**: See [`docs/keycloak_integration_guide.md`](../operations/keycloak_integration_guide.md).
 
 ---
 

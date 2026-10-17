@@ -40,6 +40,8 @@ apps:
   imageTag: "latest"
   imagePullPolicy: "IfNotPresent"
   inputBucket: ""
+  enableGcsUpload: "true"
+  s3Endpoint: ""
   enableOidc: "true"
   keycloakUrl: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
   gatewayUrl: "http://gemma-gateway/v1"

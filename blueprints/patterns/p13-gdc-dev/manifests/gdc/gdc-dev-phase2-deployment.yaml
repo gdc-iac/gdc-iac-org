@@ -41,6 +41,9 @@ spec:
         - configMapRef:
             name: gdc-dev-ai-config
             optional: true
+        - configMapRef:
+            name: gdc-dev-agent-config
+            optional: true
         ports:
         - containerPort: 3000
           name: session
@@ -79,11 +82,17 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: admin
         envFrom:
         - configMapRef:
             name: gdc-dev-oidc-auth-config
         - configMapRef:
             name: gdc-dev-ai-config
+            optional: true
+        - configMapRef:
+            name: gdc-dev-agent-config
             optional: true
         resources:
           requests:

@@ -49,6 +49,12 @@
         }
       }
     },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
     "model": {
       "type": "object",
       "properties": {
@@ -69,8 +75,38 @@
         },
         "quantization": {
           "type": "string"
+        },
+        "maxNumBatchedTokens": {
+          "type": "integer"
+        },
+        "maxNumSeqs": {
+          "type": "integer"
+        },
+        "enablePrefixCaching": {
+          "type": "boolean"
+        },
+        "enableChunkedPrefill": {
+          "type": "boolean"
+        },
+        "enableLora": {
+          "type": "boolean"
+        },
+        "loraModules": {
+          "type": "array"
+        },
+        "extraArgs": {
+          "type": "array"
         }
       }
+    },
+    "shmSize": {
+      "type": "string"
+    },
+    "probes": {
+      "type": "object"
+    },
+    "securityContext": {
+      "type": "object"
     },
     "resources": {
       "type": "object",
@@ -121,4 +157,3 @@
     }
   }
 }
-

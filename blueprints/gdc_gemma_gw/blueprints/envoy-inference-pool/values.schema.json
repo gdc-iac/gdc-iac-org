@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "registry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        },
+        "commonLabels": {
+          "type": "object"
+        },
+        "commonAnnotations": {
+          "type": "object"
+        }
+      }
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "string"
+    },
+    "gdc": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "failover": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "gatewayClassName": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "bufferLimit": {
+          "type": "string"
+        }
+      }
+    },
+    "epp": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string"
+            }
+          }
+        },
+        "grpcPort": {
+          "type": "integer"
+        },
+        "grpcHealthPort": {
+          "type": "integer"
+        },
+        "metricsPort": {
+          "type": "integer"
+        },
+        "failureMode": {
+          "type": "string"
+        },
+        "createClusterRBAC": {
+          "type": "boolean"
+        },
+        "envoyGatewayNamespace": {
+          "type": "string"
+        },
+        "envoyGatewayServiceAccount": {
+          "type": "string"
+        },
+        "scorers": {
+          "type": "object",
+          "properties": {
+            "queueWeight": {
+              "type": "integer"
+            },
+            "kvCacheUtilizationWeight": {
+              "type": "integer"
+            },
+            "prefixCacheWeight": {
+              "type": "integer"
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
+    "defaultPool": {
+      "type": "string"
+    },
+    "pools": {
+      "type": "object"
+    },
+    "tokenRateLimit": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string"
+        },
+        "userHeader": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "costMetadataNamespace": {
+          "type": "string"
+        },
+        "costMetadataKey": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

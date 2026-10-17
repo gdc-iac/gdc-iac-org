@@ -44,6 +44,12 @@ fi
 
 # 3. Seed Operational Readiness Database
 echo "[2/6] Seeding operational readiness schema and intelligence data into PostgreSQL..."
+for i in {1..15}; do
+  if kubectl exec postgres-0 -n "${NAMESPACE}" -- pg_isready -U postgres >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
 kubectl exec -i postgres-0 -n "${NAMESPACE}" -- psql -U postgres -d postgres < test-data/seed_readiness_db.sql
 echo "[+] Operational database seeded successfully (Units, Equipment, Fuel, Routes, Telemetry, Cables)."
 
@@ -62,13 +68,57 @@ sed -e "s|REGISTRY_HOST_PLACEHOLDER|${REGISTRY_HOST}|g" \
 
 # 6. Build and Deploy Joint Intelligence & Readiness Console (gemma-client)
 echo "[5/6] Deploying updated Joint Intelligence & Readiness Console..."
-grep -q "VITE_ENABLE_OIDC" gemma-client/src/frontend/.env 2>/dev/null || echo "VITE_ENABLE_OIDC=true" >> gemma-client/src/frontend/.env
-grep -q "VITE_ENABLE_INTEL_CONSOLE" gemma-client/src/frontend/.env 2>/dev/null || echo "VITE_ENABLE_INTEL_CONSOLE=true" >> gemma-client/src/frontend/.env
+cat << 'EOF' > gemma-client/src/frontend/.env
+VITE_API_URL=/api
+VITE_ENABLE_OIDC=true
+VITE_OIDC_CLIENT_ID=rag-frontend
+VITE_ENABLE_INTEL_CONSOLE=true
+EOF
 chmod +x gemma-client/scripts/build.sh
 ./gemma-client/scripts/build.sh -p "${PROJECT_ID}" -r "${REGISTRY_HOST}"
 
-# Ensure required ServiceAccount and PostgreSQL credentials secret exist before deploying backend
-kubectl create serviceaccount gemma-client-sa -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+# Ensure Keycloak realm import ConfigMap (with wildcard Cloud Workstation preview support) is applied
+kubectl apply -f gemma-client/manifests/gcp/keycloak-realm-import.yaml -n "${NAMESPACE}"
+if kubectl get deployment keycloak -n "${NAMESPACE}" >/dev/null 2>&1; then
+  kubectl rollout restart deployment/keycloak -n "${NAMESPACE}"
+  kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=90s || true
+fi
+
+# Ensure GCS Object Storage bucket exists and bind Workload Identity for gemma-client-sa
+export BUCKET_NAME="gs://gemma-client-files-${PROJECT_ID}"
+export GSA_NAME="gemma-client-sa"
+export KSA_NAME="gemma-client-sa"
+
+if ! gcloud storage buckets describe "${BUCKET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "[+] Creating GCS Object Storage bucket ${BUCKET_NAME} in ${REGION}..."
+  gcloud storage buckets create "${BUCKET_NAME}" --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access || true
+else
+  echo "[+] GCS Object Storage bucket ${BUCKET_NAME} verified."
+fi
+
+if ! gcloud iam service-accounts describe "${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  gcloud iam service-accounts create "${GSA_NAME}" --project="${PROJECT_ID}" || true
+fi
+
+gcloud storage buckets add-iam-policy-binding "${BUCKET_NAME}" \
+  --member="serviceAccount:${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin" --quiet >/dev/null 2>&1 || true
+
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin" \
+  --condition=None --quiet >/dev/null 2>&1 || true
+
+gcloud iam service-accounts add-iam-policy-binding "${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --project="${PROJECT_ID}" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${KSA_NAME}]" --quiet >/dev/null 2>&1 || true
+
+# Ensure required ServiceAccount (with Workload Identity annotation) and PostgreSQL credentials secret exist
+kubectl create serviceaccount "${KSA_NAME}" -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+kubectl annotate serviceaccount "${KSA_NAME}" -n "${NAMESPACE}" \
+  "iam.gke.io/gcp-service-account=${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" --overwrite
+
 kubectl create secret generic gemma-client-db-credentials \
   --from-literal=username=postgres \
   --from-literal=password=password \
@@ -84,10 +134,15 @@ sed -i "s|INPUT_BUCKET_PLACEHOLDER|gemma-client-files-${PROJECT_ID}|g" gemma-cli
 
 kubectl apply -f gemma-client/manifests/apps/backend.yaml -n "${NAMESPACE}"
 kubectl set env deployment/backend \
+  PROJECT_ID="${PROJECT_ID}" \
+  INPUT_BUCKET="${BUCKET_NAME}" \
   ENABLE_OIDC="true" \
   KEYCLOAK_URL="http://keycloak-svc:8080/auth/realms/gdc-rag-realm" \
   -n "${NAMESPACE}"
 
+if [ "$(kubectl get svc frontend-svc -n "${NAMESPACE}" -o jsonpath='{.spec.type}' 2>/dev/null || true)" = "LoadBalancer" ]; then
+  kubectl delete svc frontend-svc -n "${NAMESPACE}" --ignore-not-found
+fi
 kubectl apply -f gemma-client/manifests/apps/frontend.yaml -n "${NAMESPACE}"
 
 echo "[+] Waiting for frontend and backend rollouts..."

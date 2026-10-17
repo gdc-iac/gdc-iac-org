@@ -39,8 +39,28 @@ apps:
   enabled: true
 
 # Pattern 13 specific controls
-phase: 1 # Deployment phase selector (1, 2, or 3)
+phase: 3 # Deployment phase selector (1, 2, or 3)
 auth:
   mode: "oidc" # Authentication mode: "oidc" or "mock"
+  allowSimulatedOidc: "false"
+  headerUserKey: "X-Forwarded-User"
+  oidcAuthority: "https://keycloak.gdc.local/realms/gdc-dev-realm"
+  oidcClientId: "gdc-dev-client"
+  oidcRedirectUri: "https://dev.gdc.local/auth/callback"
 ai:
-  enabled: false # Enable AI gateway patch and network policy
+  enabled: true # Enable AI gateway patch and network policy
+
+# Dual Storage Architecture:
+# - userWorkspace: Isolated ReadWriteOnce (standard-rwo) storage per developer workspace
+# - sharedCodebase: Shared ReadWriteMany (standard-rwx) storage mounted at /workspace/shared for team Git/GitLab collaboration
+storage:
+  userWorkspace:
+    storageClassName: "standard-rwo"
+    size: "20Gi"
+  sharedCodebase:
+    enabled: true
+    usePvc: false # Set to true on GDC-ag (or GKE with Filestore RWX) to provision gdc-dev-shared-codebase-pvc
+    storageClassName: "standard-rwx"
+    accessMode: "ReadWriteMany"
+    size: "50Gi"
+    mountPath: "/workspace/shared"

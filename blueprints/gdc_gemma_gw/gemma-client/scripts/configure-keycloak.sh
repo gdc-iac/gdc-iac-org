@@ -30,21 +30,28 @@ if [ -z "$WORKSTATION_URL" ]; then
     exit 1
 fi
 
-# Clean trailing slashes
+# Clean trailing slashes and auto-append .dev if truncated at .cloudworkstations
 WORKSTATION_URL="${WORKSTATION_URL%/}"
+if [[ "$WORKSTATION_URL" == *.cloudworkstations ]]; then
+    WORKSTATION_URL="${WORKSTATION_URL}.dev"
+    echo "ℹ️  Auto-completed truncated '.cloudworkstations' suffix to: ${WORKSTATION_URL}"
+fi
 
 # 2. Extract base cluster domain mapping
-# Matches "https://80-w-username.cluster-hash.cloudworkstations.dev" or bare "w-username.cluster-hash..."
-# And converts to the standard Port 8081 preview domain
+# Matches "https://8081-w-username.cluster-hash.cloudworkstations.dev" or bare "w-username.cluster-hash..."
 if [[ "$WORKSTATION_URL" =~ ^(http[s]?://)?([0-9]+-)?(w-[a-zA-Z0-9-]+)\.(.+)$ ]]; then
+    DETECTED_PORT_PREFIX="${BASH_REMATCH[2]:-8081-}"
     VM_HOSTNAME="${BASH_REMATCH[3]}"
     BASE_DOMAIN="${BASH_REMATCH[4]}"
-    DYNAMIC_FQDN="8081-${VM_HOSTNAME}.${BASE_DOMAIN}"
+    DYNAMIC_FQDN="${DETECTED_PORT_PREFIX}${VM_HOSTNAME}.${BASE_DOMAIN}"
+    FQDN_8080="8080-${VM_HOSTNAME}.${BASE_DOMAIN}"
+    FQDN_8081="8081-${VM_HOSTNAME}.${BASE_DOMAIN}"
+    FQDN_8082="8082-${VM_HOSTNAME}.${BASE_DOMAIN}"
     echo ""
     echo "🎯 Dynamic Identity Target Coordinates Discovered:"
     echo "   - Active Workstation VM Hostname: ${VM_HOSTNAME}"
     echo "   - Base Cluster Routing Suffix  : ${BASE_DOMAIN}"
-    echo "   - Exposed Port 8081 Preview FQDN: ${DYNAMIC_FQDN}"
+    echo "   - Whitelisted Preview FQDNs    : ${FQDN_8080}, ${FQDN_8081}, ${FQDN_8082}"
 else
     # Fallback to direct input if regex fails
     echo "⚠️ Warning: Failed to parse preview URL regex automatically."
@@ -64,14 +71,17 @@ else
 fi
 
 # 4. Bake Vite Staging Variables into Frontend .env
+# Omit hardcoded VITE_OIDC_AUTHORITY so oidc.js dynamically uses window.location.origin
+# (allowing seamless access via Port 8081, Port 8082, or localhost port-forwarding).
 echo "🔄 Baking secure preview parameters into static UI compilation environment..."
 cat <<EOF > "$FRONTEND_ENV"
 # Staging/Sandbox Web Preview Environment variables (Bakes into Vite JS Assets)
+VITE_API_URL=/api
 VITE_ENABLE_OIDC=true
-VITE_OIDC_AUTHORITY=https://${DYNAMIC_FQDN}/auth/realms/gdc-rag-realm
 VITE_OIDC_CLIENT_ID=rag-frontend
+VITE_ENABLE_INTEL_CONSOLE=true
 EOF
-echo "   ✅ Baked Frontend Environment: src/frontend/.env"
+echo "   ✅ Baked Frontend Environment: src/frontend/.env (Dynamic Origin OIDC + Intel Console enabled)"
 
 echo ""
 echo "================================================="

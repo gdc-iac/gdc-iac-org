@@ -3,12 +3,24 @@
 {{- end -}}
 
 {{- define "vllm.fullname" -}}
-{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default "vllm" .Values.nameOverride -}}
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "vllm.namespace" -}}
-{{- coalesce .Values.global.namespace .Values.namespace .Release.Namespace -}}
+{{- if .Values.global.namespace -}}
+{{- .Values.global.namespace -}}
+{{- else if .Values.namespace -}}
+{{- .Values.namespace -}}
+{{- else if ne .Release.Namespace "default" -}}
+{{- .Release.Namespace -}}
+{{- else -}}
+gemma-inference
+{{- end -}}
 {{- end -}}
 
 {{- define "vllm.image" -}}

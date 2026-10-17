@@ -1,0 +1,8 @@
+apiVersion: v2
+name: envoy-inference-pool
+description: Envoy Gateway API Inference Extension (InferencePool + epp Endpoint Picker) and Per-User Token Rate Limiting for GDC Gemma 4 vLLM
+type: application
+version: 0.1.0
+appVersion: "v1.3.0"
+maintainers:
+  - name: gdc-iac

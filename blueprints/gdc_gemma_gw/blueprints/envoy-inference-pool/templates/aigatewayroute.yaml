@@ -1,0 +1,146 @@
+{{- if and .Values.apps.enabled .Values.gateway.enabled -}}
+{{- $ns := include "envoy-inference-pool.namespace" . -}}
+{{- $labels := include "envoy-inference-pool.labels" . -}}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.gatewayClassName | default "envoy-ai-gateway" }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: {{ .Values.gateway.port | default 80 }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}-buffer-policy
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}
+  bufferLimit: {{ .Values.gateway.bufferLimit | default "50Mi" | quote }}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}-route
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rules:
+    {{- range $poolKey, $pool := .Values.pools }}
+    {{- if $pool.enabled }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: {{ $pool.modelHeaderValue | quote }}
+      backendRefs:
+        - name: {{ $pool.name }}
+          group: inference.networking.k8s.io
+          kind: InferencePool
+    {{- end }}
+    {{- end }}
+    {{- $defaultPoolKey := .Values.defaultPool | default "vllm26b" -}}
+    {{- $fallbackPoolName := "" -}}
+    {{- if and (hasKey .Values.pools $defaultPoolKey) (index .Values.pools $defaultPoolKey).enabled -}}
+      {{- $fallbackPoolName = (index .Values.pools $defaultPoolKey).name -}}
+    {{- else -}}
+      {{- range $poolKey, $pool := .Values.pools -}}
+        {{- if and $pool.enabled (eq $fallbackPoolName "") -}}
+          {{- $fallbackPoolName = $pool.name -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $fallbackPoolName }}
+    # Default fallback route to primary fast tier InferencePool ({{ $fallbackPoolName }})
+    - matches:
+        - headers:
+            - type: RegularExpression
+              name: x-ai-eg-model
+              value: ".*"
+      backendRefs:
+        - name: {{ $fallbackPoolName }}
+          group: inference.networking.k8s.io
+          kind: InferencePool
+    {{- end }}
+  llmRequestCosts:
+    - metadataKey: llm_input_token
+      type: InputToken
+    - metadataKey: llm_output_token
+      type: OutputToken
+    - metadataKey: llm_total_tokens
+      type: TotalToken
+{{- if .Values.tokenRateLimit.enabled }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}-token-ratelimit
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  targetRefs:
+    - name: {{ .Values.gateway.name | default "gemma-envoy-inference-pool" }}
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  rateLimit:
+    {{- $rlType := .Values.tokenRateLimit.type | default "Local" }}
+    type: {{ $rlType }}
+    {{- if eq $rlType "Global" }}
+    global:
+      rules:
+        - clientSelectors:
+            - headers:
+                - name: {{ .Values.tokenRateLimit.userHeader | default "X-User-ID" }}
+                  type: Distinct
+          limit:
+            requests: {{ .Values.tokenRateLimit.limit | default 50000 }}
+            unit: {{ .Values.tokenRateLimit.unit | default "Hour" }}
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: {{ .Values.tokenRateLimit.costMetadataNamespace | default "io.envoy.ai_gateway" }}
+                key: {{ .Values.tokenRateLimit.costMetadataKey | default "llm_total_tokens" }}
+    {{- else }}
+    local:
+      rules:
+        - clientSelectors:
+            - headers:
+                - name: {{ .Values.tokenRateLimit.userHeader | default "X-User-ID" }}
+                  type: Distinct
+          limit:
+            requests: {{ .Values.tokenRateLimit.limit | default 50000 }}
+            unit: {{ .Values.tokenRateLimit.unit | default "Hour" }}
+          cost:
+            request:
+              from: Number
+              number: 0
+            response:
+              from: Metadata
+              metadata:
+                namespace: {{ .Values.tokenRateLimit.costMetadataNamespace | default "io.envoy.ai_gateway" }}
+                key: {{ .Values.tokenRateLimit.costMetadataKey | default "llm_total_tokens" }}
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -31,6 +31,20 @@ model:
   maxModelLen: 2048
   gpuMemoryUtilization: 0.90
   tensorParallelSize: 1
+  maxNumBatchedTokens: 4096
+  maxNumSeqs: 128
+  enablePrefixCaching: true
+  enableChunkedPrefill: true
+  enableLora: false
+  loraModules: []
+  extraArgs: []
+
+shmSize: "16Gi" # Memory-backed /dev/shm emptyDir for multi-GPU NCCL tensor parallelism
+
+probes:
+  readinessInitialDelaySeconds: 15
+  startupInitialDelaySeconds: 10
+  startupFailureThreshold: 90
 
 resources:
   limits:

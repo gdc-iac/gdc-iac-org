@@ -165,7 +165,7 @@ spec:
 ### **2. Keycloak OIDC Authentication & Multi-Tenant Access Control**
 By default, Pattern 6 includes lightweight mock headers (`X-User-ID`, `X-User-Role`) for rapid testing. For production deployments requiring multi-tenant access control and single sign-on (SSO):
 
-1. **Overlay Keycloak (P12 Blueprint)**: Deploy Keycloak as the OIDC Identity Provider (IdP) using the [P12 Keycloak Blueprint](../p12-keycloak/README.md).
+1. **Overlay Keycloak (P12 Blueprint)**: Deploy Keycloak as the OIDC Identity Provider (IdP) using the [P12 Keycloak Blueprint](../../p12-keycloak/README.md).
 2. **API Gateway JWT Validation**: Configure GDC Gateway API (`HTTPRoute`) or NGINX ingress to validate Keycloak OIDC Bearer tokens (`Authorization: Bearer <jwt_token>`).
 3. **Identity Header Extraction**: Pass extracted claims (`sub` as `X-User-ID` and `realm_access.roles` as `X-User-Role`) to `query-service`.
 4. **Document Access Isolation**: `query-service` filters PostgreSQL vector queries using the authenticated user identity:
@@ -174,7 +174,7 @@ By default, Pattern 6 includes lightweight mock headers (`X-User-ID`, `X-User-Ro
    WHERE (owner_id = %s OR source_path LIKE 'shared/%%') 
    ORDER BY embedding <=> %s::vector LIMIT 5;
    ```
-5. **Full Integration Guide**: Refer to [`docs/keycloak_integration_guide.md`](../docs/keycloak_integration_guide.md) for detailed OIDC proxy configuration.
+5. **Full Integration Guide**: Refer to [`docs/keycloak_integration_guide.md`](../operations/keycloak_integration_guide.md) for detailed OIDC proxy configuration.
 
 ---
 

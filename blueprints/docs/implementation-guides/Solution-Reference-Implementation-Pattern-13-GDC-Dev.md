@@ -116,7 +116,7 @@ This generates:
 > [!TIP]
 > **Customizing Developer Tooling & Language SDK Recipes:**  
 > If your organization requires additional language runtimes (Golang, Java OpenJDK/Maven/Gradle, Node.js/TypeScript, OpenTofu, enterprise CA certificates) or slimmer base images to enforce least-privilege policies, customize the Dockerfile before running the offline build. See the dedicated guide:  
-> 📖 [**Customizing Developer Workspace Images (gdc-dev)**](../customizing-developer-workspace-images.md) (or [workspace/README.md](../../p13-gdc-dev/example-app/workspace/README.md)).
+> 📖 [**Customizing Developer Workspace Images (gdc-dev)**](../operations/customizing-developer-workspace-images.md) (or [workspace/README.md](../../p13-gdc-dev/example-app/workspace/README.md)).
 
 ---
 
