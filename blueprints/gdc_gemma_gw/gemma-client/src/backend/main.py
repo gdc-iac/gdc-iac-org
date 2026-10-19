@@ -41,33 +41,36 @@ async def health():
     return {"status": "ok"}
 
 @app.get("/models")
+@app.get("/api/models")
 async def get_serving_models():
-    import httpx
-    from chat import GATEWAY_URL
+    default_models = [
+        {"id": "gemma4:26b", "name": "Gemma 4 26B A4B (MoE)"},
+        {"id": "gemma4:31b", "name": "Gemma 4 31B (Dense)"},
+    ]
     try:
+        import httpx
+        from chat import GATEWAY_URL
         async with httpx.AsyncClient(trust_env=False) as client:
             response = await client.get(f"{GATEWAY_URL}/models", timeout=10.0)
             if response.status_code != 200:
                 print(f"WARNING: Gateway models discovery endpoint returned status code {response.status_code} for URL: {GATEWAY_URL}/models")
-                return [
-                    {"id": "gemma4:26b", "name": "Gemma 4 26B A4B (MoE)"},
-                    {"id": "gemma4:31b", "name": "Gemma 4 31B (Dense)"}
-                ]
+                return default_models
             openai_data = response.json()
+            if not isinstance(openai_data, dict):
+                return default_models
             models_list = []
             for item in openai_data.get("data", []):
-                model_id = item.get("id")
+                if not isinstance(item, dict):
+                    continue
+                model_id = str(item.get("id") or "gemma4:26b")
                 friendly_name = "Gemma 4 26B A4B (MoE)" if "26b" in model_id.lower() else "Gemma 4 31B (Dense)"
                 if "8b" in model_id.lower() or "e4b" in model_id.lower():
                     friendly_name = "Gemma 4 8B Multimodal (E4B)"
                 models_list.append({"id": model_id, "name": friendly_name})
-            return models_list
-    except Exception as e:
+            return models_list or default_models
+    except BaseException as e:
         print(f"Error querying dynamic models: {e}")
-        return [
-            {"id": "gemma4:26b", "name": "Gemma 4 26B A4B (MoE)"},
-            {"id": "gemma4:31b", "name": "Gemma 4 31B (Dense)"}
-        ]
+        return default_models
 
 # --- Files ---
 

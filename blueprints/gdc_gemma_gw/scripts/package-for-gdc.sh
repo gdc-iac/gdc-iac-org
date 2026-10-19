@@ -49,8 +49,8 @@ ${REGISTRY_HOST}/vllm-gemma-26b:${TAG}
 ${REGISTRY_HOST}/vllm-gemma-31b:${TAG}
 EOF
 
-    echo "📦 2. Archiving vLLM Helm charts and manifests..."
-    tar -czf "$STAGING_DIR/gateway/vllm/gemma-gateway-gdc-manifests.tar.gz" blueprints/vllm-gke/ standalone/
+    echo "📦 2. Archiving vLLM and Envoy InferencePool Helm charts and manifests..."
+    tar -czf "$STAGING_DIR/gateway/vllm/gemma-gateway-gdc-manifests.tar.gz" blueprints/vllm-gke/ blueprints/envoy-inference-pool/ standalone/
 
 elif [ "$INFERENCE_ENGINE" = "client" ]; then
     echo "📦 1. Bundling and Exporting Client container images only..."

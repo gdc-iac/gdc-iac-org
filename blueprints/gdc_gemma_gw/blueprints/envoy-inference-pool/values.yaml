@@ -1,0 +1,111 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Global context parameters injected by the GDC IaC framework (Helmfile / ArgoCD)
+global:
+  projectId: "test-project"
+  namespace: ""
+  registry: "harbor.gdc.local/blueprint-images"
+  imagePullSecrets: []
+  commonLabels: {}
+  commonAnnotations: {}
+
+# Fallback top-level namespace/registry for direct helm install
+namespace: ""
+registry: ""
+
+# Control-plane execution gates (Stage 2 vs Stage 5)
+gdc:
+  enabled: false
+  failover:
+    enabled: false
+
+apps:
+  enabled: true
+
+# Internal Envoy Gateway (L7 Data Plane behind gemma-gateway Control Plane)
+gateway:
+  enabled: true
+  name: "gemma-envoy-inference-pool"
+  gatewayClassName: "envoy-ai-gateway"
+  port: 80
+  bufferLimit: "50Mi" # Accommodates base64-encoded multimodal images & large RAG contexts
+
+# Gateway API Inference Extension: Endpoint Picker (epp) Configuration
+epp:
+  image:
+    repository: "registry.k8s.io/gateway-api-inference-extension/epp"
+    tag: "v1.3.0"
+    pullPolicy: "IfNotPresent"
+  grpcPort: 9002
+  grpcHealthPort: 9003
+  metricsPort: 9090
+  failureMode: "FailOpen"
+  createClusterRBAC: true
+  envoyGatewayNamespace: "envoy-gateway-system"
+  envoyGatewayServiceAccount: "envoy-gateway"
+  scorers:
+    queueWeight: 2
+    kvCacheUtilizationWeight: 2
+    prefixCacheWeight: 3
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+
+# Default fallback pool key when x-ai-eg-model does not match an explicit pool rule
+# Automatically falls back to the first enabled pool in .Values.pools if this key is absent
+defaultPool: "vllm26b"
+
+# Model-Tier InferencePools (Gemma 4 26B MoE + Gemma 4 31B Dense, or custom model pools)
+pools:
+  vllm26b:
+    enabled: true
+    name: "vllm-26b-pool"
+    eppServiceName: "vllm-26b-epp"
+    modelHeaderValue: "gemma4:26b"
+    targetPort: 8000
+    selectorLabels:
+      app.kubernetes.io/name: "vllm-gke"
+      app.kubernetes.io/instance: "vllm-26b"
+    objective:
+      enabled: true
+      name: "gemma4-26b-interactive"
+      priority: 100
+  vllm31b:
+    enabled: true
+    name: "vllm-31b-pool"
+    eppServiceName: "vllm-31b-epp"
+    modelHeaderValue: "gemma4:31b"
+    targetPort: 8000
+    selectorLabels:
+      app.kubernetes.io/name: "vllm-gke"
+      app.kubernetes.io/instance: "vllm-31b"
+    objective:
+      enabled: true
+      name: "gemma4-31b-reasoning"
+      priority: 50
+
+# Per-User Token Rate Limiting via Envoy BackendTrafficPolicy + llmRequestCosts
+tokenRateLimit:
+  enabled: true
+  type: "Local" # Set to "Global" when Envoy Gateway is backed by a cluster Redis rate-limit service
+  userHeader: "X-User-ID"
+  limit: 50000
+  unit: "Hour"
+  costMetadataNamespace: "io.envoy.ai_gateway"
+  costMetadataKey: "llm_total_tokens"

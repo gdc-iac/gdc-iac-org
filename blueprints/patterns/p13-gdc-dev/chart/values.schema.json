@@ -25,6 +25,12 @@
         }
       }
     },
+    "namespace": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "string"
+    },
     "gdc": {
       "type": "object",
       "properties": {
@@ -48,6 +54,43 @@
           "type": "boolean"
         }
       }
+    },
+    "phase": {
+      "type": "integer"
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "allowSimulatedOidc": {
+          "type": ["string", "boolean"]
+        },
+        "headerUserKey": {
+          "type": "string"
+        },
+        "oidcAuthority": {
+          "type": "string"
+        },
+        "oidcClientId": {
+          "type": "string"
+        },
+        "oidcRedirectUri": {
+          "type": "string"
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "storage": {
+      "type": "object"
     }
   }
 }

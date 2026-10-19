@@ -29,7 +29,21 @@ tests:
     template: templates/apps/workloads.yaml
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].env[3].value
+          path: spec.template.spec.containers[0].env[16].value
           value: '{"gemma4:26b": "http://vllm-26b-vllm-service:8000", "gemma4:31b": "http://vllm-31b-vllm-service:8000", "*": "http://vllm-26b-vllm-service:8000"}'
         documentIndex: 0
-
+  - it: should route MODEL_ROUTING_CONFIG through Envoy InferencePool when apps.envoyInferencePool.enabled is true
+    set:
+      apps.activeFramework: vllm
+      apps.envoyInferencePool.enabled: true
+      apps.envoyInferencePool.serviceUrl: http://gemma-envoy-inference-pool:80
+    template: templates/apps/workloads.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
+          value: "true"
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].env[16].value
+          value: '{"gemma4:26b": "http://gemma-envoy-inference-pool:80", "gemma4:31b": "http://gemma-envoy-inference-pool:80", "*": "http://gemma-envoy-inference-pool:80"}'
+        documentIndex: 0

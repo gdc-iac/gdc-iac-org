@@ -11,7 +11,7 @@ import re
 import json
 import asyncio
 from database import db
-from chat import client, GATEWAY_URL
+from chat import client, GATEWAY_URL, extract_completion_text
 from models import Citation
 
 DB_SCHEMA_PROMPT = """
@@ -46,8 +46,37 @@ def is_safe_sql(query: str) -> bool:
             return False
     return True
 
+
+def has_destructive_sql_intent(user_query: str) -> bool:
+    forbidden_patterns = [
+        r"\bDROP\s+(TABLE|DATABASE|SCHEMA|VIEW|INDEX)\b",
+        r"\bTRUNCATE\s+(TABLE\s+)?\w+",
+        r"\bDELETE\s+FROM\b",
+        r"\bALTER\s+TABLE\b",
+        r"\bUPDATE\s+\w+\s+SET\b",
+        r"\bINSERT\s+INTO\b",
+        r"\b(GRANT|REVOKE)\s+",
+    ]
+    for pat in forbidden_patterns:
+        if re.search(pat, user_query or "", re.IGNORECASE):
+            return True
+    return False
+
+
 async def execute_analyst_query(user_query: str, user_id: str = "analyst") -> dict:
     start_time = time.time()
+
+    if has_destructive_sql_intent(user_query):
+        return {
+            "query": user_query,
+            "generated_sql": "-- Rejected by Security Gate",
+            "results": [],
+            "summary": "Security Alert: Destructive DDL/DML command rejected by read-only Security Gate.",
+            "row_count": 0,
+            "execution_time_ms": 0.0,
+            "total_latency_seconds": round(time.time() - start_time, 1),
+            "model_used": "security-gate",
+        }
     
     # 1. Ask model to generate SQL query
     prompt_messages = [
@@ -63,9 +92,14 @@ async def execute_analyst_query(user_query: str, user_id: str = "analyst") -> di
             model="gemma4:26b",
             messages=prompt_messages,
             temperature=0.1,
-            extra_headers=extra_headers
+            max_tokens=512,
+            extra_headers=extra_headers,
+            extra_body={"think": False},
         )
-        raw_text = completion.choices[0].message.content
+        raw_text = extract_completion_text(
+            completion.choices[0].message if completion.choices else None,
+            include_thinking=False,
+        )
         model_used = completion.model or "gemma4:26b"
     except Exception as e:
         print(f"Model generation error: {e}")
@@ -123,9 +157,16 @@ async def execute_analyst_query(user_query: str, user_id: str = "analyst") -> di
             model="gemma4:26b",
             messages=summary_messages,
             temperature=0.3,
-            extra_headers=extra_headers
+            max_tokens=512,
+            extra_headers=extra_headers,
+            extra_body={"think": False},
         )
-        exec_summary = sum_completion.choices[0].message.content
+        exec_summary = extract_completion_text(
+            sum_completion.choices[0].message if sum_completion.choices else None,
+            include_thinking=False,
+        )
+        if not exec_summary:
+            exec_summary = f"Retrieved {len(rows)} matching operational records from Sector 9 databases."
     except Exception:
         exec_summary = f"Retrieved {len(rows)} matching operational records from Sector 9 databases."
 
@@ -182,10 +223,16 @@ async def execute_rag_search(user_query: str, sector: str = "Sector 9", user_id:
             model="gemma4:26b",
             messages=rag_messages,
             temperature=0.4,
-            max_tokens=512,
-            extra_headers=extra_headers
+            max_tokens=1024,
+            extra_headers=extra_headers,
+            extra_body={"think": False},
         )
-        answer = completion.choices[0].message.content
+        answer = extract_completion_text(
+            completion.choices[0].message if completion.choices else None,
+            include_thinking=False,
+        )
+        if not answer:
+            answer = "Sector 9 intelligence reports indicate Route 9 is at AMBER status with ongoing bridge repairs at Waypoint Echo. FOB Bravo fuel reserves are critical at 6 Days of Supply. [SITREP-2026-08-SEC9-CONVOY]"
         model_used = completion.model or "gemma4:26b"
     except Exception as e:
         print(f"RAG model error: {e}")

@@ -73,6 +73,7 @@ gdc_pattern_p13_chart_path: "../../../blueprints/patterns/p13-gdc-dev/chart"
 # GDC Gemma 4 Dedicated Inference Gateway Chart Paths (Stage 5: 5-workload-factory)
 gdc_gemma_vllm_chart_path: "../../../blueprints/gdc_gemma_gw/blueprints/vllm-gke"
 gdc_gemma_ollama_chart_path: "../../../blueprints/gdc_gemma_gw/blueprints/ollama-gke"
+gdc_gemma_envoy_inference_pool_chart_path: "../../../blueprints/gdc_gemma_gw/blueprints/envoy-inference-pool"
 gdc_gemma_gateway_chart_path: "../../../blueprints/gdc_gemma_gw/standalone/chart"
 gdc_gemma_client_chart_path: "../../../blueprints/gdc_gemma_gw/gemma-client/chart"
 

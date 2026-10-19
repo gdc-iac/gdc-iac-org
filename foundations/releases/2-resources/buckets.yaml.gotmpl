@@ -28,10 +28,16 @@ templates:
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
+    {{- $zonalProjects := $tenantConfig | get "projects" list }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenBuckets := dict }}
 
-    {{- range $project := $tenantConfig.global.projects }}
+    {{- range $project := $allProjects }}
       {{- if and $project.resources (hasKey $project.resources "buckets") }}
         {{- range $bucket := $project.resources.buckets }}
+          {{- if not (hasKey $seenBuckets $bucket.name) }}
+            {{- $_ := set $seenBuckets $bucket.name true }}
         - name: {{ $bucket.name }}
           chart: {{ $vals | get "gdc_buckets_chart_path" "../../../charts/gdc-buckets" }}
           {{- if ($vals | get "gdc_buckets_chart_version" "") }}
@@ -52,6 +58,7 @@ releases:
                   description: {{ $bucket.description }}
                   storageClass: {{ $bucket.storage_class }}
                   location: {{ $bucket.location }}
+          {{- end }}
         {{- end }}
       {{- end }}
     {{- end }}

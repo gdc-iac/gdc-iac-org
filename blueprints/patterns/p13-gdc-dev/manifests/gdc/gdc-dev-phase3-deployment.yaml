@@ -86,6 +86,8 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        - containerPort: 8081
+          name: admin
         resources:
           requests:
             cpu: 100m

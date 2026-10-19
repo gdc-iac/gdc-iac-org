@@ -29,6 +29,12 @@ spec:
           value: "26b"
         - name: GATEWAY_TIMEOUT
           value: "300.0"
+        - name: KEYCLOAK_URL
+          value: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
+        - name: OIDC_CLIENT_ID
+          value: "rag-frontend"
+        - name: ADMIN_REQUIRE_OIDC
+          value: "true"
         resources:
           requests:
             cpu: "100m"

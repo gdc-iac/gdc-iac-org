@@ -81,6 +81,12 @@ spec:
             configMapKeyRef:
               name: gdc-dev-mock-auth-config
               key: MOCK_USER_ID
+        envFrom:
+        - configMapRef:
+            name: gdc-dev-mock-auth-config
+        - configMapRef:
+            name: gdc-dev-agent-config
+            optional: true
         ports:
         - containerPort: 3000
           name: session
@@ -118,9 +124,15 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: admin
         envFrom:
         - configMapRef:
             name: gdc-dev-mock-auth-config
+        - configMapRef:
+            name: gdc-dev-agent-config
+            optional: true
         resources:
           requests:
             cpu: 50m
@@ -138,8 +150,12 @@ spec:
   selector:
     app: gdc-dev-landing-page
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
+  - name: admin
+    port: 8081
+    targetPort: 8081
 ---
 apiVersion: v1
 kind: Service

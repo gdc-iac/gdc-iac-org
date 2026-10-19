@@ -16,7 +16,8 @@
 {{- if .Values.apps.enabled }}
 {{- $registry := .Values.registry | default .Values.global.registry -}}
 {{- $projectId := .Values.global.projectId | default "test-project" -}}
-{{- $bucket := .Values.apps.inputBucket | default (printf "%s-gemma-input" $projectId) -}}
+{{- $rawBucket := .Values.apps.inputBucket | default (printf "%s-gemma-input" $projectId) -}}
+{{- $bucket := $rawBucket | trimPrefix "gs://" | trimPrefix "s3://" -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,6 +60,12 @@ spec:
           value: {{ $projectId | quote }}
         - name: INPUT_BUCKET
           value: {{ printf "gs://%s" $bucket | quote }}
+        - name: ENABLE_GCS_UPLOAD
+          value: {{ .Values.apps.enableGcsUpload | default "true" | quote }}
+        {{- if .Values.apps.s3Endpoint }}
+        - name: S3_ENDPOINT
+          value: {{ .Values.apps.s3Endpoint | quote }}
+        {{- end }}
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:

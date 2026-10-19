@@ -41,7 +41,7 @@ metadata:
 spec:
   subjects:
   - kind: ServiceAccount
-    name: gemini-gui-sa
+    name: gemma-client-sa
     namespace: {{ include "gemma-gemma-client.namespace" . }}
   roleRef:
     kind: IAMRole

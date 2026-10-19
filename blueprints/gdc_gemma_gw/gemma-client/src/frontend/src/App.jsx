@@ -12,7 +12,12 @@ import { Loader2 } from 'lucide-react';
 
 function App() {
   const isOidcEnabled = import.meta.env.VITE_ENABLE_OIDC === 'true';
-  const isIntelConsoleEnabled = import.meta.env.VITE_ENABLE_INTEL_CONSOLE !== 'false';
+  const [isIntelConsoleEnabled, setIsIntelConsoleEnabled] = useState(() => {
+    const savedMode = sessionStorage.getItem('gemma_ui_mode');
+    if (savedMode === 'client') return false;
+    if (savedMode === 'intel') return true;
+    return import.meta.env.VITE_ENABLE_INTEL_CONSOLE !== 'false';
+  });
   const authority = import.meta.env.VITE_OIDC_AUTHORITY || (window.location.origin + '/auth/realms/gdc-rag-realm');
   const clientId = import.meta.env.VITE_OIDC_CLIENT_ID || 'rag-frontend';
 
@@ -72,6 +77,9 @@ function App() {
           sessionStorage.setItem('oidc_access_token', accessToken);
           if (tokenData.refresh_token) {
             sessionStorage.setItem('oidc_refresh_token', tokenData.refresh_token);
+          }
+          if (tokenData.id_token) {
+            sessionStorage.setItem('oidc_id_token', tokenData.id_token);
           }
           
           // Wipe authorization code query strings from browser URL preview bar
@@ -165,11 +173,17 @@ function App() {
       <Header 
         currentUser={currentUser} 
         setCurrentUser={setCurrentUser}
-        selectedModel={activeModel} // Render activeModel on the badge
-        setSelectedModel={setActiveModel} // Update activeModel on switcher click
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        activeModel={activeModel}
+        setActiveModel={setActiveModel}
         isThinkingEnabled={isThinkingEnabled}
         setIsThinkingEnabled={setIsThinkingEnabled}
         isIntelConsoleEnabled={isIntelConsoleEnabled}
+        setIsIntelConsoleEnabled={(val) => {
+          sessionStorage.setItem('gemma_ui_mode', val ? 'intel' : 'client');
+          setIsIntelConsoleEnabled(val);
+        }}
       />
       
       {isIntelConsoleEnabled && (

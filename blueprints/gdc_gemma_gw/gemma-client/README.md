@@ -1,3 +1,5 @@
+Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
+
 # Gemma Client - Multi-User Chat Interface
 
 **Use Case:** A multi-user chatbot interface for **Gemma 4** models in a GDC air-gapped environment. This pattern provides a direct wrapper around the **Gemma Inference Gateway**, allowing users to chat, upload documents, and ground reasoning tasks securely. It supports model selection, chat history persistence, and role-based access control (RBAC).
@@ -33,7 +35,7 @@ This pattern describes a modern, resilient, multi-user chatbot for a GDC-ag envi
 3.  **Stateless Compute & Resilience:** The frontend and backend are stateless, scalable, and resilient. Session data, chat histories, and uploads persist securely under managed GDC platform services (**GDC Database Service (PostgreSQL)** and **GDC Storage (Object)**).
 4.  **Model Selection Override:** Users can manually lock their prompt queries to target a specific model variant (the efficient `26B MoE` or the high-capacity `31B Dense` variant) natively from the header select menu dropdown.
 5.  **Smart Prompt Routing & Dynamic UI Sync:** By leaving the selector on **`Auto / Generic (gemma4)`**, queries route dynamically. The backend gateway parses query complexity (math, programming, logic) and redirects to the most appropriate GPU pod dynamically. The React frontend automatically intercepts the resolved serving model tag returned in the OpenAI response envelope, and **refreshes its header model badge dynamically in real-time** (flipping between **`MoE (26B)`** and **`Dense (31B)`**), giving users transparent feedback of the server's dynamic routing decisions.
-    *   *Reference Details*: Proceed deeply into the master architectural guide: **[docs/model_routing_architecture.md](../docs/model_routing_architecture.md)**.
+    *   *Reference Details*: Proceed deeply into the master architectural guide: **[docs/architecture/model_routing_architecture.md](../docs/architecture/model_routing_architecture.md)**.
 
 ## Day 0 Prerequisites (Air-Gap Transfer)
 
@@ -72,7 +74,7 @@ Frontend and Backend sizing uses HPA for horizontal pod scaling to comfortably h
 
 > [!TIP]
 > **ARCHITECTURAL COMPLIANCE REPORT:**
-> The entire client and database scaling sizing matrix has been physically audited, verified, and signed off under GDC-ag standard machine mappings! Proceed deeply into the master engineering report: **[docs/resource-sizing-validation.md](../docs/resource-sizing-validation.md)**.
+> The entire client and database scaling sizing matrix has been physically audited, verified, and signed off under GDC-ag standard machine mappings! Proceed deeply into the master engineering report: **[docs/architecture/resource-sizing-validation.md](../docs/architecture/resource-sizing-validation.md)**.
 
 ## Configuration
 
@@ -307,7 +309,7 @@ We resolve the browser's sandboxed iframe cookies restrictions (the Workstation 
 2. **Automated Realm Import (GitOps Standard)**: Preloading and importing the realm config map on Keycloak startup, bypassing Master Admin UI console hangs.
 
 Refer to the newly staged master blueprints and scripts to run the integration:
-*   **[gcp-sandbox-keycloak-testing-strategy.md](../docs/gcp-sandbox-keycloak-testing-strategy.md)**: Dynamic sequence flows, GKE Staging (Nginx) vs. GDC-ag Production (Gateway API) structural matrix, and DNS optimizations.
+*   **[gcp-sandbox-keycloak-testing-strategy.md](../docs/testing/gcp-sandbox-keycloak-testing-strategy.md)**: Dynamic sequence flows, GKE Staging (Nginx) vs. GDC-ag Production (Gateway API) structural matrix, and DNS optimizations.
 *   **[configure-keycloak.sh](scripts/configure-keycloak.sh)**: Interactive configurator to dynamically discover your workstation preview subdomains, stage hydrated manifests, and bake frontend `.env` parameters.
 
 ## Troubleshooting
