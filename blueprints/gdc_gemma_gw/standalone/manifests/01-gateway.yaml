@@ -36,6 +36,20 @@ spec:
           value: "http://ollama:11434"
         - name: VLLM_URL
           value: "http://vllm:8000"
+        - name: GPU_VRAM_TOTAL_GB
+          value: "80.0"
+        - name: VLLM_GPU_MEMORY_UTILIZATION
+          value: "0.90"
+        - name: ENABLE_OIDC
+          value: "false"
+        - name: ADMIN_REQUIRE_OIDC
+          value: "true"
+        - name: KEYCLOAK_URL
+          value: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
+        - name: OIDC_CLIENT_ID
+          value: "rag-frontend"
+        - name: GATEWAY_STATE_FILE
+          value: "/tmp/gemma_gateway_state.json"
         resources:
           requests:
             cpu: "100m"

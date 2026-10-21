@@ -21,7 +21,7 @@ bases:
 
 templates:
   pattern-template:
-    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
+    kubeContext: {{ $vals | get "gdc_context_cluster" ($vals | get "gdc_context_zone" "zonal-api-context") }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: {{ $vals | get "install_patterns" true }}
@@ -31,16 +31,33 @@ releases:
     {{- $patternsBasePath := $vals | get "gdc_patterns_base_path" "../../../blueprints/patterns" }}
     {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
     {{- $zonalProjects := $tenantConfig | get "projects" list }}
-    {{- $allProjects := concat $globalProjects $zonalProjects }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenPatterns := dict }}
 
     {{- range $project := $allProjects }}
       {{- if and $project.resources (hasKey $project.resources "patterns") }}
         {{- range $pattern := $project.resources.patterns }}
           {{- $patternId := $pattern | get "pattern" "" }}
           {{- $releaseName := $pattern | get "name" (printf "%s-%s" $project.name $patternId) }}
-          {{- $chartPath := $pattern | get "chart_path" (printf "%s/%s/chart" $patternsBasePath $patternId) }}
+          {{- if not (hasKey $seenPatterns $releaseName) }}
+            {{- $_ := set $seenPatterns $releaseName true }}
+          {{- $chartPathKey := $pattern | get "chart_path_key" "" }}
+          {{- $defaultChartPath := printf "%s/%s/chart" $patternsBasePath $patternId }}
+          {{- if and $chartPathKey (hasKey $vals $chartPathKey) }}
+          {{- $defaultChartPath = index $vals $chartPathKey }}
+          {{- end }}
+          {{- $chartPath := $pattern | get "chart_path" $defaultChartPath }}
+          {{- $chartVersionKey := $pattern | get "chart_version_key" "" }}
       - name: {{ $releaseName | quote }}
         chart: {{ $chartPath | quote }}
+        {{- if hasKey $pattern "version" }}
+        version: {{ $pattern.version | quote }}
+        {{- else if and $chartVersionKey ($vals | get $chartVersionKey "") }}
+        version: {{ $vals | get $chartVersionKey | quote }}
+        {{- end }}
+        {{- if hasKey $pattern "kube_context" }}
+        kubeContext: {{ $pattern.kube_context | quote }}
+        {{- end }}
         labels:
           stage: 5-workload-factory
           tenant: {{ $tenantName | quote }}
@@ -73,8 +90,8 @@ releases:
           {{- if hasKey $pattern "values" }}
           - {{ $pattern.values | toJson }}
           {{- end }}
+          {{- end }}
         {{- end }}
       {{- end }}
     {{- end }}
   {{- end }}
-

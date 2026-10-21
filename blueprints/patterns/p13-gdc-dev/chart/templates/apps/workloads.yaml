@@ -79,6 +79,12 @@ spec:
     allowedRoutes:
       namespaces:
         from: Same
+  - name: admin
+    protocol: HTTP
+    port: 8081
+    allowedRoutes:
+      namespaces:
+        from: Same
   - name: https-selfsigned
     protocol: HTTPS
     port: 443
@@ -136,6 +142,29 @@ spec:
     - name: gdc-dev-session-service
       port: 3000
 ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gdc-dev-admin-route
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - name: gdc-dev-gateway
+    namespace: {{ include "p13-gdc-dev.namespace" . }}
+  hostnames:
+  - admin.dev.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: gdc-dev-landing-page
+      port: 8081
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -162,8 +191,28 @@ data:
   AI_DEFAULT_MODEL: gemma4:31b
   AI_GEMINI_TIER2_MODEL: gemini-2.0-pro
   AI_VISION_TOKEN_BUDGET: '280'
+  SHARED_CODEBASE_ROOT: {{ (and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.mountPath) | default "/workspace/shared" | quote }}
   NO_PROXY: '*.gemma-inference.svc.cluster.local,*.gemma-inference,*.svc.cluster.local,localhost,127.0.0.1'
 ---
+{{- if and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.usePvc }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gdc-dev-shared-codebase-pvc
+  namespace: {{ include "p13-gdc-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: gdc-dev
+    app.kubernetes.io/component: shared-codebase-storage
+    {{- include "p13-gdc-dev.labels" . | nindent 4 }}
+spec:
+  storageClassName: {{ .Values.storage.sharedCodebase.storageClassName | default "standard-rwx" | quote }}
+  accessModes:
+  - {{ .Values.storage.sharedCodebase.accessMode | default "ReadWriteMany" }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.sharedCodebase.size | default "50Gi" | quote }}
+---
+{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -259,23 +308,24 @@ spec:
       containers:
       - name: operator
         image: {{ include "p13-gdc-dev.registry" . }}/gdc-dev-operator:latest
-        imagePullPolicy: Always
-        env:
-        - name: AUTH_MODE
-          valueFrom:
-            configMapKeyRef:
-              name: gdc-dev-mock-auth-config
-              key: AUTH_MODE
-        - name: MOCK_USER_ID
-          valueFrom:
-            configMapKeyRef:
-              name: gdc-dev-mock-auth-config
-              key: MOCK_USER_ID
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: gdc-dev-oidc-auth-config
+        - configMapRef:
+            name: gdc-dev-ai-config
+            optional: true
+        - configMapRef:
+            name: gdc-dev-agent-config
+            optional: true
         ports:
         - containerPort: 3000
           name: session
         - containerPort: 8080
           name: health
+        volumeMounts:
+        - name: shared-codebase
+          mountPath: {{ (and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.mountPath) | default "/workspace/shared" | quote }}
         resources:
           requests:
             cpu: 100m
@@ -283,6 +333,14 @@ spec:
           limits:
             cpu: 500m
             memory: 512Mi
+      volumes:
+      - name: shared-codebase
+        {{- if and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.usePvc }}
+        persistentVolumeClaim:
+          claimName: gdc-dev-shared-codebase-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -306,12 +364,24 @@ spec:
       containers:
       - name: landing-page
         image: {{ include "p13-gdc-dev.registry" . }}/gdc-dev-landing-page:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
+          name: http
+        - containerPort: 8081
+          name: admin
         envFrom:
         - configMapRef:
-            name: gdc-dev-mock-auth-config
+            name: gdc-dev-oidc-auth-config
+        - configMapRef:
+            name: gdc-dev-ai-config
+            optional: true
+        - configMapRef:
+            name: gdc-dev-agent-config
+            optional: true
+        volumeMounts:
+        - name: shared-codebase
+          mountPath: {{ (and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.mountPath) | default "/workspace/shared" | quote }}
         resources:
           requests:
             cpu: 50m
@@ -319,6 +389,14 @@ spec:
           limits:
             cpu: 200m
             memory: 256Mi
+      volumes:
+      - name: shared-codebase
+        {{- if and .Values.storage .Values.storage.sharedCodebase .Values.storage.sharedCodebase.usePvc }}
+        persistentVolumeClaim:
+          claimName: gdc-dev-shared-codebase-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -331,8 +409,12 @@ spec:
   selector:
     app: gdc-dev-landing-page
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
+  - name: admin
+    port: 8081
+    targetPort: 8081
 ---
 apiVersion: v1
 kind: Service
@@ -371,6 +453,10 @@ spec:
   - name: https
     port: 443
     targetPort: 8080
+    protocol: TCP
+  - name: admin
+    port: 8081
+    targetPort: 8081
     protocol: TCP
 ---
 apiVersion: v1
@@ -457,9 +543,14 @@ spec:
     - podSelector:
         matchLabels:
           app: gdc-dev-operator
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-landing-page
     ports:
     - protocol: TCP
       port: 8080
+    - protocol: TCP
+      port: 8081
     - protocol: TCP
       port: 3000
   egress:
@@ -487,7 +578,14 @@ spec:
     - podSelector:
         matchLabels:
           app: gdc-dev-operator
+    - podSelector:
+        matchLabels:
+          app: gdc-dev-landing-page
     ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
     - protocol: TCP
       port: 3000
 ---
@@ -500,10 +598,10 @@ metadata:
     app.kubernetes.io/name: gdc-dev
     {{- include "p13-gdc-dev.labels" . | nindent 4 }}
 data:
-  AUTH_MODE: oidc
-  ALLOW_SIMULATED_OIDC: "false"
-  HEADER_USER_KEY: X-Forwarded-User
-  OIDC_AUTHORITY: https://keycloak.gdc.local/realms/gdc-dev-realm
-  OIDC_CLIENT_ID: gdc-dev-client
-  OIDC_REDIRECT_URI: https://dev.gdc.local/auth/callback
+  AUTH_MODE: {{ (and .Values.auth .Values.auth.mode) | default "oidc" | quote }}
+  ALLOW_SIMULATED_OIDC: {{ (and .Values.auth .Values.auth.allowSimulatedOidc) | default "false" | quote }}
+  HEADER_USER_KEY: {{ (and .Values.auth .Values.auth.headerUserKey) | default "X-Forwarded-User" | quote }}
+  OIDC_AUTHORITY: {{ (and .Values.auth .Values.auth.oidcAuthority) | default "https://keycloak.gdc.local/realms/gdc-dev-realm" | quote }}
+  OIDC_CLIENT_ID: {{ (and .Values.auth .Values.auth.oidcClientId) | default "gdc-dev-client" | quote }}
+  OIDC_REDIRECT_URI: {{ (and .Values.auth .Values.auth.oidcRedirectUri) | default "https://dev.gdc.local/auth/callback" | quote }}
 {{- end }}

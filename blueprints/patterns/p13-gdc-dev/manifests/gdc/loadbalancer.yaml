@@ -38,3 +38,7 @@ spec:
     port: 443
     targetPort: 8080
     protocol: TCP
+  - name: admin
+    port: 8081
+    targetPort: 8081
+    protocol: TCP

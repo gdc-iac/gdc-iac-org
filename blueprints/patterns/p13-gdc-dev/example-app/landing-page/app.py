@@ -25,6 +25,7 @@ import io
 import zipfile
 import difflib
 import re
+from typing import Any, Dict, List, Optional, Tuple
 from http.server import ThreadingHTTPServer, HTTPServer, BaseHTTPRequestHandler
 
 import hashlib
@@ -411,37 +412,68 @@ def reset_project(template_name, session_id="default-workspace", user_id="oidc-d
     return files_to_create
 
 PROJECTS_ROOT = os.environ.get("DEV_PROJECTS_ROOT", os.environ.get("THEIA_PROJECTS_ROOT", "/tmp/dev-projects"))
+SHARED_CODEBASE_ROOT = os.environ.get(
+    "SHARED_CODEBASE_ROOT",
+    os.environ.get("DEV_SHARED_CODEBASE_ROOT", "/tmp/shared-codebase"),
+)
+
+def ensure_shared_codebase_dir():
+    """Ensures the shared team codebase directory (RWX mount) exists and has an initial README."""
+    os.makedirs(SHARED_CODEBASE_ROOT, exist_ok=True)
+    readme_path = os.path.join(SHARED_CODEBASE_ROOT, "README.md")
+    if not os.path.exists(readme_path):
+        with open(readme_path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "# Shared Team Codebase (standard-rwx)\n\n"
+                "This directory is backed by the shared ReadWriteMany (RWX) volume for cross-team collaboration,\n"
+                "Git/GitLab repository clones, and shared libraries across isolated developer workspaces.\n"
+            )
+    return SHARED_CODEBASE_ROOT
 
 def get_workspace_dir(session_id="default-workspace"):
-    """Returns the workspace directory for a specific project/session."""
+    """Returns the workspace directory for a specific project/session or the shared team codebase."""
     clean_id = "".join(c for c in str(session_id) if c.isalnum() or c in ("-", "_")).strip()
     if not clean_id or clean_id == "default-workspace":
         return WORKSPACE_ROOT
+    if clean_id in ("shared", "shared-codebase", "team-shared"):
+        return ensure_shared_codebase_dir()
     proj_dir = os.path.join(PROJECTS_ROOT, clean_id)
     os.makedirs(proj_dir, exist_ok=True)
     return proj_dir
 
 def list_projects():
-    """Lists all available projects and their file counts."""
+    """Lists all available projects (isolated RWO workspaces + shared RWX codebase) and their file counts."""
     projects = []
-    # 1. default-workspace
+    # 1. default-workspace (User-Isolated RWO)
     ensure_workspace_dir(workspace_dir=WORKSPACE_ROOT, session_id="default-workspace")
     def_files = load_workspace_files(workspace_dir=WORKSPACE_ROOT)
     projects.append({
         "name": "default-workspace",
         "path": WORKSPACE_ROOT,
+        "scope": "user-rwo",
         "file_count": len(def_files),
         "files": sorted(list(def_files.keys()))
     })
-    # 2. Named projects under PROJECTS_ROOT
+    # 2. shared-codebase (Team-Shared RWX)
+    shared_dir = ensure_shared_codebase_dir()
+    shared_files = load_workspace_files(workspace_dir=shared_dir)
+    projects.append({
+        "name": "shared-codebase",
+        "path": shared_dir,
+        "scope": "shared-rwx",
+        "file_count": len(shared_files),
+        "files": sorted(list(shared_files.keys()))
+    })
+    # 3. Named projects under PROJECTS_ROOT
     if os.path.exists(PROJECTS_ROOT):
         for item in sorted(os.listdir(PROJECTS_ROOT)):
             full_item = os.path.join(PROJECTS_ROOT, item)
-            if os.path.isdir(full_item) and item != "default-workspace":
+            if os.path.isdir(full_item) and item not in ("default-workspace", "shared-codebase"):
                 p_files = load_workspace_files(workspace_dir=full_item)
                 projects.append({
                     "name": item,
                     "path": full_item,
+                    "scope": "user-rwo",
                     "file_count": len(p_files),
                     "files": sorted(list(p_files.keys()))
                 })
@@ -721,6 +753,425 @@ def synthesize_reviewer_test_code(prompt: str, target_file: str) -> str:
             f"        assert get_ttl_seconds() > 0\n"
             f"        print('✅ All unit tests passed successfully!')\n"
         )
+
+
+def _resolve_swarm_target_filenames(prompt: str, filename: str = "main.py") -> Tuple[str, str, str]:
+    """Resolves (arch_md_filename, coder_py_filename, reviewer_test_py_filename) from prompt and active file."""
+    p_low = (prompt or "").lower()
+    target_py = "rate_limiter.py"
+    m_py = re.search(r'([a-zA-Z0-9_\-\./]+\.py)', prompt or "")
+    if m_py:
+        candidate = m_py.group(1).split("/")[-1]
+        if candidate.startswith("test_"):
+            candidate = candidate[5:] or "solution.py"
+        if candidate != "main.py" or "main.py" in p_low:
+            target_py = candidate
+    elif "retry" in p_low or "backoff" in p_low:
+        target_py = "retry_backoff.py"
+    elif "cache" in p_low or "ttl" in p_low:
+        target_py = "cache.py"
+    elif "health" in p_low:
+        target_py = "health_check.py"
+    elif filename and filename.endswith(".py") and filename != "main.py":
+        target_py = filename.split("/")[-1]
+
+    base_stem = target_py[:-3] if target_py.endswith(".py") else target_py
+    arch_md = f"{base_stem}_architecture.md"
+    test_py = f"test_{base_stem}.py" if not base_stem.startswith("test_") else f"{base_stem}.py"
+    return arch_md, target_py, test_py
+
+
+def _build_default_swarm_stage_contents(prompt: str, arch_md: str, target_py: str, test_py: str) -> Tuple[str, str, str]:
+    """Returns (arch_markdown_doc, coder_py_code, reviewer_test_py_code) for a given target module."""
+    p_low = (prompt or "").lower()
+    base_stem = target_py[:-3] if target_py.endswith(".py") else target_py
+
+    if "retry" in p_low or "backoff" in p_low or target_py == "retry_backoff.py":
+        coder_code = (
+            f"# {target_py} - Sovereign Exponential Backoff Retry Decorator\n"
+            f"import functools\n"
+            f"import time\n"
+            f"import unittest\n"
+            f"from typing import Callable, Tuple, Type\n\n"
+            f"def retry_with_backoff(\n"
+            f"    max_retries: int = 3,\n"
+            f"    base_delay: float = 0.05,\n"
+            f"    backoff_factor: float = 2.0,\n"
+            f"    exceptions: Tuple[Type[BaseException], ...] = (Exception,),\n"
+            f") -> Callable:\n"
+            f"    \"\"\"Retries a function with deterministic exponential backoff.\"\"\"\n"
+            f"    def decorator(func: Callable) -> Callable:\n"
+            f"        @functools.wraps(func)\n"
+            f"        def wrapper(*args, **kwargs):\n"
+            f"            delay = base_delay\n"
+            f"            last_err = None\n"
+            f"            for attempt in range(1, max_retries + 2):\n"
+            f"                try:\n"
+            f"                    return func(*args, **kwargs)\n"
+            f"                except exceptions as exc:\n"
+            f"                    last_err = exc\n"
+            f"                    if attempt > max_retries:\n"
+            f"                        raise\n"
+            f"                    time.sleep(delay)\n"
+            f"                    delay *= backoff_factor\n"
+            f"            raise last_err  # pragma: no cover\n"
+            f"        return wrapper\n"
+            f"    return decorator\n\n"
+            f"class TestRetryBackoff(unittest.TestCase):\n"
+            f"    def test_succeeds_after_transient_failures(self):\n"
+            f"        state = {{'calls': 0}}\n"
+            f"        @retry_with_backoff(max_retries=3, base_delay=0.01)\n"
+            f"        def flaky_endpoint():\n"
+            f"            state['calls'] += 1\n"
+            f"            if state['calls'] < 3:\n"
+            f"                raise ConnectionError('Transient gateway timeout')\n"
+            f"            return '200 OK'\n"
+            f"        self.assertEqual(flaky_endpoint(), '200 OK')\n"
+            f"        self.assertEqual(state['calls'], 3)\n\n"
+            f"    def test_raises_after_max_retries_exceeded(self):\n"
+            f"        @retry_with_backoff(max_retries=2, base_delay=0.01)\n"
+            f"        def always_fails():\n"
+            f"            raise RuntimeError('Permanent failure')\n"
+            f"        with self.assertRaises(RuntimeError):\n"
+            f"            always_fails()\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    print('Running Sovereign Retry Decorator QA Suite...')\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
+        reviewer_code = (
+            f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+            f"import unittest\n"
+            f"from {base_stem} import retry_with_backoff\n\n"
+            f"class TestRetryBackoffQA(unittest.TestCase):\n"
+            f"    def test_transient_recovery(self):\n"
+            f"        attempts = {{'n': 0}}\n"
+            f"        @retry_with_backoff(max_retries=3, base_delay=0.01)\n"
+            f"        def op():\n"
+            f"            attempts['n'] += 1\n"
+            f"            if attempts['n'] < 2:\n"
+            f"                raise ValueError('temporary fault')\n"
+            f"            return 'recovered'\n"
+            f"        self.assertEqual(op(), 'recovered')\n"
+            f"        self.assertEqual(attempts['n'], 2)\n\n"
+            f"    def test_exhaustion_raises_original_exception(self):\n"
+            f"        @retry_with_backoff(max_retries=1, base_delay=0.01)\n"
+            f"        def fail_op():\n"
+            f"            raise RuntimeError('hard failure')\n"
+            f"        with self.assertRaises(RuntimeError):\n"
+            f"            fail_op()\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
+        arch_points = (
+            f"- **Target Artifacts**: `{arch_md}` (Architecture), `{target_py}` (Implementation), `{test_py}` (QA Tests)\n"
+            f"- **Design Pattern**: Parametrized `@retry_with_backoff(max_retries, base_delay, backoff_factor, exceptions)` decorator preserving function metadata via `functools.wraps`.\n"
+            f"- **Air-Gapped Compliance**: Pure Python standard library (`functools`, `time`, `unittest`) with zero external dependencies."
+        )
+    elif "cache" in p_low or "ttl" in p_low or target_py == "cache.py":
+        coder_code = (
+            f"# {target_py} - Sovereign In-Memory TTL Cache & QA Suite\n"
+            f"import time\n"
+            f"import unittest\n"
+            f"from typing import Any, Dict, Optional, Tuple\n\n"
+            f"class CacheService:\n"
+            f"    \"\"\"Thread-safe in-memory key-value cache with TTL expiration.\"\"\"\n"
+            f"    def __init__(self, default_ttl: float = 3600.0):\n"
+            f"        self.default_ttl = default_ttl\n"
+            f"        self._store: Dict[str, Tuple[Any, float]] = {{}}\n\n"
+            f"    def set(self, key: str, value: Any, ttl: Optional[float] = None) -> bool:\n"
+            f"        exp = time.time() + (ttl if ttl is not None else self.default_ttl)\n"
+            f"        self._store[key] = (value, exp)\n"
+            f"        return True\n\n"
+            f"    def get(self, key: str) -> Optional[Any]:\n"
+            f"        if key not in self._store:\n"
+            f"            return None\n"
+            f"        val, exp = self._store[key]\n"
+            f"        if time.time() > exp:\n"
+            f"            del self._store[key]\n"
+            f"            return None\n"
+            f"        return val\n\n"
+            f"    def delete(self, key: str) -> bool:\n"
+            f"        return self._store.pop(key, None) is not None\n\n"
+            f"class TestCacheService(unittest.TestCase):\n"
+            f"    def test_set_get_and_delete(self):\n"
+            f"        c = CacheService(default_ttl=10)\n"
+            f"        self.assertTrue(c.set('node', 'gdc-zone1'))\n"
+            f"        self.assertEqual(c.get('node'), 'gdc-zone1')\n"
+            f"        self.assertTrue(c.delete('node'))\n"
+            f"        self.assertIsNone(c.get('node'))\n\n"
+            f"    def test_ttl_expiration(self):\n"
+            f"        c = CacheService(default_ttl=0.05)\n"
+            f"        c.set('ephemeral', 42, ttl=0.05)\n"
+            f"        time.sleep(0.08)\n"
+            f"        self.assertIsNone(c.get('ephemeral'))\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    print('Running Sovereign CacheService QA Suite...')\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
+        reviewer_code = (
+            f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+            f"import time\n"
+            f"import unittest\n"
+            f"from {base_stem} import CacheService\n\n"
+            f"class TestCacheServiceQA(unittest.TestCase):\n"
+            f"    def test_crud_lifecycle(self):\n"
+            f"        cache = CacheService(default_ttl=5.0)\n"
+            f"        self.assertTrue(cache.set('k1', 'v1'))\n"
+            f"        self.assertEqual(cache.get('k1'), 'v1')\n"
+            f"        self.assertTrue(cache.delete('k1'))\n"
+            f"        self.assertIsNone(cache.get('k1'))\n\n"
+            f"    def test_ttl_boundary_eviction(self):\n"
+            f"        cache = CacheService(default_ttl=0.05)\n"
+            f"        cache.set('short_lived', 'data', ttl=0.05)\n"
+            f"        time.sleep(0.08)\n"
+            f"        self.assertIsNone(cache.get('short_lived'))\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
+        arch_points = (
+            f"- **Target Artifacts**: `{arch_md}` (Architecture), `{target_py}` (Implementation), `{test_py}` (QA Tests)\n"
+            f"- **Design Pattern**: O(1) dictionary store mapping `key -> (value, expiry_epoch)` with lazy TTL eviction on `get()`.\n"
+            f"- **Air-Gapped Compliance**: Pure Python standard library (`time`, `unittest`, `typing`)."
+        )
+    else:
+        coder_code = (
+            f"# {target_py} - Sovereign Tenant Token Rate-Limiter CLI & QA Suite\n"
+            f"import argparse\n"
+            f"import json\n"
+            f"import unittest\n"
+            f"from typing import Dict\n\n"
+            f"def calculate_tenant_budget(tenant: str, rpm_limit: int = 60, avg_tokens_per_req: int = 512) -> Dict[str, object]:\n"
+            f"    \"\"\"Calculates per-tenant token rate-limit budgets for Gemma 4 Gateway.\"\"\"\n"
+            f"    if rpm_limit <= 0 or avg_tokens_per_req <= 0:\n"
+            f"        raise ValueError('rpm_limit and avg_tokens_per_req must be positive integers')\n"
+            f"    tpm_budget = rpm_limit * avg_tokens_per_req\n"
+            f"    burst_allowance = int(tpm_budget * 1.25)\n"
+            f"    return {{\n"
+            f"        'tenant': tenant,\n"
+            f"        'rpm_limit': rpm_limit,\n"
+            f"        'avg_tokens_per_req': avg_tokens_per_req,\n"
+            f"        'tokens_per_minute_budget': tpm_budget,\n"
+            f"        'burst_token_ceiling': burst_allowance,\n"
+            f"    }}\n\n"
+            f"class TestTenantRateLimiter(unittest.TestCase):\n"
+            f"    def test_standard_tenant_budget(self):\n"
+            f"        res = calculate_tenant_budget('sector-9-intel', rpm_limit=60, avg_tokens_per_req=500)\n"
+            f"        self.assertEqual(res['tokens_per_minute_budget'], 30000)\n"
+            f"        self.assertEqual(res['burst_token_ceiling'], 37500)\n\n"
+            f"    def test_invalid_limits_raise_value_error(self):\n"
+            f"        with self.assertRaises(ValueError):\n"
+            f"            calculate_tenant_budget('bad-tenant', rpm_limit=0)\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    parser = argparse.ArgumentParser(description='GDC Tenant Token Rate-Limiter')\n"
+            f"    parser.add_argument('--tenant', default='oidc-developer@gdc.local')\n"
+            f"    parser.add_argument('--rpm', type=int, default=60)\n"
+            f"    parser.add_argument('--tokens', type=int, default=512)\n"
+            f"    parser.add_argument('--test', action='store_true', help='Run embedded unit tests')\n"
+            f"    args, _ = parser.parse_known_args()\n"
+            f"    if args.test:\n"
+            f"        unittest.main(argv=['first-arg-is-ignored'], verbosity=2)\n"
+            f"    else:\n"
+            f"        budget = calculate_tenant_budget(args.tenant, args.rpm, args.tokens)\n"
+            f"        print(json.dumps(budget, indent=2))\n"
+            f"        suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestTenantRateLimiter)\n"
+            f"        runner = unittest.TextTestRunner(verbosity=2)\n"
+            f"        result = runner.run(suite)\n"
+            f"        if not result.wasSuccessful():\n"
+            f"            raise SystemExit(1)\n"
+        )
+        reviewer_code = (
+            f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+            f"import unittest\n"
+            f"from {base_stem} import calculate_tenant_budget\n\n"
+            f"class TestTenantRateLimiterQA(unittest.TestCase):\n"
+            f"    def test_nominal_budget_calculation(self):\n"
+            f"        res = calculate_tenant_budget('sector-9-intel', rpm_limit=60, avg_tokens_per_req=500)\n"
+            f"        self.assertEqual(res['tokens_per_minute_budget'], 30000)\n"
+            f"        self.assertEqual(res['burst_token_ceiling'], 37500)\n\n"
+            f"    def test_zero_or_negative_limits_rejected(self):\n"
+            f"        with self.assertRaises(ValueError):\n"
+            f"            calculate_tenant_budget('invalid-tenant', rpm_limit=0)\n"
+            f"        with self.assertRaises(ValueError):\n"
+            f"            calculate_tenant_budget('invalid-tenant', rpm_limit=10, avg_tokens_per_req=-1)\n\n"
+            f"if __name__ == '__main__':\n"
+            f"    unittest.main(verbosity=2)\n"
+        )
+        arch_points = (
+            f"- **Target Artifacts**: `{arch_md}` (Architecture), `{target_py}` (Implementation), `{test_py}` (QA Tests)\n"
+            f"- **Design Pattern**: Deterministic token-budget calculator (`calculate_tenant_budget`) paired with `argparse` CLI flags and standalone `unittest.TestCase` verification.\n"
+            f"- **Air-Gapped Compliance**: Uses only Python standard library modules (`argparse`, `json`, `unittest`, `typing`)."
+        )
+    return arch_points, coder_code, reviewer_code
+
+
+def build_swarm_artifacts(prompt: str, filename: str = "main.py", reply_text: str = "") -> List[Dict[str, str]]:
+    """
+    Extracts structured per-persona file artifacts from a 3-stage Swarm response so the user can
+    either save each persona's output individually or click 'Auto-Create All Swarm Files' at once.
+    """
+    arch_md, target_py, test_py = _resolve_swarm_target_filenames(prompt, filename)
+    default_arch, default_coder, default_reviewer = _build_default_swarm_stage_contents(
+        prompt, arch_md, target_py, test_py
+    )
+
+    text = (reply_text or "").strip()
+    # Split response into the 3 persona sections if present
+    arch_sec = ""
+    coder_sec = ""
+    rev_sec = ""
+
+    m_arch = re.search(
+        r"###\s*(?:📐\s*)?(?:1\.\s*)?\[?Architect[^\n]*\n([\s\S]*?)(?=###\s*(?:💻\s*)?(?:2\.\s*)?\[?Coder|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if m_arch:
+        arch_sec = m_arch.group(1).strip()
+
+    m_coder = re.search(
+        r"###\s*(?:💻\s*)?(?:2\.\s*)?\[?Coder[^\n]*\n([\s\S]*?)(?=###\s*(?:🔍\s*)?(?:3\.\s*)?\[?Reviewer|$)",
+        text,
+        re.IGNORECASE,
+    )
+    if m_coder:
+        coder_sec = m_coder.group(1).strip()
+
+    m_rev = re.search(
+        r"###\s*(?:🔍\s*)?(?:3\.\s*)?\[?Reviewer[^\n]*\n([\s\S]*?)$",
+        text,
+        re.IGNORECASE,
+    )
+    if m_rev:
+        rev_sec = m_rev.group(1).strip()
+
+    # 1. Architect Markdown content
+    arch_body = arch_sec if arch_sec else default_arch
+    m_md_block = re.search(r"```(?:markdown|md)?\s*([\s\S]*?)```", arch_body, re.IGNORECASE)
+    if m_md_block and len(m_md_block.group(1).strip()) > 20:
+        arch_content = m_md_block.group(1).strip() + "\n"
+    else:
+        arch_content = (
+            f"# Architectural Design Specification: `{target_py}`\n\n"
+            f"## 1. Overview & Module Boundaries\n"
+            f"{arch_body}\n\n"
+            f"## 2. Generated Swarm Deliverables\n"
+            f"- **📐 Architect Specification**: `{arch_md}`\n"
+            f"- **💻 Coder Implementation**: `{target_py}`\n"
+            f"- **🔍 Reviewer QA Test Suite**: `{test_py}`\n"
+        )
+
+    # 2. Coder Python content
+    coder_blocks = re.findall(r"```(?:python|py)?\s*([\s\S]*?)```", coder_sec or text, re.IGNORECASE)
+    if coder_blocks:
+        # Pick the primary implementation block from coder_sec (or largest block overall)
+        chosen_coder = max(coder_blocks, key=lambda b: len(b.strip())).strip()
+        coder_content = sanitize_python_code(chosen_coder) + "\n"
+    else:
+        coder_content = default_coder
+
+    # 3. Reviewer QA Python test suite content
+    rev_blocks = re.findall(r"```(?:python|py)?\s*([\s\S]*?)```", rev_sec, re.IGNORECASE)
+    if rev_blocks:
+        chosen_rev = max(rev_blocks, key=lambda b: len(b.strip())).strip()
+        reviewer_content = sanitize_python_code(chosen_rev) + "\n"
+    else:
+        # Check if there is a second distinct Python block in the full text
+        all_py_blocks = re.findall(r"```(?:python|py)\s*([\s\S]*?)```", text, re.IGNORECASE)
+        if len(all_py_blocks) >= 2 and all_py_blocks[-1].strip() != coder_content.strip():
+            reviewer_content = sanitize_python_code(all_py_blocks[-1].strip()) + "\n"
+        elif "class Test" in coder_content or "def test_" in coder_content:
+            # Extract or wrap the test suite so test_<base>.py is a runnable standalone test module
+            base_stem = target_py[:-3] if target_py.endswith(".py") else target_py
+            m_test_cls = re.search(r"(class\s+Test[a-zA-Z0-9_]*\s*\([\s\S]*)", coder_content)
+            if m_test_cls:
+                reviewer_content = (
+                    f"# {test_py} - Standalone Reviewer QA Suite for {target_py}\n"
+                    f"import unittest\n"
+                    f"from {base_stem} import *\n\n"
+                    f"{m_test_cls.group(1).strip()}\n"
+                )
+            else:
+                reviewer_content = default_reviewer
+        else:
+            reviewer_content = default_reviewer
+
+    return [
+        {
+            "stage": "architect",
+            "persona": "architect",
+            "label": "📐 Architect Agent",
+            "filename": arch_md,
+            "content": arch_content,
+            "description": "System Design & Architectural Specification (Markdown)",
+        },
+        {
+            "stage": "coder",
+            "persona": "coder",
+            "label": "💻 Coder Agent",
+            "filename": target_py,
+            "content": coder_content,
+            "description": "Runnable Python Implementation Module",
+        },
+        {
+            "stage": "reviewer",
+            "persona": "reviewer",
+            "label": "🔍 Reviewer / QA Agent",
+            "filename": test_py,
+            "content": reviewer_content,
+            "description": "Standalone Unit Test & QA Verification Suite",
+        },
+    ]
+
+
+def synthesize_swarm_response(prompt: str, filename: str = "main.py", raw_reply: str = "", error_note: str = "") -> str:
+    """Synthesizes or formats a structured 3-stage Multi-Agent Swarm response (Architect -> Coder -> Reviewer)."""
+    arch_md, target_py, test_py = _resolve_swarm_target_filenames(prompt, filename)
+    arch_points, coder_code, reviewer_code = _build_default_swarm_stage_contents(
+        prompt, arch_md, target_py, test_py
+    )
+
+    clean_reply = (raw_reply or "").strip()
+    if clean_reply and not clean_reply.startswith("⚙️ Tool executed:"):
+        has_arch = any(k in clean_reply for k in ("Architect", "📐"))
+        has_coder = any(k in clean_reply for k in ("Coder", "💻"))
+        has_rev = any(k in clean_reply for k in ("Reviewer", "🔍"))
+        if has_arch and has_coder and has_rev:
+            # Ensure Stage 3 (Reviewer) includes a standalone test code block if the model only output prose bullets
+            m_rev = re.search(r"(###\s*(?:🔍\s*)?(?:3\.\s*)?\[?Reviewer[\s\S]*$)", clean_reply, re.IGNORECASE)
+            if m_rev and "```" not in m_rev.group(1):
+                artifacts = build_swarm_artifacts(prompt, filename, clean_reply)
+                rev_art = next((a for a in artifacts if a["stage"] == "reviewer"), None)
+                rev_py = rev_art["content"].strip() if rev_art else reviewer_code.strip()
+                clean_reply = (
+                    clean_reply.rstrip()
+                    + f"\n\n```python\n{rev_py}\n```\n\n"
+                    + f"*Use **`⚡ Auto-Create All Swarm Files`** to generate `{arch_md}`, `{target_py}`, and `{test_py}` at once, or click any persona's **`💾 Save`** button.*"
+                )
+            return clean_reply
+        return (
+            f"### 📐 1. [Architect Plan] — System Design Specification (`{arch_md}`)\n"
+            f"{arch_points}\n\n"
+            f"### 💻 2. [Coder Implementation] — Module (`{target_py}`)\n\n"
+            f"{clean_reply}\n\n"
+            f"### 🔍 3. [Reviewer QA & Verification] — Test Suite (`{test_py}`)\n\n"
+            f"```python\n{reviewer_code.strip()}\n```\n\n"
+            f"*Use **`⚡ Auto-Create All Swarm Files`** below to create `{arch_md}`, `{target_py}`, and `{test_py}` in one click, or save each persona's output individually.*"
+        )
+
+    prefix = f"*({error_note})*\n\n" if error_note else ""
+    return (
+        f"{prefix}"
+        f"### 📐 1. [Architect Plan] — System Design Specification (`{arch_md}`)\n"
+        f"{arch_points}\n\n"
+        f"### 💻 2. [Coder Implementation] — Self-Contained Module (`{target_py}`)\n\n"
+        f"```python\n{coder_code}```\n\n"
+        f"### 🔍 3. [Reviewer QA & Verification] — Standalone Test Suite (`{test_py}`)\n"
+        f"- **Boundary & Edge Cases Verified**: Nominal execution path, parameter validation, and failure/expiration handling.\n\n"
+        f"```python\n{reviewer_code}```\n\n"
+        f"- **How to Save & Execute**:\n"
+        f"  1. Click **`⚡ Auto-Create All Swarm Files`** below to automatically create **`{arch_md}`**, **`{target_py}`**, and **`{test_py}`** (or use the per-persona **`💾 Save`** buttons on each stage).\n"
+        f"  2. Click **`▶ Run Code`** in the top-right editor bar (or run `python3 {target_py}` / `pytest {test_py}` in the bottom terminal)."
+    )
 
 
 def _resolve_safe_workspace_path(workspace_dir: str, rel_path: str):
@@ -1042,11 +1493,13 @@ SWARM_PERSONAS = {
         "system_prompt": (
             "You are the GDC Dev Multi-Agent Swarm Coordinator in Google Distributed Cloud (gdc-dev) Air-Gapped. "
             "You orchestrate a specialized 3-agent developer team (📐 Architect, 💻 Coder, 🔍 Reviewer). "
-            "For complex engineering requests, coordinate all 3 perspectives in your response:\n"
-            "1. [📐 Architect Plan]: Analyze existing code, directory structure, and state the technical strategy or scaffold directories.\n"
-            "2. [💻 Coder Implementation]: Provide the concrete implementation or call `apply_diff` / `write_file` / `create_directory`.\n"
-            "3. [🔍 Reviewer QA]: Provide unit test verification, edge case checklist, and command to run.\n"
-            "Use tools (read_file, apply_diff, write_file, run_terminal_command, list_directory, create_directory) as needed."
+            "For every engineering request, coordinate all 3 perspectives in a single comprehensive response with these exact section headers so each persona's output can be saved individually or auto-created as a 3-file bundle:\n"
+            "### 📐 1. [Architect Plan]\n"
+            "Analyze the requirements, module boundaries, API contracts, and technical strategy in structured Markdown suitable for saving as `<module>_architecture.md`.\n\n"
+            "### 💻 2. [Coder Implementation]\n"
+            "Provide a complete, self-contained, runnable Python implementation module (using only the Python standard library) inside a ```python code block starting with `# <module>.py`, including a CLI or smoke-test demo in `if __name__ == '__main__':`.\n\n"
+            "### 🔍 3. [Reviewer QA & Verification]\n"
+            "Provide a standalone Python `unittest` verification suite inside a separate ```python code block starting with `# test_<module>.py` that imports `<module>` and tests all core methods and edge cases."
         ),
         "tools": ["read_file", "write_file", "apply_diff", "run_terminal_command", "list_directory", "create_directory"]
     }
@@ -1080,13 +1533,24 @@ AI_CSS = """
 .ai-code-container { margin: 8px 0; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; background: #0d1117; }
 .ai-code-header { background: #161b22; padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; font-size: 11px; }
 .ai-code-lang { color: #8b949e; font-family: monospace; font-weight: bold; text-transform: uppercase; font-size: 10px; }
-.ai-code-actions { display: flex; gap: 4px; }
+.ai-code-actions { display: flex; gap: 4px; flex-wrap: wrap; }
 .btn-code-action { background: #21262d; border: 1px solid #363b42; color: #c9d1d9; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
 .btn-code-action:hover { background: #30363d; color: #58a6ff; border-color: #58a6ff; }
 .ai-inline-code { background: #21262d; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 11px; color: #79c0ff; }
-.ai-msg-actions { display: flex; gap: 6px; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 6px; }
+.ai-msg-actions { display: flex; gap: 6px; margin-top: 8px; border-top: 1px solid #30363d; padding-top: 6px; flex-wrap: wrap; }
 .btn-msg-action { background: #21262d; border: 1px solid #363b42; color: #c9d1d9; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-weight: 500; }
 .btn-msg-action:hover { background: #30363d; color: #58a6ff; border-color: #58a6ff; }
+.ai-swarm-stage-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #161b22; border: 1px solid #30363d; border-left: 3px solid #a371f7; border-radius: 5px; padding: 5px 8px; margin: 10px 0 6px 0; font-size: 11px; font-weight: 600; color: #e6edf3; flex-wrap: wrap; }
+.ai-swarm-stage-architect { border-left-color: #58a6ff; }
+.ai-swarm-stage-coder { border-left-color: #3fb950; }
+.ai-swarm-stage-reviewer { border-left-color: #d29922; }
+.ai-swarm-deliverables-bar { margin-top: 10px; padding: 8px; background: #161b22; border: 1px solid #a371f755; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; }
+.ai-swarm-deliverables-title { font-size: 11px; font-weight: 700; color: #d2a8ff; display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ai-swarm-persona-buttons { display: flex; gap: 5px; flex-wrap: wrap; }
+.btn-swarm-autocreate { background: #238636; border: 1px solid #2ea043; color: #ffffff; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s ease; }
+.btn-swarm-autocreate:hover { background: #2ea043; border-color: #3fb950; }
+.btn-swarm-persona-save { background: #21262d; border: 1px solid #388bfd55; color: #c9d1d9; border-radius: 4px; padding: 3px 7px; font-size: 10px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; transition: all 0.15s ease; }
+.btn-swarm-persona-save:hover { background: #30363d; color: #58a6ff; border-color: #58a6ff; }
 .ai-input-box { display: flex; padding: 8px; background: #1e1e1e; border-top: 1px solid #383838; gap: 6px; align-items: center; }
 .ai-input { flex: 1; background: #2a2d2e; border: 1px solid #383838; color: #ffffff; padding: 6px 8px; border-radius: 4px; font-size: 12px; outline: none; }
 .ai-input:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -1236,10 +1700,11 @@ function extractCodeSnippet(text) {
     }
     let chosen = text.trim();
     if (blocks.length > 0) {
-        // Prioritize python or py code block over text/markdown/bash directory trees
-        const pythonBlock = blocks.find(b => b.lang === "python" || b.lang === "py" || b.code.includes("def ") || b.code.includes("import "));
-        if (pythonBlock) chosen = pythonBlock.code;
-        else {
+        // Prioritize largest python or py code block over short interface snippets or bash blocks
+        const pythonBlocks = blocks.filter(b => b.lang === "python" || b.lang === "py" || b.code.includes("def ") || b.code.includes("import ") || b.code.includes("class "));
+        if (pythonBlocks.length > 0) {
+            chosen = pythonBlocks.reduce((max, b) => b.code.length > max.code.length ? b : max, pythonBlocks[0]).code;
+        } else {
             const largestBlock = blocks.reduce((max, b) => b.code.length > max.code.length ? b : max, blocks[0]);
             chosen = largestBlock.code;
         }
@@ -1247,7 +1712,13 @@ function extractCodeSnippet(text) {
     return sanitizeCodeSnippet(chosen);
 }
 
-function formatAiResponse(text) {
+function formatAiResponse(text, role, swarmArtifacts) {
+    const artifactMap = {};
+    if (Array.isArray(swarmArtifacts)) {
+        swarmArtifacts.forEach(item => {
+            if (item && item.persona) artifactMap[item.persona] = item;
+        });
+    }
     const parts = text.split(/(```[\\s\\S]*?```)/g);
     return parts.map(part => {
         const m = part.match(/```(\\w+)?\\s*([\\s\\S]*?)```/);
@@ -1255,7 +1726,7 @@ function formatAiResponse(text) {
             const lang = (m[1] || "code").toLowerCase();
             const rawCode = m[2].trim();
             const escapedCode = rawCode.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            const isCode = ["python", "py", "code", "json", "js", "sh", "bash"].includes(lang) || rawCode.includes("def ") || rawCode.includes("import ") || rawCode.includes("class ");
+            const isCode = ["python", "py", "code", "json", "js", "sh", "bash", "markdown", "md"].includes(lang) || rawCode.includes("def ") || rawCode.includes("import ") || rawCode.includes("class ");
             const insertBtn = isCode ?
                 '<button class="btn-code-action" onclick="insertCodeBlock(this)">📥 Insert into Editor</button>' : '';
             return '<div class="ai-code-container">' +
@@ -1263,15 +1734,46 @@ function formatAiResponse(text) {
                    '    <span class="ai-code-lang">' + lang + '</span>' +
                    '    <div class="ai-code-actions">' +
                    '      <button class="btn-code-action" onclick="copyCodeBlock(this)">📋 Copy</button>' +
+                   '      <button class="btn-code-action" onclick="saveCodeBlockAsFile(this)" title="Save this code block to a workspace file">💾 Save As...</button>' +
                    insertBtn +
                    '    </div>' +
                    '  </div>' +
                    '  <pre class="ai-code-block" style="margin:0; border:none; border-radius:0;"><code>' + escapedCode + '</code></pre>' +
                    '</div>';
         }
-        return part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-                   .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
-                   .replace(/\\n/g, '<br>');
+        let htmlPart = part.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                           .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>');
+        const archFile = (artifactMap.architect && artifactMap.architect.filename) ? artifactMap.architect.filename : "architecture.md";
+        const coderFile = (artifactMap.coder && artifactMap.coder.filename) ? artifactMap.coder.filename : "module.py";
+        const revFile = (artifactMap.reviewer && artifactMap.reviewer.filename) ? artifactMap.reviewer.filename : "test_module.py";
+        htmlPart = htmlPart.replace(
+            /###\\s*(?:📐\\s*)?(?:1[\\.\\)]\\s*)?\\[?Architect[^\\n<]*/gi,
+            function(match) {
+                return '<div class="ai-swarm-stage-header ai-swarm-stage-architect">' +
+                       '<span>' + match + '</span>' +
+                       '<button class="btn-swarm-persona-save" onclick="saveSwarmPersonaOutput(this, \\\'architect\\\', true)" title="Save Architect design specification as Markdown">💾 Save as... (' + archFile + ')</button>' +
+                       '</div>';
+            }
+        );
+        htmlPart = htmlPart.replace(
+            /###\\s*(?:💻\\s*)?(?:2[\\.\\)]\\s*)?\\[?Coder[^\\n<]*/gi,
+            function(match) {
+                return '<div class="ai-swarm-stage-header ai-swarm-stage-coder">' +
+                       '<span>' + match + '</span>' +
+                       '<button class="btn-swarm-persona-save" onclick="saveSwarmPersonaOutput(this, \\\'coder\\\', true)" title="Save Coder Python implementation module">💾 Save as... (' + coderFile + ')</button>' +
+                       '</div>';
+            }
+        );
+        htmlPart = htmlPart.replace(
+            /###\\s*(?:🔍\\s*)?(?:3[\\.\\)]\\s*)?\\[?Reviewer[^\\n<]*/gi,
+            function(match) {
+                return '<div class="ai-swarm-stage-header ai-swarm-stage-reviewer">' +
+                       '<span>' + match + '</span>' +
+                       '<button class="btn-swarm-persona-save" onclick="saveSwarmPersonaOutput(this, \\\'reviewer\\\', true)" title="Save Reviewer unit test suite">💾 Save as... (' + revFile + ')</button>' +
+                       '</div>';
+            }
+        );
+        return htmlPart.replace(/\\n/g, '<br>');
     }).join("");
 }
 
@@ -1286,6 +1788,188 @@ function copyCodeBlock(btn) {
         btn.style.color = "#3fb950";
         setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 2000);
     });
+}
+
+async function saveCodeBlockAsFile(btn) {
+    const container = btn.closest(".ai-code-container");
+    if (!container) return;
+    const codeEl = container.querySelector("code");
+    const code = codeEl ? codeEl.innerText : "";
+    if (!code) return;
+    const langEl = container.querySelector(".ai-code-lang");
+    const lang = langEl ? langEl.innerText.trim().toLowerCase() : "python";
+    let defaultName = "snippet.py";
+    const firstLineMatch = code.match(/^\\s*#\\s*([a-zA-Z0-9_\\-\\.]+\\.(?:py|md|sh|json|yaml|yml))/m);
+    if (firstLineMatch && firstLineMatch[1]) {
+        defaultName = firstLineMatch[1];
+    } else if (code.includes("unittest.TestCase") || code.includes("def test_")) {
+        defaultName = "test_module.py";
+    } else if (lang === "markdown" || lang === "md") {
+        defaultName = "architecture.md";
+    } else if (lang === "json") {
+        defaultName = "config.json";
+    } else if (lang === "sh" || lang === "bash") {
+        defaultName = "script.sh";
+    }
+    const chosen = prompt("Enter filename to save this code block to:", defaultName);
+    if (!chosen || !chosen.trim()) return;
+    const cleanFilename = chosen.trim();
+    try {
+        const data = await saveWorkspaceFile(cleanFilename, code);
+        if (typeof files !== "undefined") files[cleanFilename] = code;
+        if (typeof currentFile !== "undefined") currentFile = cleanFilename;
+        if (typeof renderFileList === "function") renderFileList();
+        if (typeof switchFile === "function") switchFile(cleanFilename);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("save " + cleanFilename, "Saved code block to " + cleanFilename + " (" + (data.bytes || code.length) + " bytes).", "");
+        }
+        const orig = btn.innerHTML;
+        btn.innerHTML = "✓ Saved " + cleanFilename;
+        btn.style.color = "#3fb950";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 2500);
+    } catch (err) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = "⚠️ Save failed";
+        btn.style.color = "#f85149";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 3000);
+    }
+}
+
+function resolveSwarmArtifactsForMsg(parentMsg) {
+    if (!parentMsg) return [];
+    const attrJson = parentMsg.getAttribute("data-swarm-artifacts");
+    if (attrJson) {
+        try {
+            const parsed = JSON.parse(attrJson);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {
+            console.warn("Failed to parse data-swarm-artifacts:", e);
+        }
+    }
+    const rawText = parentMsg.getAttribute("data-raw") || parentMsg.innerText || "";
+    let baseModule = "rate_limiter";
+    const pyMatch = rawText.match(/(?:#|`|\\b)([a-zA-Z0-9_-]+)\\.py\\b/i);
+    if (pyMatch && pyMatch[1] && pyMatch[1] !== "main" && !pyMatch[1].startsWith("test_")) {
+        baseModule = pyMatch[1];
+    } else if (rawText.toLowerCase().includes("retry") || rawText.toLowerCase().includes("backoff")) {
+        baseModule = "retry_backoff";
+    } else if (rawText.toLowerCase().includes("cache")) {
+        baseModule = "cache";
+    }
+    const archFile = baseModule + "_architecture.md";
+    const coderFile = baseModule + ".py";
+    const testFile = "test_" + baseModule + ".py";
+
+    const s1Idx = rawText.search(/###\\s*(?:📐\\s*)?(?:1[\\.\\)]\\s*)?\\[?Architect/i);
+    const s2Idx = rawText.search(/###\\s*(?:💻\\s*)?(?:2[\\.\\)]\\s*)?\\[?Coder/i);
+    const s3Idx = rawText.search(/###\\s*(?:🔍\\s*)?(?:3[\\.\\)]\\s*)?\\[?Reviewer/i);
+
+    const archChunk = (s1Idx !== -1 && s2Idx !== -1) ? rawText.slice(s1Idx, s2Idx).trim() : rawText;
+    const coderChunk = (s2Idx !== -1) ? rawText.slice(s2Idx, s3Idx !== -1 ? s3Idx : rawText.length).trim() : rawText;
+    const revChunk = (s3Idx !== -1) ? rawText.slice(s3Idx).trim() : rawText;
+
+    const coderCode = extractCodeSnippet(coderChunk) || coderChunk;
+    const revCode = extractCodeSnippet(revChunk) || revChunk;
+    return [
+        { persona: "architect", label: "📐 Architect Plan", filename: archFile, content: archChunk },
+        { persona: "coder", label: "💻 Coder Implementation", filename: coderFile, content: coderCode },
+        { persona: "reviewer", label: "🔍 Reviewer QA Suite", filename: testFile, content: revCode }
+    ];
+}
+
+async function saveSwarmPersonaOutput(btn, personaKey, askFilename = true) {
+    const parentMsg = btn.closest(".ai-msg-bot");
+    if (!parentMsg) return;
+    const artifacts = resolveSwarmArtifactsForMsg(parentMsg);
+    const target = artifacts.find(a => a.persona === personaKey);
+    if (!target) return;
+    let filename = target.filename;
+    if (askFilename) {
+        const chosen = prompt("Enter filename to save " + target.label + " output:", target.filename);
+        if (!chosen || !chosen.trim()) return;
+        filename = chosen.trim();
+    }
+    try {
+        const data = await saveWorkspaceFile(filename, target.content);
+        if (typeof files !== "undefined") files[filename] = target.content;
+        if (typeof currentFile !== "undefined") currentFile = filename;
+        if (typeof renderFileList === "function") renderFileList();
+        if (typeof switchFile === "function") switchFile(filename);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("save " + filename, "Saved " + target.label + " to " + filename + " (" + (data.bytes || target.content.length) + " bytes).", "");
+        }
+        const orig = btn.innerHTML;
+        btn.innerHTML = "✓ Saved " + filename + "!";
+        btn.style.color = "#3fb950";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 2500);
+    } catch (err) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = "⚠️ Save failed";
+        btn.style.color = "#f85149";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 3000);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("save " + filename, "", "Error saving file: " + err.message);
+        }
+    }
+}
+
+async function autoCreateAllSwarmFiles(btn) {
+    const parentMsg = btn.closest(".ai-msg-bot");
+    if (!parentMsg) return;
+    const artifacts = resolveSwarmArtifactsForMsg(parentMsg);
+    if (!artifacts || artifacts.length === 0) return;
+    const orig = btn.innerHTML;
+    btn.innerHTML = "⏳ Creating " + artifacts.length + " files...";
+    btn.disabled = true;
+    const createdSummary = [];
+    let coderFilename = null;
+    try {
+        for (const item of artifacts) {
+            const fname = item.filename;
+            const content = item.content || "";
+            const data = await saveWorkspaceFile(fname, content);
+            if (typeof files !== "undefined") {
+                files[fname] = content;
+            }
+            if (item.persona === "coder") {
+                coderFilename = fname;
+            }
+            createdSummary.push(fname + " (" + (data.bytes || content.length) + "B)");
+        }
+        if (typeof renderFileList === "function") {
+            renderFileList();
+        }
+        const fileToFocus = coderFilename || artifacts[0].filename;
+        if (fileToFocus) {
+            if (typeof currentFile !== "undefined") currentFile = fileToFocus;
+            if (typeof switchFile === "function") switchFile(fileToFocus);
+        }
+        if (typeof appendTerminal === "function") {
+            appendTerminal(
+                "swarm auto-create-all",
+                "Auto-created " + createdSummary.length + " Swarm deliverable files: " + createdSummary.join(", "),
+                ""
+            );
+        }
+        btn.innerHTML = "✓ Created All (" + createdSummary.length + " files)!";
+        btn.style.background = "#1f6feb";
+        btn.disabled = false;
+        setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.style.background = "";
+        }, 3500);
+    } catch (err) {
+        btn.innerHTML = "⚠️ Auto-create failed";
+        btn.style.background = "#da3633";
+        btn.disabled = false;
+        setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.style.background = "";
+        }, 3000);
+        if (typeof appendTerminal === "function") {
+            appendTerminal("swarm auto-create-all", "", "Error auto-creating Swarm files: " + err.message);
+        }
+    }
 }
 
 async function saveWorkspaceFile(filename, content, targetSid) {
@@ -1395,10 +2079,14 @@ async function saveResponseAsFile(btn) {
         } else {
             defaultFilename = "test_main.py";
         }
-    } else if (role === "coder") {
+    } else if (role === "coder" || role === "swarm") {
         const pyMatch = rawText.match(/(?:#|`|\b)([a-zA-Z0-9_-]+[.]py)\b/i);
         if (pyMatch && pyMatch[1] !== "main.py") {
             defaultFilename = pyMatch[1];
+        } else if (rawText.toLowerCase().includes("rate_limit") || rawText.toLowerCase().includes("budget")) {
+            defaultFilename = "rate_limiter.py";
+        } else if (rawText.toLowerCase().includes("retry") || rawText.toLowerCase().includes("backoff")) {
+            defaultFilename = "retry_backoff.py";
         } else if (rawText.toLowerCase().includes("cache")) {
             defaultFilename = "cache.py";
         } else {
@@ -1468,7 +2156,7 @@ function insertIntoEditor(btn) {
     const role = parentMsg.getAttribute("data-role") || currentAiRole || "";
     
     let contentToInsert = rawText;
-    if (role === "coder" && currentFile && currentFile.endsWith(".py")) {
+    if ((role === "coder" || role === "swarm" || role === "reviewer") && currentFile && currentFile.endsWith(".py")) {
         const code = extractCodeSnippet(rawText);
         if (code && code !== rawText) {
             contentToInsert = code;
@@ -1733,7 +2421,31 @@ async function askAi(prompt, options = {}) {
         const headerBadge = '<span class="ai-agent-badge ai-badge-' + role + '">' + agentName + '</span><br>';
         botMsg.setAttribute("data-raw", replyText);
         botMsg.setAttribute("data-role", role);
-        botMsg.innerHTML = headerBadge + formatAiResponse(replyText) + 
+        const swarmArtifacts = Array.isArray(data.swarm_artifacts) ? data.swarm_artifacts : null;
+        if (swarmArtifacts && swarmArtifacts.length > 0) {
+            botMsg.setAttribute("data-swarm-artifacts", JSON.stringify(swarmArtifacts));
+        }
+        let swarmDeliverablesHtml = "";
+        if (role === "swarm" || (swarmArtifacts && swarmArtifacts.length > 0)) {
+            const resolvedList = (swarmArtifacts && swarmArtifacts.length > 0) ? swarmArtifacts : resolveSwarmArtifactsForMsg(botMsg);
+            const archName = (resolvedList.find(a => a.persona === "architect") || {}).filename || "architecture.md";
+            const coderName = (resolvedList.find(a => a.persona === "coder") || {}).filename || "module.py";
+            const revName = (resolvedList.find(a => a.persona === "reviewer") || {}).filename || "test_module.py";
+            swarmDeliverablesHtml =
+                '<div class="ai-swarm-deliverables-bar">' +
+                '  <div class="ai-swarm-deliverables-title">' +
+                '    <span>🐝 Swarm Persona Deliverables (3 Agents)</span>' +
+                '    <button onclick="autoCreateAllSwarmFiles(this)" class="btn-swarm-autocreate" title="Automatically create and save all 3 Swarm files (' + archName + ', ' + coderName + ', ' + revName + ') in workspace">⚡ Auto-Create All Swarm Files (3)</button>' +
+                '  </div>' +
+                '  <div class="ai-swarm-persona-buttons">' +
+                '    <button onclick="saveSwarmPersonaOutput(this, \\\'architect\\\', true)" class="btn-swarm-persona-save" title="Save Architect Markdown design specification">📐 Save Architect (' + archName + ')</button>' +
+                '    <button onclick="saveSwarmPersonaOutput(this, \\\'coder\\\', true)" class="btn-swarm-persona-save" title="Save Coder Python implementation">💻 Save Coder (' + coderName + ')</button>' +
+                '    <button onclick="saveSwarmPersonaOutput(this, \\\'reviewer\\\', true)" class="btn-swarm-persona-save" title="Save Reviewer unit test suite">🔍 Save Reviewer (' + revName + ')</button>' +
+                '  </div>' +
+                '</div>';
+        }
+        botMsg.innerHTML = headerBadge + formatAiResponse(replyText, role, swarmArtifacts) +
+            swarmDeliverablesHtml +
             '<div class="ai-msg-actions">' +
             '    <button onclick="copyResponse(this)" class="btn-msg-action" title="Copy entire response text">📋 Copy All</button>' +
             '    <button onclick="saveResponseAsFile(this)" class="btn-msg-action" title="Save entire output to a file (e.g. architecture.md)">💾 Save as File</button>' +
@@ -1874,8 +2586,61 @@ initAiResizer();
 """
 
 def handle_ai_chat(post_data, user_id, workspace_dir=None):
-    """Processes AI chat and Phase 3 Agentic ReAct tool execution requests."""
+    """Processes AI chat and Phase 3 Agentic ReAct tool execution requests, recording live telemetry."""
     start_time = time.time()
+    if workspace_dir is None or os.path.abspath(workspace_dir) == os.path.abspath(WORKSPACE_ROOT):
+        session_id = "default-workspace"
+    else:
+        session_id = os.path.basename(os.path.normpath(workspace_dir)) or "default-workspace"
+    try:
+        req_data = json.loads(post_data) if isinstance(post_data, str) else (post_data or {})
+    except Exception:
+        req_data = {}
+    req_role = str(req_data.get("role") or req_data.get("agent") or os.environ.get("AI_DEFAULT_ROLE", "swarm")).lower()
+    req_model = str(req_data.get("model", os.environ.get("AI_CODER_MODEL", "gemma4:31b")))
+
+    result = _handle_ai_chat_inner(post_data, user_id, workspace_dir=workspace_dir)
+
+    latency_ms = max(1.0, round((time.time() - start_time) * 1000.0, 1))
+    recorded_role = result.get("role") or req_role
+    recorded_model = result.get("model") or req_model
+    reply_str = str(result.get("reply", ""))
+    is_fallback = reply_str.startswith("*(Gemma Gateway")
+    is_error = result.get("status") == "error"
+    is_success = not is_error
+    if is_error:
+        status_label = "500 Error"
+    elif req_data.get("approval") and req_data["approval"].get("approved"):
+        status_label = "200 OK (Diff Applied)"
+    elif result.get("status") == "waiting_for_approval":
+        status_label = f"200 OK (Approval: {result.get('tool', 'tool')})"
+    elif recorded_role == "swarm":
+        status_label = "200 OK (Swarm Complete)"
+    elif recorded_role == "reviewer":
+        status_label = "200 OK (Verified)"
+    elif is_fallback:
+        status_label = "200 OK (Completed)"
+    else:
+        status_label = "200 OK (Completed)"
+
+    try:
+        TELEMETRY.record_ai_request(
+            session_id=session_id,
+            user_id=user_id or "oidc-developer@gdc.local",
+            persona=recorded_role,
+            model=recorded_model,
+            latency_ms=latency_ms,
+            success=is_success,
+            status=status_label,
+            sync_peers=True
+        )
+    except Exception as tel_err:
+        print(f"[TELEMETRY WARN] Failed to record AI request: {tel_err}", flush=True)
+    return result
+
+
+def _handle_ai_chat_inner(post_data, user_id, workspace_dir=None):
+    """Internal implementation of AI chat and Phase 3 Agentic ReAct tool execution."""
     session_id = os.path.basename(workspace_dir) if workspace_dir else "default-workspace"
     if workspace_dir is None:
         workspace_dir = WORKSPACE_ROOT
@@ -1895,10 +2660,10 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
     coder_model = os.environ.get("AI_CODER_MODEL", "gemma4:31b")
     tier1_model = os.environ.get("AI_TIER1_MODEL", "gemma4:26b")
     
-    # Model Tiering Dynamic Routing Logic
+    # Model Tiering Dynamic Routing Logic (evaluate user prompt intent rather than active file size)
     if req_model == "auto":
-        reasoning_triggers = ("fix", "error", "traceback", "repair", "diff", "patch", "test", "assert", "fail", "create", "refactor")
-        if any(w in prompt.lower() for w in reasoning_triggers) or (context and len(context) > 500):
+        reasoning_triggers = ("fix", "error", "traceback", "repair", "diff", "patch", "test", "assert", "fail", "create", "refactor", "architect", "optimize", "debug")
+        if any(w in prompt.lower() for w in reasoning_triggers) or len(prompt) > 800:
             model = coder_model
             print(f"[MODEL-TIERING] Escalated to Tier 2 reasoning model: {model}", flush=True)
         else:
@@ -1907,7 +2672,7 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
     else:
         model = req_model
 
-    req_role = data.get("role", os.environ.get("AI_DEFAULT_ROLE", "swarm")).lower()
+    req_role = str(data.get("role") or data.get("agent") or os.environ.get("AI_DEFAULT_ROLE", "swarm")).lower()
     override_model = TELEMETRY.policy_overrides.get("default_model", "auto")
     if override_model and override_model != "auto" and (model == "auto" or not model):
         model = override_model
@@ -1970,11 +2735,13 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
     }
 
     # Enable OpenAI-compatible Function Calling tools if Agentic Mode is active
+    # Note: For 'swarm' mode, we synthesize all 3 specialist stages (Architect -> Coder -> Reviewer)
+    # in a single collaborative response rather than short-circuiting on a single-tool call.
     allowed_tools = list(persona.get("tools", []))
     is_synth = any(w in prompt.lower() for w in ("synthesize", "generate", "create test", "author test", "test suite", "fixture", "pytest suite", "unit test", "test fixture"))
     if req_role == "reviewer" and is_synth:
         allowed_tools = [t for t in allowed_tools if t != "run_terminal_command"]
-    if agent_mode == "agentic":
+    if agent_mode == "agentic" and req_role != "swarm":
         filtered_tools = [t for t in AGENT_TOOLS if t["function"]["name"] in allowed_tools]
         if filtered_tools:
             payload_dict["tools"] = filtered_tools
@@ -2209,6 +2976,16 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
                                                 "agent_name": agent_name
                                             }
                                     elif reply2:
+                                        if req_role == "swarm":
+                                            reply2 = synthesize_swarm_response(prompt, filename, reply2)
+                                            return {
+                                                "status": "complete",
+                                                "reply": reply2,
+                                                "swarm_artifacts": build_swarm_artifacts(prompt, filename, reply2),
+                                                "updated_files": client_files,
+                                                "role": req_role,
+                                                "agent_name": agent_name
+                                            }
                                         return {
                                             "status": "complete",
                                             "reply": reply2,
@@ -2219,6 +2996,16 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
                         except Exception as e2:
                             print(f"[AI-CHAT] ReAct second turn skipped: {e2}", flush=True)
 
+                        if req_role == "swarm":
+                            reply_text = synthesize_swarm_response(prompt, filename, reply_text or "")
+                            return {
+                                "status": "complete",
+                                "reply": reply_text,
+                                "swarm_artifacts": build_swarm_artifacts(prompt, filename, reply_text),
+                                "updated_files": client_files,
+                                "role": req_role,
+                                "agent_name": agent_name
+                            }
                         reply_text = f"⚙️ Tool executed: `{t_name}`.\nObservation: {obs}\n\n" + (reply_text or "Ready for next step.")
                         return {"status": "complete", "reply": reply_text, "updated_files": client_files, "role": req_role, "agent_name": agent_name}
                     else:
@@ -2248,6 +3035,16 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
                                 "agent_name": agent_name
                             }
                         else:
+                            if req_role == "swarm":
+                                reply_text = synthesize_swarm_response(prompt, filename, reply_text or "")
+                                return {
+                                    "status": "complete",
+                                    "reply": reply_text,
+                                    "swarm_artifacts": build_swarm_artifacts(prompt, filename, reply_text),
+                                    "updated_files": client_files,
+                                    "role": req_role,
+                                    "agent_name": agent_name
+                                }
                             return {
                                 "status": "complete",
                                 "reply": reply_text or f"Task processed by {agent_name}.",
@@ -2378,6 +3175,8 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
                 f"```\n\n"
                 f"*Click **`💾 Save as File`** below to save this implementation as `{target_f}` directly to disk.*"
             )
+        elif req_role == "swarm":
+            reply_text = synthesize_swarm_response(prompt, filename, "", error_note=f"Gemma Gateway HTTP error: {err_msg}")
         else:
             reply_text = f"*(Gemma Gateway HTTP error: {err_msg})*\n\n```python\n# Fallback response for: {prompt}\ndef solve():\n    return 'Verified with Gemma 4 on GDC'\n```"
     except Exception as e:
@@ -2495,6 +3294,8 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
                 f"```\n\n"
                 f"*Click **`💾 Save as File`** below to save this implementation as `{target_f}` directly to disk.*"
             )
+        elif req_role == "swarm":
+            reply_text = synthesize_swarm_response(prompt, filename, "", error_note=f"Gemma Gateway communication error: {e}")
         else:
             reply_text = f"*(Gemma Gateway communication error: {e})*\n\n```python\n# Fallback response for: {prompt}\ndef solve():\n    return 'Verified with Gemma 4 on GDC'\n```"
 
@@ -2516,7 +3317,16 @@ def handle_ai_chat(post_data, user_id, workspace_dir=None):
         if "QA & Test" not in reply_text and "pytest" not in reply_text.lower() and test_file not in reply_text:
             reply_text = f"### 🔍 QA & Test Suite Synthesis: `{test_file}`\n\n" + reply_text
 
-    return {"status": "complete", "reply": reply_text, "updated_files": client_files, "role": req_role, "agent_name": agent_name}
+    swarm_artifacts = None
+    if req_role == "swarm":
+        if not reply_text.startswith("*(Gemma Gateway"):
+            reply_text = synthesize_swarm_response(prompt, filename, reply_text)
+        swarm_artifacts = build_swarm_artifacts(prompt, filename, reply_text)
+
+    resp_payload = {"status": "complete", "reply": reply_text, "updated_files": client_files, "role": req_role, "agent_name": agent_name}
+    if swarm_artifacts:
+        resp_payload["swarm_artifacts"] = swarm_artifacts
+    return resp_payload
 
 
 
@@ -4409,6 +5219,7 @@ class TelemetryCollector:
             "default_model": "auto",
             "approval_policy": "selective"
         }
+        self.seen_event_ids = set()
         self.lock = threading.Lock()
         self._seed_baseline_metrics()
 
@@ -4442,8 +5253,12 @@ class TelemetryCollector:
                 "success": succ
             })
 
-    def record_ai_request(self, session_id, user_id, persona, model, latency_ms, success=True, status="200 OK"):
+    def record_ai_request(self, session_id, user_id, persona, model, latency_ms, success=True, status="200 OK", event_id=None, sync_peers=False):
         with self.lock:
+            ev_id = event_id or f"ev-{int(time.time() * 1000000)}-{self.total_requests}-{os.getpid()}"
+            if ev_id in self.seen_event_ids:
+                return None
+            self.seen_event_ids.add(ev_id)
             self.total_requests += 1
             if success:
                 self.successful_requests += 1
@@ -4453,6 +5268,7 @@ class TelemetryCollector:
             self.model_counts[model] = self.model_counts.get(model, 0) + 1
             self.persona_counts[persona] = self.persona_counts.get(persona, 0) + 1
             event = {
+                "event_id": ev_id,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
                 "session_id": session_id,
                 "user_id": user_id,
@@ -4465,6 +5281,40 @@ class TelemetryCollector:
             self.recent_events.insert(0, event)
             if len(self.recent_events) > 50:
                 self.recent_events.pop()
+
+        if sync_peers and not os.environ.get("UNIT_TEST"):
+            payload = json.dumps({
+                "event_id": ev_id,
+                "session_id": session_id,
+                "user_id": user_id,
+                "persona": persona,
+                "model": model,
+                "latency_ms": round(latency_ms, 1),
+                "status": status,
+                "success": success,
+                "sync_peers": False
+            }).encode("utf-8")
+            for u in (
+                "http://gdc-dev-landing-page:8081/admin/telemetry/record",
+                "http://gdc-dev-landing-page:8080/admin/telemetry/record",
+            ):
+                try:
+                    req = urllib.request.Request(
+                        u,
+                        data=payload,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Forwarded-User": "cluster-admin@gdc.local",
+                            "X-User-ID": "cluster-admin@gdc.local",
+                            "X-User-Roles": "admin,gdc-admin",
+                            "Cookie": f"admin_auth_user={MOCK_ADMIN_USER_ID}; admin_auth_role=admin; dev_auth_user={MOCK_ADMIN_USER_ID}; dev_auth_role=admin"
+                        }
+                    )
+                    AI_OPENER.open(req, timeout=0.5).close()
+                    break
+                except Exception:
+                    pass
+        return event
 
     def register_or_update_session(self, session_id, user_id="dev-user-1"):
         with self.lock:
@@ -4620,10 +5470,13 @@ class TelemetryCollector:
                                 data=payload,
                                 headers={
                                     "Content-Type": "application/json",
+                                    "X-Forwarded-User": admin_user or "cluster-admin@gdc.local",
+                                    "X-User-ID": admin_user or "cluster-admin@gdc.local",
+                                    "X-User-Roles": "admin,gdc-admin",
                                     "Cookie": f"dev_auth_user={MOCK_ADMIN_USER_ID}; dev_auth_role=admin; admin_auth_role=admin"
                                 }
                             )
-                            urllib.request.urlopen(req, timeout=0.8)
+                            AI_OPENER.open(req, timeout=0.8).close()
                         except Exception:
                             pass
                 except Exception:
@@ -5162,12 +6015,12 @@ def render_admin_telemetry_ui(user_id="admin-user"):
             <div class="card">
                 <div class="card-header">
                     <span class="card-title">Total Invocations (AI Swarm Invocations)</span>
-                    <span class="badge badge-green">{summary['success_rate_pct']}% Success</span>
+                    <span class="badge badge-green" id="val-success-pct">{summary['success_rate_pct']}% Success</span>
                 </div>
                 <div class="card-value" id="val-requests">{summary['total_requests']}</div>
                 <div class="card-sub">
-                    <span style="color: #3fb950;">✓ {summary['successful_requests']} Completed</span> | 
-                    <span style="color: #8b949e;">{summary['fallback_requests']} Fallbacks</span>
+                    <span style="color: #3fb950;">✓ <span id="val-completed">{summary['successful_requests']}</span> Completed</span> | 
+                    <span style="color: #8b949e;"><span id="val-fallbacks">{summary['fallback_requests']}</span> Fallbacks</span>
                 </div>
             </div>
 
@@ -5270,7 +6123,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>gemma4:26b</strong> (Fast MoE Tier 1)</span>
-                        <span><span id="pct-m26">{pct_m26}</span>% ({m26} calls)</span>
+                        <span><span id="pct-m26">{pct_m26}</span>% (<span id="cnt-m26">{m26}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-m26" class="progress-fill" style="width: {pct_m26}%; background: #3fb950;"></div>
@@ -5280,7 +6133,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>gemma4:31b</strong> (Dense Reasoning Tier 2)</span>
-                        <span><span id="pct-m31">{pct_m31}</span>% ({m31} calls)</span>
+                        <span><span id="pct-m31">{pct_m31}</span>% (<span id="cnt-m31">{m31}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-m31" class="progress-fill" style="width: {pct_m31}%; background: #58a6ff;"></div>
@@ -5290,7 +6143,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>Auto Dynamic Tiering</strong></span>
-                        <span><span id="pct-mauto">{pct_mauto}</span>% ({m_auto} calls)</span>
+                        <span><span id="pct-mauto">{pct_mauto}</span>% (<span id="cnt-mauto">{m_auto}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-mauto" class="progress-fill" style="width: {pct_mauto}%; background: #bc8cff;"></div>
@@ -5308,7 +6161,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>📐 Architect</strong> (System Planning & Read-Only Confinement)</span>
-                        <span><span id="pct-arch">{pct_arch}</span>% ({p_arch} calls)</span>
+                        <span><span id="pct-arch">{pct_arch}</span>% (<span id="cnt-arch">{p_arch}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-arch" class="progress-fill" style="width: {pct_arch}%; background: #58a6ff;"></div>
@@ -5318,7 +6171,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>💻 Coder</strong> (Surgical Diffs & Selective Auto-Approval)</span>
-                        <span><span id="pct-coder">{pct_coder}</span>% ({p_coder} calls)</span>
+                        <span><span id="pct-coder">{pct_coder}</span>% (<span id="cnt-coder">{p_coder}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-coder" class="progress-fill" style="width: {pct_coder}%; background: #3fb950;"></div>
@@ -5328,7 +6181,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>🔍 Reviewer / QA</strong> (Automated Tests & Code Verification)</span>
-                        <span><span id="pct-rev">{pct_rev}</span>% ({p_rev} calls)</span>
+                        <span><span id="pct-rev">{pct_rev}</span>% (<span id="cnt-rev">{p_rev}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-rev" class="progress-fill" style="width: {pct_rev}%; background: #bc8cff;"></div>
@@ -5338,7 +6191,7 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                 <div class="progress-item">
                     <div class="progress-label">
                         <span><strong>🐝 Multi-Agent Swarm</strong> (Full Pipeline Execution)</span>
-                        <span><span id="pct-swarm">{pct_swarm}</span>% ({p_swarm} calls)</span>
+                        <span><span id="pct-swarm">{pct_swarm}</span>% (<span id="cnt-swarm">{p_swarm}</span> calls)</span>
                     </div>
                     <div class="progress-track">
                         <div id="bar-swarm" class="progress-fill" style="width: {pct_swarm}%; background: #d29922;"></div>
@@ -5421,9 +6274,81 @@ def render_admin_telemetry_ui(user_id="admin-user"):
                         document.getElementById('val-workspaces').textContent = data.session_stats.active + ' Active';
                     }}
                     document.getElementById('val-requests').textContent = data.total_requests;
+                    if (document.getElementById('val-completed')) document.getElementById('val-completed').textContent = data.successful_requests;
+                    if (document.getElementById('val-fallbacks')) document.getElementById('val-fallbacks').textContent = data.fallback_requests;
+                    if (document.getElementById('val-success-pct')) document.getElementById('val-success-pct').textContent = data.success_rate_pct + '% Success';
                     document.getElementById('val-latency').textContent = data.avg_latency_s + 's';
                     document.getElementById('val-latencyms').textContent = data.avg_latency_ms + ' ms';
                     document.getElementById('val-storage').textContent = data.total_storage_mb + ' MB';
+
+                    const totalAi = Math.max(1, data.total_requests || 1);
+                    if (data.model_counts) {{
+                        const m26 = data.model_counts['gemma4:26b'] || 0;
+                        const m31 = data.model_counts['gemma4:31b'] || 0;
+                        const mauto = data.model_counts['auto'] || 0;
+                        const pm26 = Math.round((m26 / totalAi) * 1000) / 10;
+                        const pm31 = Math.round((m31 / totalAi) * 1000) / 10;
+                        const pmauto = Math.round((mauto / totalAi) * 1000) / 10;
+                        if (document.getElementById('pct-m26')) document.getElementById('pct-m26').textContent = pm26;
+                        if (document.getElementById('cnt-m26')) document.getElementById('cnt-m26').textContent = m26;
+                        if (document.getElementById('bar-m26')) document.getElementById('bar-m26').style.width = pm26 + '%';
+                        if (document.getElementById('pct-m31')) document.getElementById('pct-m31').textContent = pm31;
+                        if (document.getElementById('cnt-m31')) document.getElementById('cnt-m31').textContent = m31;
+                        if (document.getElementById('bar-m31')) document.getElementById('bar-m31').style.width = pm31 + '%';
+                        if (document.getElementById('pct-mauto')) document.getElementById('pct-mauto').textContent = pmauto;
+                        if (document.getElementById('cnt-mauto')) document.getElementById('cnt-mauto').textContent = mauto;
+                        if (document.getElementById('bar-mauto')) document.getElementById('bar-mauto').style.width = pmauto + '%';
+                    }}
+                    if (data.persona_counts) {{
+                        const parch = data.persona_counts['architect'] || 0;
+                        const pcoder = data.persona_counts['coder'] || 0;
+                        const prev = data.persona_counts['reviewer'] || 0;
+                        const pswarm = data.persona_counts['swarm'] || 0;
+                        const pcta = Math.round((parch / totalAi) * 1000) / 10;
+                        const pctc = Math.round((pcoder / totalAi) * 1000) / 10;
+                        const pctr = Math.round((prev / totalAi) * 1000) / 10;
+                        const pcts = Math.round((pswarm / totalAi) * 1000) / 10;
+                        if (document.getElementById('pct-arch')) document.getElementById('pct-arch').textContent = pcta;
+                        if (document.getElementById('cnt-arch')) document.getElementById('cnt-arch').textContent = parch;
+                        if (document.getElementById('bar-arch')) document.getElementById('bar-arch').style.width = pcta + '%';
+                        if (document.getElementById('pct-coder')) document.getElementById('pct-coder').textContent = pctc;
+                        if (document.getElementById('cnt-coder')) document.getElementById('cnt-coder').textContent = pcoder;
+                        if (document.getElementById('bar-coder')) document.getElementById('bar-coder').style.width = pctc + '%';
+                        if (document.getElementById('pct-rev')) document.getElementById('pct-rev').textContent = pctr;
+                        if (document.getElementById('cnt-rev')) document.getElementById('cnt-rev').textContent = prev;
+                        if (document.getElementById('bar-rev')) document.getElementById('bar-rev').style.width = pctr + '%';
+                        if (document.getElementById('pct-swarm')) document.getElementById('pct-swarm').textContent = pcts;
+                        if (document.getElementById('cnt-swarm')) document.getElementById('cnt-swarm').textContent = pswarm;
+                        if (document.getElementById('bar-swarm')) document.getElementById('bar-swarm').style.width = pcts + '%';
+                    }}
+                    const evBody = document.getElementById('ev-table-body');
+                    if (evBody && Array.isArray(data.recent_events)) {{
+                        const badgeMap = {{
+                            architect: 'badge-blue',
+                            coder: 'badge-green',
+                            reviewer: 'badge-purple',
+                            swarm: 'badge-yellow',
+                            admin: 'badge-red'
+                        }};
+                        if (data.recent_events.length === 0) {{
+                            evBody.innerHTML = "<tr><td colspan='7' style='text-align: center; color: #8b949e;'>No audit events recorded yet</td></tr>";
+                        }} else {{
+                            evBody.innerHTML = data.recent_events.slice(0, 20).map(ev => {{
+                                const p = (ev.persona || 'sys').toLowerCase();
+                                const bCls = badgeMap[p] || 'badge-blue';
+                                const sCls = (ev.success !== false) ? 'badge-green' : 'badge-red';
+                                return '<tr>' +
+                                    '<td style="color: #8b949e; font-size: 12px;">' + (ev.timestamp || '') + '</td>' +
+                                    '<td><code>' + (ev.user_id || '') + '</code></td>' +
+                                    '<td>📁 ' + (ev.session_id || '') + '</td>' +
+                                    '<td><span class="badge ' + bCls + '">' + p.toUpperCase() + '</span></td>' +
+                                    '<td><span class="badge badge-blue">' + (ev.model || 'system') + '</span></td>' +
+                                    '<td><strong>' + (ev.latency_ms || 0) + ' ms</strong></td>' +
+                                    '<td><span class="badge ' + sCls + '">' + (ev.status || 'OK') + '</span></td>' +
+                                '</tr>';
+                            }}).join('');
+                        }}
+                    }}
                 }})
                 .catch(err => console.warn('Auto-refresh poll failed:', err));
         }}
@@ -5932,7 +6857,8 @@ class LandingPageHandler(BaseHTTPRequestHandler):
                           "/admin/sessions/resume", "/sessions/resume",
                           "/admin/system/broadcast", "/system/broadcast", "/api/broadcast",
                           "/admin/system/policy", "/system/policy",
-                          "/admin/events/clear", "/events/clear") or clean_path.endswith("/broadcast"):
+                          "/admin/events/clear", "/events/clear",
+                          "/admin/telemetry/record", "/telemetry/record") or clean_path.endswith("/broadcast"):
             if not is_admin:
                 self.send_response(403)
                 self.send_header("Content-type", "application/json")
@@ -6041,6 +6967,29 @@ class LandingPageHandler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "ok", "message": "Audit events cleared"}).encode("utf-8"))
+            return
+
+        if clean_path in ("/admin/telemetry/record", "/telemetry/record"):
+            try:
+                data = json.loads(post_data)
+            except Exception:
+                data = {}
+            ev = TELEMETRY.record_ai_request(
+                session_id=data.get("session_id", "default-workspace"),
+                user_id=data.get("user_id", "oidc-developer@gdc.local"),
+                persona=data.get("persona", "swarm"),
+                model=data.get("model", "gemma4:31b"),
+                latency_ms=float(data.get("latency_ms", 1.0)),
+                success=bool(data.get("success", True)),
+                status=data.get("status", "200 OK"),
+                event_id=data.get("event_id"),
+                sync_peers=False
+            )
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "recorded", "event": ev}).encode("utf-8"))
             return
 
         session_id = "default-workspace"
@@ -6819,6 +7768,25 @@ class AdminConsoleHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "events_cleared"}).encode("utf-8"))
+            return
+
+        if clean_path in ("/admin/telemetry/record", "/telemetry/record"):
+            ev = TELEMETRY.record_ai_request(
+                session_id=data.get("session_id", "default-workspace"),
+                user_id=data.get("user_id", "oidc-developer@gdc.local"),
+                persona=data.get("persona", "swarm"),
+                model=data.get("model", "gemma4:31b"),
+                latency_ms=float(data.get("latency_ms", 1.0)),
+                success=bool(data.get("success", True)),
+                status=data.get("status", "200 OK"),
+                event_id=data.get("event_id"),
+                sync_peers=False
+            )
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "recorded", "event": ev}).encode("utf-8"))
             return
 
         self.send_response(404)

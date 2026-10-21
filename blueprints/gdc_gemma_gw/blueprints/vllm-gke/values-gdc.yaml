@@ -13,6 +13,15 @@ model:
   maxModelLen: 32768                         # Production context window on NVIDIA H200 (141GB HBM3e VRAM)
   gpuMemoryUtilization: 0.90
   tensorParallelSize: 1                      # Both 26B (~52GB BF16) and 31B (~62GB BF16) fit on a single 141GB H200 GPU (set to 2 only if sharding across multiple H200s for higher concurrency)
+  maxNumBatchedTokens: 8192                  # Sized for 32K context window prefill chunking on H200
+  maxNumSeqs: 256                            # Concurrent sequence slots per H200 replica
+  enablePrefixCaching: true                  # Aligns with Envoy InferencePool prefixCacheWeight: 3
+  enableChunkedPrefill: true                 # Prevents long RAG prefills from blocking interactive decode steps
+  enableLora: false                          # Set true and populate loraModules to serve hot-swappable LoRA adapters
+  loraModules: []
+  extraArgs: []                              # Optional extra vLLM CLI flags (e.g. --enable-auto-tool-choice, --tool-call-parser)
+
+shmSize: "16Gi"                              # Memory-backed /dev/shm emptyDir for NCCL tensor-parallel communication
 
 resources:
   limits:

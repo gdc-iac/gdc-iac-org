@@ -1,0 +1,242 @@
+{{- if .Values.apps.enabled -}}
+{{- $ns := include "envoy-inference-pool.namespace" . -}}
+{{- $labels := include "envoy-inference-pool.labels" . -}}
+{{- $eppImage := include "envoy-inference-pool.eppImage" . -}}
+{{- range $poolKey, $pool := .Values.pools }}
+{{- if $pool.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $pool.eppServiceName }}-config
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+data:
+  default-plugins.yaml: |
+    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    kind: EndpointPickerConfig
+    plugins:
+      - type: queue-scorer
+      - type: kv-cache-utilization-scorer
+      - type: prefix-cache-scorer
+    schedulingProfiles:
+      - name: default
+        plugins:
+          - pluginRef: queue-scorer
+            weight: {{ $.Values.epp.scorers.queueWeight | default 2 }}
+          - pluginRef: kv-cache-utilization-scorer
+            weight: {{ $.Values.epp.scorers.kvCacheUtilizationWeight | default 2 }}
+          - pluginRef: prefix-cache-scorer
+            weight: {{ $.Values.epp.scorers.prefixCacheWeight | default 3 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $pool.eppServiceName }}-sa
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+{{- with $.Values.global.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $pool.eppServiceName }}-pod-reader
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["inference.networking.x-k8s.io"]
+    resources: ["inferenceobjectives"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["inference.networking.k8s.io"]
+    resources: ["inferencepools"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $pool.eppServiceName }}-pod-reader-binding
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $pool.eppServiceName }}-sa
+    namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $pool.eppServiceName }}-pod-reader
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $pool.eppServiceName }}
+  namespace: {{ $ns }}
+  labels:
+    app: {{ $pool.eppServiceName }}
+    {{- $labels | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $pool.eppServiceName }}
+  template:
+    metadata:
+      labels:
+        app: {{ $pool.eppServiceName }}
+        {{- $labels | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $pool.eppServiceName }}-sa
+      terminationGracePeriodSeconds: 130
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: epp
+          image: {{ $eppImage | quote }}
+          imagePullPolicy: {{ $.Values.epp.image.pullPolicy | default "IfNotPresent" }}
+          args:
+            - --pool-name
+            - {{ $pool.name | quote }}
+            - --pool-namespace
+            - {{ $ns | quote }}
+            - --pool-group
+            - "inference.networking.k8s.io"
+            - --v
+            - "4"
+            - --config-file
+            - "/config/default-plugins.yaml"
+            - --grpc-port
+            - {{ $.Values.epp.grpcPort | default 9002 | quote }}
+            - --grpc-health-port
+            - {{ $.Values.epp.grpcHealthPort | default 9003 | quote }}
+          ports:
+            - name: grpc
+              containerPort: {{ $.Values.epp.grpcPort | default 9002 }}
+            - name: grpc-health
+              containerPort: {{ $.Values.epp.grpcHealthPort | default 9003 }}
+            - name: metrics
+              containerPort: {{ $.Values.epp.metricsPort | default 9090 }}
+          livenessProbe:
+            grpc:
+              port: {{ $.Values.epp.grpcHealthPort | default 9003 }}
+              service: inference-extension
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            grpc:
+              port: {{ $.Values.epp.grpcHealthPort | default 9003 }}
+              service: inference-extension
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml $.Values.epp.resources | nindent 12 }}
+          volumeMounts:
+            - name: plugins-config-volume
+              mountPath: "/config"
+      volumes:
+        - name: plugins-config-volume
+          configMap:
+            name: {{ $pool.eppServiceName }}-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $pool.eppServiceName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $pool.eppServiceName }}
+  ports:
+    - name: grpc-ext-proc
+      protocol: TCP
+      port: {{ $.Values.epp.grpcPort | default 9002 }}
+      targetPort: {{ $.Values.epp.grpcPort | default 9002 }}
+    - name: http-metrics
+      protocol: TCP
+      port: {{ $.Values.epp.metricsPort | default 9090 }}
+      targetPort: {{ $.Values.epp.metricsPort | default 9090 }}
+---
+apiVersion: inference.networking.k8s.io/v1
+kind: InferencePool
+metadata:
+  name: {{ $pool.name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  targetPorts:
+    - number: {{ $pool.targetPort | default 8000 }}
+  selector:
+    matchLabels:
+      {{- toYaml $pool.selectorLabels | nindent 6 }}
+  endpointPickerRef:
+    group: ""
+    kind: Service
+    name: {{ $pool.eppServiceName }}
+    port:
+      number: {{ $.Values.epp.grpcPort | default 9002 }}
+    failureMode: {{ $.Values.epp.failureMode | default "FailOpen" }}
+{{- if and $pool.objective $pool.objective.enabled }}
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: {{ $pool.objective.name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  priority: {{ $pool.objective.priority | default 100 }}
+  poolRef:
+    group: inference.networking.k8s.io
+    kind: InferencePool
+    name: {{ $pool.name }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .Values.epp.createClusterRBAC }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: envoy-gateway-inferencepool-reader-{{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+rules:
+  - apiGroups: ["inference.networking.k8s.io", "inference.networking.x-k8s.io"]
+    resources: ["inferencepools", "inferenceobjectives"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: envoy-gateway-inferencepool-reader-binding-{{ $ns }}
+  labels:
+    {{- $labels | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.epp.envoyGatewayServiceAccount | default "envoy-gateway" }}
+    namespace: {{ .Values.epp.envoyGatewayNamespace | default "envoy-gateway-system" }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: envoy-gateway-inferencepool-reader-{{ $ns }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,75 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+suite: envoy-inference-pool chart unit tests
+templates:
+  - templates/inferencepool.yaml
+  - templates/aigatewayroute.yaml
+tests:
+  - it: should render InferencePool, InferenceObjective, and epp workloads for both 26B and 31B pools by default
+    template: templates/inferencepool.yaml
+    asserts:
+      - hasDocuments:
+          count: 18
+      - isKind:
+          of: ConfigMap
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        documentIndex: 4
+      - isKind:
+          of: InferencePool
+        documentIndex: 6
+      - isKind:
+          of: InferenceObjective
+        documentIndex: 7
+  - it: should render Gateway, ClientTrafficPolicy, AIGatewayRoute, and BackendTrafficPolicy by default
+    template: templates/aigatewayroute.yaml
+    asserts:
+      - hasDocuments:
+          count: 4
+      - isKind:
+          of: Gateway
+        documentIndex: 0
+      - isKind:
+          of: ClientTrafficPolicy
+        documentIndex: 1
+      - isKind:
+          of: AIGatewayRoute
+        documentIndex: 2
+      - isKind:
+          of: BackendTrafficPolicy
+        documentIndex: 3
+  - it: should inject global.registry and global.namespace when provided by Helmfile Stage 5
+    set:
+      global:
+        namespace: gemma-inference
+        registry: harbor.infra.gdc.local/gdc-iac
+    template: templates/inferencepool.yaml
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: gemma-inference
+        documentIndex: 4
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: harbor.infra.gdc.local/gdc-iac/epp:v1.3.0
+        documentIndex: 4
+  - it: should not render workloads when apps.enabled is false
+    set:
+      apps:
+        enabled: false
+    template: templates/inferencepool.yaml
+    asserts:
+      - hasDocuments:
+          count: 0

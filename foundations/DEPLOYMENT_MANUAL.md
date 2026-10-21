@@ -90,6 +90,7 @@ graph TD
     S1 --> S2[Stage 2-resources: DBs, VMs, Storage]
     S2 --> S3[Stage 3-clusters: Compute Provisioning]
     S3 --> S4[Stage 4-notebooks: Workbench Setup]
+    S3 --> S5[Stage 5-workload-factory: AI Gateway, Envoy InferencePool & Blueprint Workloads]
 ```
 
 ---
@@ -196,11 +197,33 @@ helmfile -e dev -l stage=4-notebooks apply
 
 ---
 
+### 🚀 Stage 5: Workload Factory (AI Gateway, Envoy InferencePool & Blueprint Patterns)
+
+Deploys User/Standard Cluster application workloads (`apps.enabled: true`, `gdc.enabled: false`) including `vllm-gke`, `envoy-inference-pool` (`InferencePool` + `epp` + `AIGatewayRoute` + `BackendTrafficPolicy`), `gemma-gateway` (`standalone/chart`), `gemma-client`, and GDC Blueprint Patterns (`p1-resilient-3-tier-webapp` through `p13-gdc-dev`).
+
+```bash
+# 1. Perform dry-run diff validation
+helmfile -e dev -l stage=5-workload-factory diff
+
+# 2. Apply the stage releases
+helmfile -e dev -l stage=5-workload-factory apply
+```
+
+* **Verification**:
+  * Verify User Cluster workloads and Gateway API / InferencePool resources:
+    `kubectl get deploy,svc,gateway,httproute,inferencepool -n gemma-inference`
+    `kubectl get deploy,svc,gateway,httproute -n gdc-dev`
+* **Rollback Plan**:
+  * Execute rollback command: `helmfile -e dev -l stage=5-workload-factory rollback`
+
+---
+
 ## Pipeline Rollback Strategy
 
 If an entire pipeline run encounters errors and you must restore the environment to a previously known stable revision:
 ```bash
 # Rollback all stages sequentially in reverse order
+helmfile -e dev -l stage=5-workload-factory rollback
 helmfile -e dev -l stage=4-notebooks rollback
 helmfile -e dev -l stage=3-clusters rollback
 helmfile -e dev -l stage=2-resources rollback

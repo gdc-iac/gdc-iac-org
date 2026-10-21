@@ -3,6 +3,24 @@ import { Send, Bot, User, AlertCircle, Loader2, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import api from '../api';
 
+const formatMessageContent = (rawContent) => {
+  const text = typeof rawContent === 'string' ? rawContent : String(rawContent ?? '');
+  if (!text.trim()) {
+    return '_No response content returned._';
+  }
+  return text.replace(
+    /<thought>([\s\S]*?)<\/thought>/gi,
+    (_, thought) => {
+      const cleaned = thought
+        .trim()
+        .split('\n')
+        .map((line) => `> ${line}`)
+        .join('\n');
+      return `> **🧠 Tactical Reasoning:**\n${cleaned}\n\n`;
+    }
+  );
+};
+
 export default function ChatArea({ 
   messages, 
   setMessages, 
@@ -114,9 +132,11 @@ export default function ChatArea({
                   ? 'bg-red-50 text-red-600 border border-red-100'
                   : 'bg-gray-100 text-gray-800'
             }`}>
-              <ReactMarkdown className="prose prose-sm max-w-none dark:prose-invert">
-                {msg.content}
-              </ReactMarkdown>
+              <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap break-words">
+                <ReactMarkdown>
+                  {formatMessageContent(msg.content)}
+                </ReactMarkdown>
+              </div>
             </div>
 
             {msg.role === 'user' && (

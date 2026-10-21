@@ -16,7 +16,15 @@
 {{- end }}
 
 {{- define "ollama.namespace" -}}
-{{- coalesce .Values.global.namespace .Values.namespace .Release.Namespace -}}
+{{- if .Values.global.namespace -}}
+{{- .Values.global.namespace -}}
+{{- else if .Values.namespace -}}
+{{- .Values.namespace -}}
+{{- else if ne .Release.Namespace "default" -}}
+{{- .Release.Namespace -}}
+{{- else -}}
+gemma-inference
+{{- end -}}
 {{- end -}}
 
 {{- define "ollama.image" -}}

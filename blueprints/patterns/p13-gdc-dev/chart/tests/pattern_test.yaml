@@ -25,10 +25,24 @@ tests:
     template: templates/apps/workloads.yaml
     asserts:
       - hasDocuments:
-          count: 19
+          count: 20
       - isKind:
           of: ConfigMap
         documentIndex: 0
+  - it: should render shared codebase ReadWriteMany PVC when storage.sharedCodebase.usePvc is true
+    set:
+      storage:
+        sharedCodebase:
+          usePvc: true
+          storageClassName: standard-rwx
+          size: 50Gi
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 21
+      - isKind:
+          of: PersistentVolumeClaim
+        documentIndex: 8
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:
