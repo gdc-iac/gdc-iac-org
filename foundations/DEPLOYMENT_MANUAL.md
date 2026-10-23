@@ -199,7 +199,7 @@ helmfile -e dev -l stage=4-notebooks apply
 
 ### 🚀 Stage 5: Workload Factory (AI Gateway, Envoy InferencePool & Blueprint Patterns)
 
-Deploys User/Standard Cluster application workloads (`apps.enabled: true`, `gdc.enabled: false`) including `vllm-gke`, `envoy-inference-pool` (`InferencePool` + `epp` + `AIGatewayRoute` + `BackendTrafficPolicy`), `gemma-gateway` (`standalone/chart`), `gemma-client`, and GDC Blueprint Patterns (`p1-resilient-3-tier-webapp` through `p13-gdc-dev`).
+Deploys User/Standard Cluster application workloads (`apps.enabled: true`, `gdc.enabled: false`) including `vllm-gke`, `envoy-inference-pool` (`InferencePool` + `epp` + `AIGatewayRoute` + `BackendTrafficPolicy`), `gemma-gateway` (`standalone/chart`), `gemma-client`, and GDC Blueprint Patterns (`p1-resilient-3-tier-webapp` through `p14-antigravity-dev`).
 
 ```bash
 # 1. Perform dry-run diff validation

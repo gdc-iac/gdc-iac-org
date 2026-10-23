@@ -1,0 +1,41 @@
+# Copyright 2026 Google LLC
+# Licensed under the Apache License, Version 2.0.
+{{- if .Values.gdc.enabled }}
+apiVersion: pki.security.gdc.goog/v1
+kind: CertificateRequest
+metadata:
+  name: gdc-dev-cas-cert-req
+  namespace: {{ include "p14-antigravity-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: p14-antigravity-dev
+    app.kubernetes.io/component: phase3-pki-native
+    {{- include "p14-antigravity-dev.labels" . | nindent 4 }}
+spec:
+  certificateAuthorityRef:
+    name: gdc-root-ca
+    namespace: {{ include "p14-antigravity-dev.namespace" . }}
+  certificateConfig:
+    subjectConfig:
+      commonName: dev.gdc.local
+      organization: Google Distributed Cloud Developer Services
+      dnsNames:
+      - dev.gdc.local
+      - '*.dev.gdc.local'
+  signedCertificateSecret: gdc-dev-tls-secret
+  notAfter: '2027-01-01T00:00:00Z'
+{{- if and .Values.gdc.notebook .Values.gdc.notebook.enabled }}
+---
+apiVersion: aiplatform.gdc.goog/v1
+kind: Notebook
+metadata:
+  name: p14-antigravity-gdc-notebook
+  namespace: {{ include "p14-antigravity-dev.namespace" . }}
+  labels:
+    app.kubernetes.io/name: p14-antigravity-dev
+    app.kubernetes.io/component: gdc-native-notebook
+    {{- include "p14-antigravity-dev.labels" . | nindent 4 }}
+spec:
+  machineType: {{ .Values.gdc.notebook.machineType | default "n2-standard-4" | quote }}
+  containerImage: {{ include "p14-antigravity-dev.registry" . }}/gdc-antigravity-workspace:latest
+{{- end }}
+{{- end }}

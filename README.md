@@ -28,7 +28,7 @@ This repository operates as a **Reusable Helm & Helmfile Blueprint Library**. It
 │   ├── bases/environments/    # Environment configurations (dev, stg, prd)
 │   └── releases/              # Phased deployment stages (0-bootstrap to 4-notebooks)
 ├── blueprints/                # Production-ready, 100% self-contained workload reference architectures
-│   ├── patterns/              # Enterprise patterns (P0-P13: 3-tier web, Kafka, RAG, Vault, Keycloak, etc.)
+│   ├── patterns/              # Enterprise patterns (P0-P14: 3-tier web, Kafka, RAG, Vault, Keycloak, Antigravity IDE, etc.)
 │   ├── gdc_gemma_gw/          # Self-contained Gemma LLM Gateway (vLLM & Ollama serving)
 │   ├── common-scripts/        # Packaging, building, parameter configuration, and image mirroring scripts
 │   └── docs/                  # In-depth architectural implementation guides
@@ -120,6 +120,7 @@ The `blueprints/` directory contains **100% self-contained**, production-ready d
   - `p11-vault`: Enterprise secret management with HashiCorp Vault
   - `p12-keycloak`: Centralized Identity and Access Management with Keycloak
   - `p13-gdc-dev`: Developer workstation and sandbox environment
+  - `p14-antigravity-dev`: Antigravity SDK & Integrated JupyterLab 4 Developer IDE Platform
 - **Gemma LLM Gateway (`blueprints/gdc_gemma_gw/`)**: Production inference serving for Google Gemma models.
 - **Air-Gapped Tooling (`blueprints/common-scripts/`)**: Scripts for offline image mirroring (`bulk_mirror_images.sh`), parameter substitution (`configure-blueprints.sh`), and packaging (`package-for-gdc.sh`).
 

@@ -1,0 +1,16 @@
+Pattern Chart: p14-antigravity-dev
+Target Namespace: {{ include "p14-antigravity-dev.namespace" . }}
+Target GDC Project: {{ include "p14-antigravity-dev.projectId" . }}
+Image Registry: {{ include "p14-antigravity-dev.registry" . }}
+Compute Profile: {{ .Values.computeProfile }}
+AI Backend Mode: {{ .Values.ai.backendMode }}
+
+Execution Plane Status:
+- User Cluster Workloads (apps.enabled): {{ .Values.apps.enabled }}
+- Zonal GDC Resources (gdc.enabled): {{ .Values.gdc.enabled }}
+- Native GDC Notebook CRD (gdc.notebook.enabled): {{ .Values.gdc.notebook.enabled }}
+- Day-2 DB Failover Trigger (gdc.failover.enabled): {{ .Values.gdc.failover.enabled }}
+
+Note: In the GDC IaC Framework (foundations/releases), Zonal databases and VMs are provisioned in
+Stage 2 (2-resources) via charts/gdc-dbs and charts/gdc-vm, while this pattern chart deploys
+User Cluster workloads in Stage 5 (5-workload-factory).
