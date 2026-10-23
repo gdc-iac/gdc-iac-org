@@ -1,0 +1,27 @@
+# Copyright 2026 Google LLC
+# Licensed under the Apache License, Version 2.0.
+# trivy:ignore:AVD-KSV-0109 Integer token count thresholds (not credentials)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdc-antigravity-notebook-config
+  namespace: gdc-dev
+  labels:
+    app.kubernetes.io/name: p14-antigravity-dev
+    app.kubernetes.io/component: antigravity-sdk-notebooks
+data:
+  AGY_SDK_ENABLED: "true"
+  AGY_BACKEND_MODE: "gdc_gemma_gw"
+  JUPYTERLAB_ENABLED: "true"
+  JUPYTERLAB_URL_PREFIX: "/lab"
+  IDE_URL_PREFIX: "/ide"
+  COMPUTE_PROFILE: "cpu-gateway"
+  OPENAI_API_BASE_URL: "http://gemma-gateway.gemma-inference.svc.cluster.local/v1"
+  AGY_LIGHTWEIGHT_MODE: "true"
+  AGY_LIGHTWEIGHT_TOKEN_THRESHOLD: "40960"
+  LITERT_MODEL_PATH: "/opt/models/gemma4-26b/model.litertlm"
+  LITERT_CACHE_DIR: "/home/dev/.cache/litert"
+  LITERT_DOWNLOAD_IF_MISSING: "false"
+  LITERT_ENABLE_SPECULATIVE_DECODING: "true"
+  LITERT_GPU_TOKEN_THRESHOLD: "16384"
+  AGY_SKILLS_PATH: "/opt/p14-antigravity/skills"
