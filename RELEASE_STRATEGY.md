@@ -58,6 +58,12 @@ To decouple fast-moving micro-charts from macro landing zone foundations, releas
 | **Track 1: Component (Micro)** | Individual Helm Charts (`charts/*`) | Independent SemVer per chart (`0.X.Y`) declared in `Chart.yaml` | Continuous on PR merge | Automated when `Chart.yaml` version is incremented in a merged PR |
 | **Track 2: Distribution (Macro)** | Landing Zone Foundations (`foundations/`) & Workload Blueprints (`blueprints/`) | Unified Repository SemVer (`vMAJOR.MINOR.PATCH`) | Milestone / Bi-weekly | Tagging `vX.Y.Z` or merging an automated Release PR |
 
+> [!IMPORTANT]
+> **Release automation guarantees**
+> - **Bi-weekly cadence**: `.github/workflows/release-pr.yml` runs every other Monday (even ISO weeks, 09:00 UTC). If anything releasable changed since the last `vX.Y.Z` tag, it opens or refreshes a single rolling PR from `release/next` that bumps `VERSION`. The bump level comes from Conventional Commits (breaking → major, which is treated as minor while `< 1.0.0`; `feat` → minor; otherwise patch). It can also be run manually via *workflow_dispatch* with an explicit bump level.
+> - **Immutable macro releases**: `release.yml` creates `vX.Y.Z` (bundle, `SHA256SUMS`, SBOM) only when `VERSION` names a version that has no release yet, pinned to the exact commit. Existing releases are never re-uploaded or clobbered.
+> - **Immutable chart versions**: only chart versions not yet in GHCR are pushed. Each one is Cosign-signed by **digest**. Already-published versions are skipped, never re-pushed.
+
 ### Semantic Versioning Rules
 
 - **PATCH (`0.0.X` / `v1.0.X`)**:

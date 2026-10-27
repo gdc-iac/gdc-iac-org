@@ -1,0 +1,221 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Bi-weekly macro release PR (Track 2 in RELEASE_STRATEGY.md).
+#
+# Every other Monday (even ISO weeks), if anything under charts/, foundations/,
+# blueprints/, policy/ or scripts/ changed since the last vX.Y.Z tag, this
+# workflow opens (or refreshes) a single rolling PR from `release/next` that
+# bumps VERSION. Merging that PR triggers release.yml, which publishes the
+# immutable vX.Y.Z air-gap release.
+#
+# Bump level (auto mode), using scripts/release-notes.sh's classifier
+# (Conventional Commits, with keyword fallback for non-conventional subjects):
+#   any breaking change -> major (minor while < 1.0.0)
+#   any feature         -> minor
+#   otherwise           -> patch
+#
+# The PR body contains a preview of the exact categorized release notes
+# (features / fixes / improvements / breaking / chart versions) that
+# release.yml will publish.
+#
+# Repo setup required:
+#   - Settings > Actions > General > "Allow GitHub Actions to create and approve
+#     pull requests" must be enabled.
+#   - PRs opened with GITHUB_TOKEN do not trigger other workflows (e.g. lint).
+#     Token used, in order of preference:
+#       1. GitHub App: repo variable RELEASE_APP_CLIENT_ID + secret
+#          RELEASE_APP_PRIVATE_KEY (App permissions: Contents, Pull requests,
+#          Workflows = Read & write; installed on gdc-iac/gdc-iac-org)
+#       2. Fine-grained PAT in secret RELEASE_PR_TOKEN
+#       3. GITHUB_TOKEN (works, but lint won't run on the release PR)
+name: Release PR
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Mondays 09:00 UTC; odd ISO weeks are skipped below
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump level"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      force:
+        description: "Run even on an odd (off) week"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-pr:
+    if: github.repository == 'gdc-iac/gdc-iac-org'
+    permissions:
+      contents: write       # push release/next branch
+      pull-requests: write  # open / update the release PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        with:
+          egress-policy: audit
+
+      - name: Bi-weekly gate
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          week=$(date -u +%V)
+          if [ "$EVENT" = "schedule" ] && [ $((10#$week % 2)) -ne 0 ]; then
+            echo "ISO week ${week} is an off week; skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" != "true" ] && [ $((10#$week % 2)) -ne 0 ]; then
+            echo "ISO week ${week} is an off week and force=false; skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate GitHub App token
+        id: app-token
+        if: steps.gate.outputs.run == 'true' && vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          # Least privilege: scope the 1-hour token to what this job needs.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Compute next version
+        if: steps.gate.outputs.run == 'true'
+        id: next
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          set -euo pipefail
+          current=$(tr -d '[:space:]' < VERSION)
+          last_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          echo "current VERSION=${current}, last tag=${last_tag:-<none>}"
+
+          if [ -n "$last_tag" ] && [ "v${current}" != "$last_tag" ]; then
+            echo "::notice::VERSION (${current}) is ahead of the last tag (${last_tag}); a release is already pending. Skipping."
+            echo "open=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          range="${last_tag:+${last_tag}..}HEAD"
+          paths=(charts foundations blueprints policy scripts)
+          commits=$(git log --no-merges --format='%s' "$range" -- "${paths[@]}")
+          if [ -z "$commits" ]; then
+            echo "::notice::No releasable changes since ${last_tag:-the beginning}. Skipping."
+            echo "open=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          level="$BUMP"
+          if [ "$level" = "auto" ]; then
+            # Use the same classifier as the release notes (Conventional Commits
+            # + keyword fallback) so the bump matches what the notes show.
+            read -r n_breaking n_features _ <<<"$(scripts/release-notes.sh --version "$current" --to HEAD ${last_tag:+--from "$last_tag"} \
+              | awk -F'|' '/^\| *[0-9]+ *\| *[0-9]+ *\|/ { print $2, $3, $4; exit }')"
+            if [ "${n_breaking:-0}" -gt 0 ]; then
+              level="major"
+            elif [ "${n_features:-0}" -gt 0 ]; then
+              level="minor"
+            else
+              level="patch"
+            fi
+          fi
+
+          IFS=. read -r major minor patch <<<"$current"
+          case "$level" in
+            major)
+              # Pre-1.0: breaking changes bump MINOR unless explicitly requested.
+              if [ "$major" -eq 0 ] && [ "$BUMP" = "auto" ]; then
+                minor=$((minor + 1)); patch=0
+              else
+                major=$((major + 1)); minor=0; patch=0
+              fi ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          next="${major}.${minor}.${patch}"
+          echo "bump=${level} -> ${next}"
+
+          {
+            echo "Automated bi-weekly macro release PR (bump: \`${level}\`, ${last_tag:-initial} → \`v${next}\`)."
+            echo "Merging this PR triggers \`release.yml\`, which publishes the immutable"
+            echo "\`v${next}\` air-gap bundle, SHA256SUMS, SBOM and the release notes below."
+            echo
+            echo "<details open><summary><b>Release notes preview</b></summary>"
+            echo
+            scripts/release-notes.sh --version "$next" --to HEAD ${last_tag:+--from "$last_tag"}
+            echo
+            echo "</details>"
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          {
+            echo "open=true"
+            echo "next=${next}"
+            echo "level=${level}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update release PR
+        if: steps.gate.outputs.run == 'true' && steps.next.outputs.open == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          NEXT: ${{ steps.next.outputs.next }}
+        run: |
+          set -euo pipefail
+          branch="release/next"
+          # Commit as the App's bot user when available (e.g. gdc-iac-release[bot]).
+          if [ -n "${APP_SLUG:-}" ]; then
+            bot="${APP_SLUG}[bot]"
+            bot_id=$(gh api "/users/${bot}" --jq .id)
+            git config user.name "$bot"
+            git config user.email "${bot_id}+${bot}@users.noreply.github.com"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fi
+
+          git switch -C "$branch"
+          echo "$NEXT" > VERSION
+          git add VERSION
+          git commit -m "chore(release): v${NEXT}"
+          git push --force origin "$branch"
+
+          title="chore(release): v${NEXT}"
+          existing=$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+            echo "Updated release PR #${existing} → v${NEXT}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+            echo "Opened release PR for v${NEXT}" >> "$GITHUB_STEP_SUMMARY"
+          fi
