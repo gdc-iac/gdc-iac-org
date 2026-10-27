@@ -69,6 +69,7 @@ gdc_pattern_p10_chart_path: "../../../blueprints/patterns/p10-gemini-gui/chart"
 gdc_pattern_p11_chart_path: "../../../blueprints/patterns/p11-vault/chart"
 gdc_pattern_p12_chart_path: "../../../blueprints/patterns/p12-keycloak/chart"
 gdc_pattern_p13_chart_path: "../../../blueprints/patterns/p13-gdc-dev/chart"
+gdc_pattern_p14_chart_path: "../../../blueprints/patterns/p14-antigravity-dev/chart"
 
 # GDC Gemma 4 Dedicated Inference Gateway Chart Paths (Stage 5: 5-workload-factory)
 gdc_gemma_vllm_chart_path: "../../../blueprints/gdc_gemma_gw/blueprints/vllm-gke"

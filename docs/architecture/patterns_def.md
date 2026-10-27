@@ -1323,3 +1323,46 @@ kubectl apply -f p13-gdc-dev/manifests/gdc/network-policy-ai.yaml
 kubectl apply -f p13-gdc-dev/manifests/gdc/gdc-dev-phase3-deployment.yaml
 ```
 
+---
+
+## **Pattern 14: GDC-ag Antigravity SDK & Integrated Notebooks Developer IDE Platform (`p14-antigravity-dev`)**
+
+> **Version:** 1.3  
+> **Specification ID:** `REQ-GDC-AG-DEV-PLATFORM-001`  
+> **Status:** Production Reference Implementation  
+> **Default Configuration:** Google Antigravity SDK Tri-Backend Orchestrator (`LocalOpenAIAgentConfig.lightweight()`, `LiteRTAgentConfig`, `LocalAgentConfig`), Hot-Reloadable GDC `SKILL.md` Bundles, Co-Located Integrated JupyterLab 4 (`/lab/`), Keycloak OIDC SSO (`p12-keycloak`), and Dual-Port Sovereign Admin Console (`Port 8081`).
+
+Use Case: Unifying interactive software/infrastructure engineering (`/ide/`) and interactive MLOps/data-science notebooks (`/lab/`) inside a single air-gapped developer workspace pod on `GDC-ag` with sovereign AI pair programming and multi-agent swarm orchestration.
+
+**Design & Resilience Strategy:**
+1. **Antigravity SDK Tri-Backend Orchestration:** Supports `gdc_gemma_gw` (`LocalOpenAIAgentConfig.lightweight()` at `40,960` token threshold routing to `gemma-gateway`), `litert_on_device` (`LiteRTAgentConfig` at `16,384` GPU token cap), and `gdc_gemini` (`LocalAgentConfig` at `128,000` token window).
+2. **4 Specialist Personas & PoLP Guardrails:** Enforces role-based tool isolation across `📐 Architect` (`gemma4:31b` read-only), `💻 Coder` (`gemma4:26b` with Human-in-the-Loop diff approval), `🔍 Reviewer` (`gemma4:26b` with predicate-guarded `is_safe_verify_cmd` and `SAFE_ENV` secret scrubbing), and `🐝 Multi-Agent Swarm` (3-stage pipeline with 1-click `⚡ Auto-Create All Swarm Files (3)`).
+3. **Modular Hot-Reloadable GDC `SKILL.md` Bundles:** Ships with 4 GDC domain skills (`gdc-blueprint-adaptation`, `gdc-e2e-iac-knitting`, `gdc-notebook-mlops`, `gdc-security-opa`) mirrored into the Code IDE `📁 skills/` Explorer and manageable via the ClickOps `SKILL.md` Studio Drawer.
+4. **Co-Located Integrated JupyterLab 4 (`/lab/`):** Structured `.ipynb` v4 cell tools, automatic `.ipynb.bak` snapshots, and `%%agy_architect`, `%%agy_builder`, `%%agy_verify`, and `%agy_fix` IPython magics sharing `/home/dev/workspace` (`standard-rwo`) and `/workspace/shared` (`standard-rwx`).
+5. **Keycloak OIDC & Dual-Port Sovereign Admin Isolation:** Authenticates developers (`https://dev.gdc.local`, Port `8080`, `dev_auth_user`) and platform admins (`https://admin.dev.gdc.local`, Port `8081`, `admin_auth_user`) via Keycloak OIDC (`p12-keycloak` `gdc-dev-realm`).
+
+### **Required IAM & RBAC Permissions**
+* **GDC IAM Role:** `roles/container.developer` or `roles/gke.developer`
+* **Kubernetes RBAC:** ServiceAccount `gdc-dev-operator-sa` with Role/ClusterRole granting operations on `pods`, `services`, `deployments`, `configmaps`, `secrets`, and `httproutes` (`gateway.networking.k8s.io`).
+
+### **Deployment Command Sequence (Production / Default)**
+
+```bash
+# 1. Apply Core Infrastructure: Namespace, Gateway API, LoadBalancer, and Operator RBAC
+kubectl apply -f p14-antigravity-dev/manifests/gdc/namespace.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/gateway.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/loadbalancer.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/gdc-dev-operator.yaml
+
+# 2. Apply Configuration (Keycloak OIDC + Antigravity SDK + Integrated Notebooks) & Network Policies
+kubectl apply -f p14-antigravity-dev/manifests/gdc/mock-auth-configmap.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/oidc-auth-configmap.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/gdc-dev-agent-configmap.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/gdc-antigravity-notebook-configmap.yaml
+kubectl apply -f p14-antigravity-dev/manifests/gdc/network-policy-ai.yaml
+
+# 3. Deploy Platform Services (Dual-Port Unified IDE/JupyterLab & Sovereign Admin Console)
+kubectl apply -f p14-antigravity-dev/manifests/gdc/gdc-dev-phase3-deployment.yaml
+```
+
+
