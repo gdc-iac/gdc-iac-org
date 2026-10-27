@@ -189,6 +189,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.RELEASE_PR_TOKEN || secrets.GITHUB_TOKEN }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          RELEASE_BOT_EMAIL: ${{ vars.RELEASE_BOT_EMAIL }}
           NEXT: ${{ steps.next.outputs.next }}
         run: |
           set -euo pipefail
@@ -202,6 +203,13 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          fi
+          # Bot noreply addresses fail the Google CLA check (cla/google). Use the
+          # CLA-allowlisted robot address when configured (go/signcla-robot-account).
+          if [ -n "${RELEASE_BOT_EMAIL:-}" ]; then
+            git config user.email "$RELEASE_BOT_EMAIL"
+          else
+            echo "::warning::RELEASE_BOT_EMAIL is not set; the release commit author is a bot noreply address and cla/google will fail."
           fi
 
           git switch -C "$branch"
