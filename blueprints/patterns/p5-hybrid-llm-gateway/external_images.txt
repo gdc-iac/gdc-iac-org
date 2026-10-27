@@ -1,0 +1,3 @@
+# 3P Container Dependencies for p5-hybrid-llm-gateway (Air-Gapped GDC)
+vllm/vllm-openai:latest
+ollama/ollama:latest

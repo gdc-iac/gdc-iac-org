@@ -1,0 +1,55 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+templates:
+  iam-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: true
+    wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $tenantAdmin := $tenantConfig.global | get "admin_subject_name" "" }}
+    {{- range $project := $tenantConfig.global.projects }}
+      {{- $iamrolebindings := list }}
+      {{- range $binding := $project.iamrolebindings }}
+        {{- $iamrolebindings = append $iamrolebindings (dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User")) }}
+      {{- end }}
+    - name: {{ $project.name }}-iam-rolebindings
+      chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
+      {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
+      version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
+      {{- end }}
+      labels:
+        stage: 1-project-factory
+        tenant: {{ $tenantName | quote }}
+        project: {{ $project.name | quote }}
+        type: "iam"
+      inherit:
+        - template: iam-template
+      values:
+        - iamrolebindings: {{ $iamrolebindings | toJson }}
+          namespace: {{ $project.name }}
+    {{- end }}
+  {{- end }}
+

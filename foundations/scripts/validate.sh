@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# GDC AG Foundations IaC Pipeline Validation Script
+# Automates local static checks, schema enforcement, and template rendering checks.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+FOUNDATIONS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${FOUNDATIONS_DIR}"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0;0m'
+
+ENV=${1:-"dev"}
+
+echo -e "${BLUE}====================================================${NC}"
+echo -e "${BLUE}   GDC AG IaC Foundations Validation Harness (${ENV})${NC}"
+echo -e "${BLUE}====================================================${NC}"
+
+# Step 1: Helm Chart Linting
+echo -e "\n${YELLOW}[Step 1/3] Linting Local Custom & Blueprint Charts...${NC}"
+for chart_dir in "${REPO_ROOT}/charts"/* "${REPO_ROOT}/blueprints/patterns"/*/chart "${REPO_ROOT}/blueprints/gdc_gemma_gw"/*/chart "${REPO_ROOT}/blueprints/gdc_gemma_gw/blueprints"/*; do
+  if [ -d "$chart_dir" ] && [ -f "$chart_dir/Chart.yaml" ]; then
+    echo -n "Linting ${chart_dir#${REPO_ROOT}/}... "
+    if helm lint "$chart_dir" >/dev/null 2>&1; then
+      echo -e "${GREEN}PASSED${NC}"
+    else
+      echo -e "${RED}FAILED${NC}"
+      helm lint "$chart_dir"
+      exit 1
+    fi
+  fi
+done
+
+# Step 2: Helmfile Linting
+echo -e "\n${YELLOW}[Step 2/3] Performing Helmfile Environment Linting...${NC}"
+if helmfile -e "${ENV}" lint; then
+  echo -e "${GREEN}Helmfile configuration lint successful.${NC}"
+else
+  echo -e "${RED}Helmfile lint failed.${NC}"
+  exit 1
+fi
+
+
+# Step 3: Rendering & Dry-Run Compilation Checks
+echo -e "\n${YELLOW}[Step 3/3] Validating Dynamic Go Templates & Schema Rules...${NC}"
+if helmfile -e "$ENV" template > /dev/null; then
+  echo -e "${GREEN}Template validation succeeded. All schemas and dynamic Go configurations are 100% valid!${NC}"
+else
+  echo -e "${RED}Template validation failed. Check for syntax errors or JSON Schema violations above.${NC}"
+  exit 1
+fi
+
+echo -e "\n${GREEN}====================================================${NC}"
+echo -e "${GREEN} ✅ VALIDATION SUCCESS: Pipeline is release-ready!   ${NC}"
+echo -e "${GREEN}====================================================${NC}"

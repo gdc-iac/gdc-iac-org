@@ -1,0 +1,96 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+helmDefaults:
+  createNamespace: false
+  wait: {{ env "HELM_WAIT" | default (.Values | get "helm_wait" true | toString) | eq "true" }}
+  kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+
+templates:
+  iamrolebindings-template:
+    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    installed: {{ $vals | get "install_bootstrap" true }}
+
+{{- if and $envData (hasKey $envData "iac") }}
+{{- $customRolesList := list }}
+{{- range $cr := $envData | get "iac.global.customroles" list }}
+  {{- $customRolesList = append $customRolesList $cr.name }}
+{{- end }}
+
+{{- $projectPredefined := list }}
+{{- $projectCustom := list }}
+{{- range $binding := $envData | get "iac.project.iamrolebindings" list }}
+  {{- $resolvedBinding := dict "role" $binding.role "subject_name" ($binding | get "subject_name" ($vals | get "iac_sa" "fop-iac@example.com")) "subject_kind" ($binding | get "subject_kind" "User") }}
+  {{- if has $binding.role $customRolesList }}
+    {{- $projectCustom = append $projectCustom $resolvedBinding }}
+  {{- else }}
+    {{- $projectPredefined = append $projectPredefined $resolvedBinding }}
+  {{- end }}
+{{- end }}
+
+{{- $globalPredefined := list }}
+{{- $globalCustom := list }}
+{{- range $binding := $envData | get "iac.global.iamrolebindings" list }}
+  {{- $resolvedBinding := dict "role" $binding.role "subject_name" ($binding | get "subject_name" ($vals | get "iac_sa" "fop-iac@example.com")) "subject_kind" ($binding | get "subject_kind" "User") }}
+  {{- if has $binding.role $customRolesList }}
+    {{- $globalCustom = append $globalCustom $resolvedBinding }}
+  {{- else }}
+    {{- $globalPredefined = append $globalPredefined $resolvedBinding }}
+  {{- end }}
+{{- end }}
+
+releases:
+  {{- if or (gt (len $projectPredefined) 0) (gt (len $projectCustom) 0) }}
+  - name: iac-iam-rolebindings-project
+    chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
+    {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
+    version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
+    {{- end }}
+    labels:
+      stage: 0-bootstrap
+    inherit:
+      - template: iamrolebindings-template
+    values:
+      - namespace: {{ $envData | get "iac.project.namespace" "iac-root" | quote }}
+      - iamrolebindings: {{ $projectPredefined | toJson }}
+        customiamrolebindings: {{ $projectCustom | toJson }}
+  {{- end }}
+
+  {{- if or (gt (len $globalPredefined) 0) (gt (len $globalCustom) 0) }}
+  - name: iac-iam-rolebindings-global
+    chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
+    {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
+    version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
+    {{- end }}
+    labels:
+      stage: 0-bootstrap
+    inherit:
+      - template: iamrolebindings-template
+    values:
+      - namespace: {{ $envData | get "iac.global.namespace" "platform" | quote }}
+      - iamrolebindings: {{ $globalPredefined | toJson }}
+        customiamrolebindings: {{ $globalCustom | toJson }}
+  {{- end }}
+
+{{- else }}
+releases: []
+{{- end }}

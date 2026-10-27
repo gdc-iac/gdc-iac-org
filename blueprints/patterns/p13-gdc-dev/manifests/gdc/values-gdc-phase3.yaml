@@ -1,0 +1,101 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+global:
+  domain: "dev.gdc.local"
+  gdcAirgapped: true
+
+ingress:
+  enabled: false
+
+gatewayApi:
+  enabled: true
+  gatewayClassName: "gdc-dev-gateway-class"
+  gatewayName: "gdc-dev-gateway"
+
+# Phase 3 PKI Migration: Disable self-signed CA in favor of GDC Platform ClusterIssuer
+tls:
+  enabled: true
+  issuerCa:
+    create: false # Upstream self-signed CA disabled
+  certManager:
+    enabled: true
+    clusterIssuer: "gdc-ca-issuer"
+    secretName: "gdc-dev-tls-secret"
+
+# Phase 3 Persistent Storage: Enable GDC PersistentVolumeClaims for developer sessions
+storage:
+  pvc:
+    enabled: true
+    storageClassName: "standard-rwo"
+    size: "20Gi"
+    mountPath: "/workspace"
+
+authentication:
+  type: "oidc"
+  mockHeaderUser: "X-Forwarded-User"
+  keycloak:
+    enabled: true
+    realm: "gdc-dev-realm"
+    clientId: "gdc-dev-client"
+    authority: "https://keycloak.gdc.local/realms/gdc-dev-realm"
+
+operator:
+  replicaCount: 2 # Phase 3 HA multi-tenant session reconciliation
+  image:
+    repository: "us-central1-docker.pkg.dev/test-project/blueprint-images/gdc-dev-operator"
+    tag: "latest"
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1024Mi"
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+
+landingPage:
+  replicaCount: 2
+  image:
+    repository: "us-central1-docker.pkg.dev/test-project/blueprint-images/gdc-dev-landing-page"
+    tag: "latest"
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+# Phase 3 Agentic AI Platform Settings
+agent:
+  enabled: true
+  mode: "in-pod"             # Co-located in user workspace container
+  approvalPolicy: "selective"# Read-only auto-approved; diff and shell execution prompted
+  maxTurns: 10               # Hard recursion ceiling
+  timeout: 300               # 5-minute generation window
+  tiering:
+    provider: "gemma"        # "gemma" (GDC-ag GPU) or "gemini" (Sovereign API)
+    tier1Model: "gemma4:26b" # Routine edits and completions
+    tier2Model: "gemma4:31b" # Reasoning, ReAct loops, and test repairs
+  swarm:
+    enabled: true
+    defaultRole: "swarm"     # "swarm", "architect", "coder", "reviewer"
+    roles:
+      - name: "architect"
+        description: "Workspace structural planning, multi-file scaffolding, and API design"
+      - name: "coder"
+        description: "AST-aware surgical unified diff authoring and refactoring"
+      - name: "reviewer"
+        description: "Unit test generation, lint analysis, and security boundary audits"
+

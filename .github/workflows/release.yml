@@ -1,20 +1,146 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 ## Reference: https://github.com/helm/chart-releaser-action
-name: Chart Publish
+#
+# Two release tracks (see RELEASE_STRATEGY.md):
+#   1. publish-charts  - Track 1 (micro): every chart version that is not yet
+#                        published is released via chart-releaser, pushed to
+#                        GHCR as OCI and Cosign-signed by digest. Already
+#                        published versions are skipped (OCI tags are immutable).
+#   2. macro-release   - Track 2 (macro): the air-gap bundle + SBOM release
+#                        vX.Y.Z is created ONLY when the VERSION file names a
+#                        version that has no release yet. Existing releases are
+#                        never modified, so published checksums stay valid.
+name: Release Automation
 on:
   push:
     branches:
       - main
     paths:
       - "charts/**"
+      - "foundations/**"
+      - "blueprints/**"
+      - "VERSION"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  publish:
+  publish-charts:
     if: github.repository == 'gdc-iac/gdc-iac-org'
     permissions:
-      contents: write  # for helm/chart-releaser-action to push chart release and create a release
+      contents: write  # for chart-releaser and releases
+      packages: write  # for pushing OCI charts to ghcr.io
+      id-token: write  # for Cosign keyless signing via Sigstore OIDC
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v3.18.0
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@c56c2d3e59e4281cc41dea2217323ba5694b171e # v3.8.0
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "$GITHUB_ACTOR"
+          git config --global user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_SKIP_EXISTING: true
+          # Per-chart releases get GitHub-generated notes (PRs since the
+          # chart's previous release) instead of only the chart description.
+          CR_GENERATE_RELEASE_NOTES: true
+
+      - name: Publish and Sign new OCI chart versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "$GH_ACTOR" --password-stdin
+          registry="oci://ghcr.io/${GH_REPO}/charts"
+          mkdir -p .oci-packages
+          published=0; skipped=0; failed=0
+
+          for chart in charts/*; do
+            [ -f "$chart/Chart.yaml" ] || continue
+            chart_name=$(basename "$chart")
+            chart_version=$(grep "^version:" "$chart/Chart.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+
+            # Skip versions already in GHCR: OCI tags are treated as immutable,
+            # so unchanged charts are neither re-pushed nor re-signed.
+            if helm show chart "${registry}/${chart_name}" --version "${chart_version}" >/dev/null 2>&1; then
+              echo "= ${chart_name}:${chart_version} already published, skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "+ Packaging ${chart_name}:${chart_version}"
+            helm package "$chart" --destination .oci-packages
+            pkg=".oci-packages/${chart_name}-${chart_version}.tgz"
+
+            if ! push_out=$(helm push "$pkg" "$registry" 2>&1); then
+              echo "$push_out"
+              echo "::error::helm push failed for ${chart_name}:${chart_version}"
+              failed=$((failed + 1))
+              continue
+            fi
+            echo "$push_out"
+            digest=$(echo "$push_out" | awk '/^Digest:/ {print $2}')
+
+            # Sign by digest (immutable) rather than by mutable tag.
+            oci_ref="ghcr.io/${GH_REPO}/charts/${chart_name}@${digest}"
+            echo "Signing ${oci_ref} with Cosign..."
+            cosign sign --yes "$oci_ref" \
+              || echo "::warning::Keyless Cosign signing failed for ${chart_name}:${chart_version} (${oci_ref})"
+            published=$((published + 1))
+          done
+
+          {
+            echo "### OCI chart publishing"
+            echo "- published: ${published}"
+            echo "- already published (skipped): ${skipped}"
+            echo "- failed: ${failed}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$failed" -eq 0 ]
+
+  macro-release:
+    if: github.repository == 'gdc-iac/gdc-iac-org'
+    needs: publish-charts
+    permissions:
+      contents: write  # for creating the vX.Y.Z release
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -28,15 +154,104 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+      - name: Decide whether a new macro release is needed
+        id: decide
         env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          CR_SKIP_EXISTING: true
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ ! -f VERSION ]; then
+            echo "No VERSION file; skipping macro release."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" >/dev/null 2>&1 || git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "Release ${TAG} already exists; it is immutable and will NOT be modified."
+            echo "Bump VERSION (or merge the release PR) to publish a new macro release."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+            echo "Macro release \`${TAG}\` already exists - skipped (immutable)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "create=true" >> "$GITHUB_OUTPUT"
+          fi
 
+      - name: Set up Helm
+        if: steps.decide.outputs.create == 'true'
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+        with:
+          version: v3.18.0
+
+      - name: Build Air-Gap Distribution Bundle & SHA256SUMS
+        if: steps.decide.outputs.create == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          BUNDLE_NAME="gdc-iac-airgap-v${VERSION}"
+          DIST_DIR="dist"
+          mkdir -p "$DIST_DIR/$BUNDLE_NAME/charts"
+
+          # 0. Categorized release notes (features / fixes / improvements /
+          #    breaking / chart versions) since the previous vX.Y.Z tag.
+          scripts/release-notes.sh --version "$VERSION" --to "$GITHUB_SHA" > "$DIST_DIR/RELEASE_NOTES.md"
+          cat "$DIST_DIR/RELEASE_NOTES.md" >> "$GITHUB_STEP_SUMMARY"
+
+          # 1. Package every chart directly into the bundle (self-contained;
+          #    does not depend on the OCI publishing job's workspace).
+          for chart in charts/*; do
+            [ -f "$chart/Chart.yaml" ] || continue
+            helm package "$chart" --destination "$DIST_DIR/$BUNDLE_NAME/charts"
+          done
+
+          # 2. Copy foundations, blueprints, policy, scripts, and documentation
+          cp -r foundations "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r blueprints "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r policy "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r scripts "$DIST_DIR/$BUNDLE_NAME/"
+          cp VERSION README.md LICENSE RELEASE_STRATEGY.md "$DIST_DIR/$BUNDLE_NAME/"
+          # Ship the release notes inside the bundle for air-gapped operators.
+          cp "$DIST_DIR/RELEASE_NOTES.md" "$DIST_DIR/$BUNDLE_NAME/"
+
+          # 3. Generate cryptographic SHA256SUMS inside the bundle
+          cd "$DIST_DIR/$BUNDLE_NAME"
+          find . -type f ! -name "SHA256SUMS" -exec sha256sum {} + | sort -k 2 > SHA256SUMS
+          cd - >/dev/null
+
+          # 4. Create the air-gap archive and outer SHA256 checksum
+          cd "$DIST_DIR"
+          tar -czf "${BUNDLE_NAME}.tar.gz" "${BUNDLE_NAME}"
+          sha256sum "${BUNDLE_NAME}.tar.gz" > "${BUNDLE_NAME}.tar.gz.sha256"
+          cd - >/dev/null
+
+      - name: Generate SPDX 2.3 SBOM
+        if: steps.decide.outputs.create == 'true'
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
+        with:
+          path: "./dist"
+          format: "spdx-json"
+          output-file: "./dist/gdc-iac-sbom.spdx.json"
+          upload-artifact: false
+
+      - name: Publish Foundations Macro Release & Assets
+        if: steps.decide.outputs.create == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.decide.outputs.version }}
+          TAG: ${{ steps.decide.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BUNDLE_NAME="gdc-iac-airgap-v${VERSION}"
+          # Create the release and upload assets atomically, pinned to the
+          # exact commit that was built. No --clobber: releases are immutable.
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "GDC IaC Foundations $TAG" \
+            --notes-file "dist/RELEASE_NOTES.md" \
+            "dist/${BUNDLE_NAME}.tar.gz" \
+            "dist/${BUNDLE_NAME}.tar.gz.sha256" \
+            "dist/gdc-iac-sbom.spdx.json" \
+            "dist/RELEASE_NOTES.md"
+          echo "Published macro release \`${TAG}\` at ${GITHUB_SHA}." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,150 @@
+{{/*
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if .Values.apps.enabled }}
+{{- $registry := .Values.registry | default .Values.global.registry -}}
+{{- if .Values.apps.createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    environment: testing
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemma-gateway
+  namespace: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.apps.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: gemma-gateway
+  template:
+    metadata:
+      labels:
+        app: gemma-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: gateway
+        image: {{ if $registry }}{{ $registry }}/{{ .Values.apps.imageName | default "gemma-proxy" }}:{{ .Values.apps.imageTag | default "latest" }}{{ else }}gemma-gateway:latest{{ end }}
+        imagePullPolicy: {{ .Values.apps.imagePullPolicy | default "IfNotPresent" }}
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ACTIVE_FRAMEWORK
+          value: {{ .Values.apps.activeFramework | default "ollama" | quote }}
+        - name: OLLAMA_MODEL_VARIANT
+          value: {{ .Values.apps.ollamaModelVariant | default "26b" | quote }}
+        - name: GATEWAY_TIMEOUT
+          value: '300.0'
+        - name: GPU_VRAM_TOTAL_GB
+          value: {{ .Values.apps.gpuVramTotalGb | default "80.0" | quote }}
+        - name: VLLM_GPU_MEMORY_UTILIZATION
+          value: {{ .Values.apps.vllmGpuMemoryUtilization | default "0.90" | quote }}
+        - name: DCGM_METRICS_URL
+          value: {{ .Values.apps.dcgmMetricsUrl | default "" | quote }}
+        - name: ENABLE_OIDC
+          value: {{ .Values.apps.enableOidc | default false | quote }}
+        - name: ADMIN_REQUIRE_OIDC
+          value: {{ .Values.apps.adminRequireOidc | default (.Values.apps.enableOidc | default true) | quote }}
+        - name: KEYCLOAK_URL
+          value: {{ .Values.apps.keycloakUrl | default "http://keycloak-svc:8080/auth/realms/gdc-rag-realm" | quote }}
+        - name: GATEWAY_STATE_FILE
+          value: {{ .Values.apps.gatewayStateFile | default "/tmp/gemma_gateway_state.json" | quote }}
+        - name: REDIS_URL
+          value: {{ .Values.apps.redisUrl | default "" | quote }}
+        - name: TIER1_MODEL_TAG
+          value: {{ .Values.apps.tier1ModelTag | default "gemma4:26b" | quote }}
+        - name: TIER2_MODEL_TAG
+          value: {{ .Values.apps.tier2ModelTag | default "gemma4:31b" | quote }}
+        - name: ENFORCE_PARAMETER_OVERRIDES
+          value: {{ if hasKey .Values.apps "enforceParameterOverrides" }}{{ .Values.apps.enforceParameterOverrides | quote }}{{ else }}"true"{{ end }}
+        {{- $rawEnvoyUrl := "" }}
+        {{- if .Values.apps.envoyInferencePool }}
+        {{- $rawEnvoyUrl = coalesce .Values.apps.envoyInferencePool.serviceUrl .Values.apps.envoyInferencePool.url "" }}
+        {{- end }}
+        {{- $envoyUrl := ($rawEnvoyUrl | default "http://gemma-envoy-inference-pool:80") | trimSuffix "/" | trimSuffix "/v1" | trimSuffix "/" }}
+        - name: ENVOY_INFERENCE_POOL_ENABLED
+          value: {{ (and .Values.apps.envoyInferencePool .Values.apps.envoyInferencePool.enabled) | default false | quote }}
+        - name: ENVOY_INFERENCE_POOL_URL
+          value: {{ $envoyUrl | quote }}
+        - name: MODEL_ROUTING_CONFIG
+          {{- if .Values.apps.modelRoutingConfig }}
+          value: {{ .Values.apps.modelRoutingConfig | quote }}
+          {{- else if and .Values.apps.envoyInferencePool .Values.apps.envoyInferencePool.enabled }}
+          value: {{ printf "{\"gemma4:26b\": %q, \"gemma4:31b\": %q, \"*\": %q}" $envoyUrl $envoyUrl $envoyUrl | quote }}
+          {{- else if eq (.Values.apps.activeFramework | default "ollama") "vllm" }}
+          value: '{"gemma4:26b": "http://vllm-26b-vllm-service:8000", "gemma4:31b": "http://vllm-31b-vllm-service:8000", "*": "http://vllm-26b-vllm-service:8000"}'
+          {{- else }}
+          value: '{"gemma4:26b": "http://ollama-26b:11434", "gemma4:31b": "http://ollama-31b:11434", "*": "http://ollama-26b:11434"}'
+          {{- end }}
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-gateway
+  namespace: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: gemma-gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gemma-gateway-route
+  namespace: {{ include "gemma-standalone.namespace" . }}
+  labels:
+    {{- include "gemma-standalone.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: gdc-platform-gateway
+    namespace: gemma-inference
+  hostnames:
+  - ai-gateway.gdc.local
+  - gemma-gateway.shared-services.gdc.local
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: gemma-gateway
+      port: 80
+{{- end }}

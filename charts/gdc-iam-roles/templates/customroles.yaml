@@ -1,22 +1,39 @@
-{{- if .Values.iamroles }}
-{{- range $_, $role := .Values.iamroles }}
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- $roles := .Values.iamroles | default .Values.customroles }}
+{{- if $roles }}
+{{- range $_, $role := $roles }}
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: CustomRole
 metadata:
-  name: {{ $role.name | quote }}
-  namespace: platform
+  name: {{ required "role.name is required" $role.name | quote }}
+  namespace: {{ default "platform" $role.namespace | quote }}
 spec:
   metadata:
-    id: {{ $role.name | quote }}
-    title: {{ $role.title | quote }}
+    id: {{ required "role.name (id) is required" $role.name | quote }}
+    title: {{ default $role.name $role.title | quote }}
+    {{- if $role.description }}
     description: {{ $role.description | quote }}
-    stage: {{ $role.stage | quote }}
+    {{- end }}
+    stage: {{ default "GA" $role.stage | quote }}
     scope: {{ default "organization" $role.scope | quote }}
     {{- if $role.roleNamespaces }}
     roleNamespaces:
     {{- range $ns := $role.roleNamespaces }}
-      - {{ $ns }}
+      - {{ $ns | quote }}
     {{- end }}
     {{- end }}
   {{- if $role.globalRules }}
@@ -33,9 +50,11 @@ spec:
 {{ $role.zonalRules | indent 4 }}
 {{- else }}
 {{ $role.zonalRules | toYaml | indent 4 }}
-      resourceNames:
-      - {{ $role.bucket_name | indent 4 }}
 {{- end }}
+  {{- if $role.bucket_name }}
+      resourceNames:
+      - {{ $role.bucket_name }}
+  {{- end }}
   {{- end }}
 {{- end }}
 {{- end }}

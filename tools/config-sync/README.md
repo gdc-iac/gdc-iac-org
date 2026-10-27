@@ -15,7 +15,7 @@ You can find examples of configuration in [examples/config-sync](../../examples/
 
 1. Go through the [bootstrap process](../../tools/bootstrap/README.md).
 
-2. Create harbor instance in the `iac-root` project and sign in to harbor (see [configure docker authentication](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform-application/pa-ao-operations/configure-docker-authentication))
+2. Create a Managed Harbor instance in the `iac-root` project and configure Docker authentication (see [tools/mirror-images/README.md](../mirror-images/README.md) and [configure docker authentication](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/platform-application/pa-ao-operations/configure-docker-authentication)):
 
 ```bash
 . ../bootstrap/config.sh
@@ -32,10 +32,7 @@ docker-credential-mhs configure-docker --registries=${HARBOR_REGISTRY}
 ```
 
 **Note:**
-If `docker-credential-mhs` is not installed, run the following command:
-```
-gdcloud components install docker-credential-mhs
-```
+If `docker-credential-mhs` is not installed, run `gdcloud components install docker-credential-mhs` (or authenticate using a Harbor Robot Account as documented in [tools/mirror-images/README.md](../mirror-images/README.md)).
 
 ## IO prerequisites
 These actions require Infrastructure Operator (IO) privileges.
@@ -108,23 +105,26 @@ gdcloud projects add-iam-policy-binding $IAC_PROJECT \
 - [v.1.23.3](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.23.3/config-sync-manifest.yaml)
 - [v.1.24.0-rc.4](https://github.com/GoogleContainerTools/config-sync/releases/download/v1.24.0-rc.4/config-sync-manifest.yaml)
 
-4. Use `pull_images.py` script to pull the images from GCR to the local machine
+4. Mirror the Config Sync images to the Managed Harbor instance using [`../mirror-images/mirror_images.py`](../mirror-images/README.md):
 
-    Example usage:
-
+    **Option A — Direct Mirroring (Connected Bastion):**
     ```bash
-    python3 pull_images.py \
+    python3 ../mirror-images/mirror_images.py \
         --manifest patched-config-sync-manifest-v.1.23.3.yaml \
-        --out-dir /tmp/config-sync-images
+        --registry ${HARBOR_REGISTRY:?}/${IAC_PROJECT:?}
     ```
 
-5. Push the images to the harbor instance:
-
+    **Option B — Two-Step Disconnected Air-Gap Transfer:**
     ```bash
-    python3 push_images.py \
-      --manifest patched-config-sync-manifest-v.1.23.3.yaml \
-      --img-dir /tmp/config-sync-images \
-      --harbor-registry ${HARBOR_REGISTRY:?} --project ${IAC_PROJECT:?}
+    # Step 1 (Internet-connected workstation): Pull and save image archives
+    python3 ../mirror-images/mirror_images.py \
+        --manifest patched-config-sync-manifest-v.1.23.3.yaml \
+        --save-dir /tmp/config-sync-images
+
+    # Step 2 (Air-gapped GDC workstation): Load archives and push to Harbor
+    python3 ../mirror-images/mirror_images.py \
+        --load-dir /tmp/config-sync-images \
+        --registry ${HARBOR_REGISTRY:?}/${IAC_PROJECT:?}
     ```
 
 6. Apply the patch to the manifest file:

@@ -1,0 +1,13 @@
+apiVersion: iam.gdc.goog/v1
+kind: IAMPolicyBinding
+metadata:
+  name: gemma-client-storage-admin
+  namespace: test-project # kpt-set: ${namespace}
+spec:
+  subjects:
+  - kind: ServiceAccount
+    name: gemini-gui-sa
+    namespace: test-project # kpt-set: ${namespace}
+  roleRef:
+    kind: IAMRole
+    name: roles/storage.objectAdmin

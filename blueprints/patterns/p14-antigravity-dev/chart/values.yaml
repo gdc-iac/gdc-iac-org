@@ -1,0 +1,86 @@
+# Copyright 2026 Google LLC
+# Licensed under the Apache License, Version 2.0.
+
+global:
+  projectId: "test-project"
+  namespace: "test-project"
+  registry: "harbor.gdc.local/blueprint-images"
+  imagePullSecrets: []
+  commonLabels: {}
+  commonAnnotations: {}
+
+namespace: ""
+registry: ""
+
+gdc:
+  enabled: false
+  notebook:
+    enabled: false
+    machineType: "n2-standard-4"
+  failover:
+    enabled: false
+
+apps:
+  enabled: true
+
+phase: 1
+computeProfile: "cpu-gateway" # "cpu-gateway" or "gpu-litert-notebook"
+
+auth:
+  mode: "oidc"
+  allowSimulatedOidc: "false"
+  headerUserKey: "X-Forwarded-User"
+  oidcAuthority: "https://keycloak.gdc.local/realms/gdc-dev-realm"
+  oidcClientId: "gdc-dev-client"
+  oidcRedirectUri: "https://dev.gdc.local/auth/callback"
+
+ai:
+  enabled: true
+  backendMode: "gdc_gemma_gw" # "gdc_gemma_gw", "gdc_gemini", or "litert_on_device"
+  provider: "gemma"           # "gemma" or "gemini"
+  gatewayNamespace: "gemma-inference"
+  openaiApiBaseUrl: "http://gemma-gateway.gemma-inference.svc.cluster.local/v1"
+  tier1Model: "gemma4:26b"
+  coderModel: "gemma4:31b"
+  defaultModel: "gemma4:31b"
+  geminiModel: "gemini-3.5-flash"
+  geminiTier1Model: "gemini-2.0-flash"
+  geminiTier2Model: "gemini-2.0-pro"
+  geminiBaseUrl: "https://gemini.gdc.local:443/v1/projects/gdc-dev/locations/gdc-dev"
+  geminiEndpoint: "https://gemini.gdc.local:443/v1/projects/gdc-dev/locations/gdc-dev/chat/completions"
+  noProxy: "*.gemma-inference.svc.cluster.local,*.gemma-inference,*.svc.cluster.local,localhost,127.0.0.1"
+
+gateway:
+  className: "gdc-dev-gateway-class"
+  name: "gdc-dev-gateway"
+  domain: "dev.gdc.local"
+  adminDomain: "admin.dev.gdc.local"
+  tlsSecretName: "gdc-dev-selfsigned-cert-secret"
+  clusterIssuer: "gdc-ca-issuer"
+
+antigravity:
+  enabled: true
+  lightweight: true
+  gatewayTokenThreshold: 40960
+  litertGpuTokenThreshold: 16384
+  litertModelPath: "/opt/models/gemma4-26b/model.litertlm"
+  skillsPath: "/opt/p14-antigravity/skills"
+
+notebooks:
+  enabled: true
+  urlPrefix: "/lab"
+
+storage:
+  userWorkspace:
+    storageClassName: "standard-rwo"
+    size: "20Gi"
+  sharedCodebase:
+    enabled: true
+    usePvc: false
+    storageClassName: "standard-rwx"
+    accessMode: "ReadWriteMany"
+    size: "50Gi"
+    mountPath: "/workspace/shared"
+  modelWeights:
+    claimName: "gemma-weights-rwx-pvc"
+    mountPath: "/opt/models/gemma4-26b"

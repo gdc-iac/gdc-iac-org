@@ -1,0 +1,66 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+templates:
+  bucket-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_buckets" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
+    {{- $zonalProjects := $tenantConfig | get "projects" list }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenBuckets := dict }}
+
+    {{- range $project := $allProjects }}
+      {{- if and $project.resources (hasKey $project.resources "buckets") }}
+        {{- range $bucket := $project.resources.buckets }}
+          {{- if not (hasKey $seenBuckets $bucket.name) }}
+            {{- $_ := set $seenBuckets $bucket.name true }}
+        - name: {{ $bucket.name }}
+          chart: {{ $vals | get "gdc_buckets_chart_path" "../../../charts/gdc-buckets" }}
+          {{- if ($vals | get "gdc_buckets_chart_version" "") }}
+          version: {{ $vals | get "gdc_buckets_chart_version" | quote }}
+          {{- end }}
+          labels:
+            stage: 2-resources
+            tenant: {{ $tenantName | quote }}
+            project: {{ $project.name | quote }}
+            type: "buckets"
+          inherit:
+            - template: bucket-template
+          values:
+            - buckets:
+                {{ $tenantName }}:
+                  name: {{ $bucket.name }}
+                  namespace: {{ $project.name }}
+                  description: {{ $bucket.description }}
+                  storageClass: {{ $bucket.storage_class }}
+                  location: {{ $bucket.location }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+

@@ -1,0 +1,122 @@
+Copyright 2026 Google. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
+
+# GDC Air-Gapped Production Deployment Package
+
+This repository/directory is **100% self-contained** and contains production-ready deployment assets for Google Distributed Cloud (GDC) air-gapped environments. It can be moved or copied into an independent repository with zero external dependencies.
+
+> **Note on Managed Services**: On GDC-ag, PostgreSQL databases and object storage are **platform-managed services** provisioned declaratively via Kubernetes Custom Resources (e.g. `DBCluster` via `postgresql.dbadmin.gdc.goog/v1`). Standalone PostgreSQL container images are not required.
+
+---
+
+## Directory Overview
+
+- **`common-scripts/`**: Helper scripts for parameter configuration (`configure-blueprints.sh`), image building (`build-images.sh`), image mirroring (`bulk_mirror_images.sh`), individual pattern packaging (`package-for-gdc.sh`), and unpacking (`unpack-for-gdc.sh`).
+- **`patterns/`**: Production manifests, Helm charts, application source code, and implementation guides for individual reference architectures.
+- **`gdc_gemma_gw/`**: Self-contained Gemma LLM Gateway blueprints (Ollama & vLLM serving, proxy router, client web app).
+- **`docs/implementation-guides/`**: Comprehensive end-to-end architectural implementation guides for target GDC environments.
+- **`bulk_external_images.txt`**: Consolidated manifest of all required 3P container images to pull and transfer into air-gapped container registries.
+
+## Standalone Production Deployment Workflow
+
+### Step 1: Configure Target Environment Parameters
+Before building images, packaging tarballs, or applying Kubernetes manifests, configure target GDC environment settings (Project ID, Registry Host, Target Namespace):
+
+```bash
+./common-scripts/configure-blueprints.sh -p <target-gdc-project-id> -r <target-registry-url> -n <target-namespace>
+```
+*Example:*
+```bash
+./common-scripts/configure-blueprints.sh -p my-prod-project -r harbor.gdc.local -n prod-namespace
+```
+
+### Step 2: Verify and Build Local Container Images
+Before packaging or mirroring, build custom application containers and pull missing 3P images locally. For LLM patterns (e.g. Pattern 5), you can specify model engine filters (`--engine ollama`, `vllm`, `huggingface`, or `both`):
+
+```bash
+# Check, build, and pull images for Pattern 5 (Ollama only, vLLM only, or both)
+./common-scripts/build-images.sh --engine ollama p5-hybrid-llm-gateway
+./common-scripts/build-images.sh --engine vllm p5-hybrid-llm-gateway
+./common-scripts/build-images.sh --engine both p5-hybrid-llm-gateway
+```
+
+### Step 3: Package Patterns for Air-Gapped Transfer
+Package patterns into standalone transfer payload tarballs, supporting **bulk packaging all patterns**, engine selection, and model image omission:
+
+```bash
+# Option A: Bulk Package ALL Patterns
+./common-scripts/package-for-gdc.sh all                                    # Package ALL patterns (both engines, all images)
+./common-scripts/package-for-gdc.sh --engine ollama all                   # Package ALL patterns with Ollama LLM models
+./common-scripts/package-for-gdc.sh --skip-llm-models all                 # Package ALL patterns, omitting heavy LLM model images
+./common-scripts/package-for-gdc.sh --skip-images all                     # Fast manifest-only packaging for ALL patterns
+
+# Option B: Package a Single Pattern
+./common-scripts/package-for-gdc.sh p6-resilient-rag-agent              # Single pattern (RAG Agent)
+./common-scripts/package-for-gdc.sh --engine ollama p5-hybrid-llm-gateway # Single pattern with Ollama models
+```
+This generates standalone payload bundles in `packages/<pattern-name>/` containing manifests, checksums, Bill of Materials (BOM), and container image payloads.
+
+
+
+
+### Step 4: Air-Gapped Image Mirroring & GDC Managed Harbor Push
+1. **Provision & Authenticate with GDC Managed Harbor:**
+   Follow [`../tools/mirror-images/README.md`](../tools/mirror-images/README.md) to create a project-scoped Managed Harbor instance (`gdcloud harbor instances create ${HARBOR_INSTANCE} --project=${PROJECT}` and `gdcloud harbor harbor-projects create ${HARBOR_PROJECT} --project=${PROJECT} --instance=${HARBOR_INSTANCE}` or declaratively via `charts/gdc-harbors`), create a Harbor Robot Account, and log in (`docker login -u "${HARBOR_USER}" -p "${HARBOR_SECRET}" "${REGISTRY}"`). Create a `docker-registry` pull secret in your target namespace and (for Standard Clusters) ensure `registryMirrors` includes a `trust-store-root-ext` entry for your Managed Harbor endpoint.
+2. **Mirror 3P Container Images (Connected Bastion or Two-Step Air-Gap):**
+   ```bash
+   # Option A — Two-Step Disconnected Air-Gap Transfer using mirror_images.py:
+   # Low-Side (Internet-Connected Workstation):
+   python3 ./common-scripts/mirror_images.py \
+     --images-file ./common-scripts/bulk_external_images.txt \
+     --save-dir ./artifacts/mirrored-images
+
+   # High-Side (Air-Gapped GDC Workstation):
+   python3 ./common-scripts/mirror_images.py \
+     --load-dir ./artifacts/mirrored-images \
+     --registry "${REGISTRY:?}/${HARBOR_PROJECT:?}"
+
+   # Option B — Shell-based export & manual load/push (preserving pinned version tags):
+   ./common-scripts/bulk_mirror_images.sh ./artifacts/mirrored-images
+   docker load -i ./artifacts/mirrored-images/<image-tarball>.tar
+   docker tag <source-image>:<tag> ${REGISTRY:?}/${HARBOR_PROJECT:?}/<image-name>:<tag>
+   docker push ${REGISTRY:?}/${HARBOR_PROJECT:?}/<image-name>:<tag>
+   ```
+
+### Step 5: Deploy GDC Managed Services & Application Workloads
+Provision GDC Managed Services (PostgreSQL DBClusters, Networks, IAM) and application workloads on target GDC clusters:
+
+```bash
+# 1. Apply GDC Managed Service CRDs (PostgreSQL DBCluster, Networks)
+kubectl apply -f patterns/<pattern-name>/manifests/gdc/db/
+
+# 2. Apply application manifests and services
+kubectl apply -f patterns/<pattern-name>/manifests/apps/
+```
+
+For Gemma LLM Gateway deployment, navigate to `gdc_gemma_gw/` and follow `gdc_gemma_gw/README.md`.
+
+---
+
+## Post-Packaging / Post-Unpack Configuration Adjustments
+
+If target GDC Project ID, Harbor container registry URL, or Kubernetes namespace details require changing **after packaging** or **after unpacking** on the target air-gapped environment:
+
+1. Re-execute `configure-blueprints.sh` inside the target directory or unpacked helper directory:
+   ```bash
+   ./common-scripts/configure-blueprints.sh -p <NEW_PROJECT_ID> -r <NEW_REGISTRY_URL> -n <NEW_NAMESPACE>
+   ```
+2. This script reads previous parameters from `.configure_state` and dynamically updates all Project IDs, Registry URL hostnames, and Namespace definitions across all K8s YAMLs, Helm values, and deployment scripts without requiring re-building from source.
+
+---
+
+## GDC-ag Helm/IaC Confidence Boundaries & Pre-Flight Checklist
+
+While the end-to-end runtime stack (`Gateway/gdc-platform-gateway`, `HTTPRoute/gemma-unified-routes`, Keycloak OIDC, FastAPI 4-worker backend, PostgreSQL 9-table schema, and side-by-side `ollama-26b` + `ollama-31b` GPU inference) has been stress-tested on GKE Stepping-Stone clusters, operators deploying via the **Helm wrapper charts (`chart/`) and `foundations/` IaC pipeline on physical GDC Air-Gapped (`GDC-ag`) hardware** must verify four GDC-specific boundaries:
+
+1. **`DBCluster` Connection Secret Contract (`gemma-client-db-credentials`)**:
+   - Stage 2 (`2-resources`) provisions managed PostgreSQL via `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`), whereas `gemma-client` (`5-workload-factory`) expects `Secret/gemma-client-db-credentials` containing `connection_string`. Ensure `dga-secret-sync` (or an explicit `Secret`) maps the `DBCluster` endpoint credentials into `connection_string` in the target User Cluster namespace before `backend` starts.
+2. **Automatic Schema Creation vs. Demo Seed Data**:
+   - `gemma-client` (`database.py`) automatically runs `CREATE TABLE IF NOT EXISTS` for all 9 application and readiness tables (`chats`, `messages`, `files`, `sensor_telemetry`, `military_units`, `equipment_inventory`, `fuel_and_supplies`, `convoy_routes`, `intelligence_reports`) on first connection to a managed `DBCluster`. To populate the synthetic *Operation Vanguard Shield* demo records on a managed `DBCluster`, run `psql "${DATABASE_URL}" -f test-data/seed_readiness_db.sql`.
+3. **Frontend OIDC Build-Time Endpoint (`VITE_KEYCLOAK_URL`)**:
+   - Because `configure-blueprints.sh` excludes `*/chart/*` paths to preserve Helm parameterization (`global.registry`, `global.projectId`), ensure `global.registry` (`harbor.gdc.local/...`) is passed via Helmfile values and run `./gemma-client/scripts/configure-keycloak.sh` with the target GDC-ag ingress URL (`https://app.gdc.local`) prior to building and archiving the `gemma-client-frontend` image for Harbor transfer.
+4. **Cross-Namespace Gateway Attachment (`gdc-platform-gateway`)**:
+   - Verify that the parent `Gateway/gdc-platform-gateway` on GDC-ag permits route attachment from the application namespace (`allowedRoutes.namespaces.from: All`) and set `apps.hostnames: ["app.gdc.local"]` in `gemma-client/chart/values.yaml` if strict hostname matching is required.

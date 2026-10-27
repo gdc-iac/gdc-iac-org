@@ -1,0 +1,66 @@
+# Global context parameters injected by the GDC IaC framework (Helmfile / ArgoCD)
+global:
+  projectId: "test-project"
+  namespace: ""
+  registry: ""
+  imagePullSecrets: []
+  commonLabels: {}
+  commonAnnotations: {}
+namespace: ""
+
+
+gdc:
+  enabled: false
+apps:
+  enabled: true
+
+replicaCount: 1
+
+image:
+  repository: vllm/vllm-openai
+  tag: "latest"
+  pullPolicy: IfNotPresent # GDC-ag imports via local registry
+
+service:
+  type: ClusterIP
+  port: 8000
+
+model:
+  name: "google/gemma-2b-it" # Default lightweight GCP test model. Overridden in values-gdc.yaml for GDC-ag prod
+  servedModelName: ""
+  maxModelLen: 2048
+  gpuMemoryUtilization: 0.90
+  tensorParallelSize: 1
+  maxNumBatchedTokens: 4096
+  maxNumSeqs: 128
+  enablePrefixCaching: true
+  enableChunkedPrefill: true
+  enableLora: false
+  loraModules: []
+  extraArgs: []
+
+shmSize: "16Gi" # Memory-backed /dev/shm emptyDir for multi-GPU NCCL tensor parallelism
+
+probes:
+  readinessInitialDelaySeconds: 15
+  startupInitialDelaySeconds: 10
+  startupFailureThreshold: 90
+
+resources:
+  limits:
+    gpu: 1 # Scale to 2 (with model.tensorParallelSize=2) if splitting Gemma 4 31B across 2x 40GB/48GB GPUs
+    nvidia.com/gpu: 1
+    memory: "48Gi"
+  requests:
+    cpu: "4000m"
+    memory: "24Gi"
+
+nodeSelector:
+  cloud.google.com/gke-accelerator: nvidia-l4 # A100/L4 recommended for vLLM
+
+persistence:
+  enabled: true
+  storageClassName: "standard-rwo" # Default for GKE staging/testing. Override on GDC-ag
+  accessModes:
+    - ReadWriteOnce
+  size: 150Gi

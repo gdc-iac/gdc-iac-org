@@ -1,0 +1,50 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+export SCRIPTS_DIR=$( readlink -e $(dirname "${BASH_SOURCE[0]}"))
+export OUTPUT_DIR=${SCRIPTS_DIR:?}/../generated/output
+export SECRETS_DIR=${SCRIPTS_DIR:?}/../generated/secrets
+export USERS_YAML=${SCRIPTS_DIR:?}/../users.yaml
+export GDCH_CHARTS_DIR=${SCRIPTS_DIR:?}/../../../charts
+export CHARTS_DIR=${SCRIPTS_DIR:?}/../charts
+export HELM_CLI=${SCRIPTS_DIR:?}/../../../tools/helm_cli/helm_cli.py
+# Org specific variables
+export ORG_NAME="gdc-1"
+export GDCH_ZONE="us-east1-c"
+export GDCH_DOMAIN="example.com"
+export IAC_PROJECT="iac-root"
+export IAC_SA="iac001-sa"
+export IAC_SA_FQN="system:serviceaccount:${IAC_PROJECT:?}:${IAC_SA:?}"
+export GDCH_CONSOLE="console.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+export CLUSTER_NAME="dga-ets"
+export KUBECONFIG_PATH=${SCRIPTS_DIR:?}/../generated/kubeconfig
+export GLOBAL_API_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA:?}-global-api.kubeconfig
+export ZONE_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA:?}-${GDCH_ZONE:?}.kubeconfig
+export USER_CLUSTER_KUBECONFIG=${KUBECONFIG_PATH:?}/${IAC_PROJECT:?}-${IAC_SA}-${GDCH_ZONE:?}-${CLUSTER_NAME:?}.kubeconfig
+export NB_JUPYTER_IMAGE="gcr.io/private-cloud-staging/notebooks/deeplearning-platform-release/base-cpu:m125_ext"
+export S3_PROXY_IMAGE="data-ets-mhs-574-data-ets-15357-infra.${ORG_NAME:?}.${GDCH_ZONE:?}.${GDCH_DOMAIN:?}/data-ets-574/s3-proxy:0.0.3"
+export AIS_PREFIX="fop-"
+export S3_PROXY_ENABLED="yes"
+export CLUSTER_K8S_VERSION="1.30.12-gke.300"
+export CLUSTER_POD_CIDR_SIZE=19
+export CLUSTER_SERVICE_CIDR_SIZE=21
+export CLUSTER_INGRESS_SERVICE_IP_SIZE=20
+export CLUSTER_MACHINE_TYPE="n3-standard-16-gdc"
+export CLUSTER_NODE_COUNT=5
+export CLUSTER_NODE_POOL_NAME="dga-ets-standard"
+export HARBOR_ADMIN_EMAIL="HGY395"
+export COPY_JOB_IMAGE="data-ets-mhs-574-data-ets-15357-infra.${ORG_NAME:?}.${GDCH_ZONE:?}.${GDCH_DOMAIN:?}/data-ets-574/alpine:latest"
+export BACKUP_BUCKETS_READY="yes"
+export BACKUP_REPOS_READY="yes"
+

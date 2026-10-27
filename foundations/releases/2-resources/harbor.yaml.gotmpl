@@ -1,0 +1,68 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+templates:
+  harbor-template:
+    kubeContext: {{ $vals | get "gdc_context_zone" "zonal-api-context" }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_harbors" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
+    {{- $zonalProjects := $tenantConfig | get "projects" list }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenProjects := dict }}
+
+    {{- range $project := $allProjects }}
+      {{- if and (not (hasKey $seenProjects $project.name)) $project.resources (hasKey $project.resources "harbors") }}
+        {{- $_ := set $seenProjects $project.name true }}
+      - name: {{ $project.name }}-harbor
+        chart: {{ $vals | get "gdc_harbors_chart_path" "../../../charts/gdc-harbors" }}
+        {{- if ($vals | get "gdc_harbors_chart_version" "") }}
+        version: {{ $vals | get "gdc_harbors_chart_version" | quote }}
+        {{- end }}
+        labels:
+          stage: 2-resources
+          tenant: {{ $tenantName | quote }}
+          project: {{ $project.name | quote }}
+          type: "harbors"
+        inherit:
+          - template: harbor-template
+        values:
+          {{- $harborsList := list }}
+          {{- range $harbor := $project.resources.harbors }}
+            {{- $h := dict "name" $harbor.name "namespace" $project.name }}
+            {{- if (hasKey $harbor "annotations") }}
+              {{- $_ := set $h "annotations" $harbor.annotations }}
+            {{- end }}
+            {{- $hp := dict "name" $project.name "autoscan" $harbor.autoscan "creatorkind" $harbor.creatorkind "creatorname" $harbor.creatorname }}
+            {{- $_ := set $h "projects" (list $hp) }}
+            {{- $harborsList = append $harborsList $h }}
+          {{- end }}
+          - harbors: {{ $harborsList | toJson }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+
+
+

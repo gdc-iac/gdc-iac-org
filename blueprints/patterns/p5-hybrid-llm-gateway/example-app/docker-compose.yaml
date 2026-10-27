@@ -1,0 +1,45 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '3.8'
+
+services:
+  # Primary LLM (Gemini) - Configured to fail 50% of the time to demonstrate failover
+  mock-llm-primary:
+    build: ./mock-llm
+    environment:
+      SERVICE_NAME: "Gemini-Mock"
+      FAILURE_RATE: "0.5"
+    ports:
+      - "8001:8000"
+
+  # Failover LLM (Gemma) - Reliable
+  mock-llm-failover:
+    build: ./mock-llm
+    environment:
+      SERVICE_NAME: "Gemma-Mock"
+      FAILURE_RATE: "0.0"
+    ports:
+      - "8002:8000"
+
+  gateway:
+    build: ./gateway
+    environment:
+      PRIMARY_URL: "http://mock-llm-primary:8000/generate"
+      FAILOVER_URL: "http://mock-llm-failover:8000/generate"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mock-llm-primary
+      - mock-llm-failover

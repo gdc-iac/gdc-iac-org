@@ -1,0 +1,20 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+gdc_release_namespace: "iac-root"
+gdc_context_global: "global-api-gdch_console-org-1-zone1-google-gdch-test_global-api"
+gdc_contexts:
+  zone1: "zone1-api-gdch_console-org-1-zone1-google-gdch-test_zone1-api"
+  zone2: "zone2-api-gdch_console-org-1-zone2-google-gdch-test_zone2-api"

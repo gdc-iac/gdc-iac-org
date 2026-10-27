@@ -1,0 +1,2 @@
+# 3P Container Dependencies for p12-keycloak (Air-Gapped GDC)
+quay.io/keycloak/keycloak:24.0.4

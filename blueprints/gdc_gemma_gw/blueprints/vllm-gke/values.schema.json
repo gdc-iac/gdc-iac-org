@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "registry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        },
+        "commonLabels": {
+          "type": "object"
+        },
+        "commonAnnotations": {
+          "type": "object"
+        }
+      }
+    },
+    "gdc": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "failover": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "servedModelName": {
+          "type": "string"
+        },
+        "maxModelLen": {
+          "type": "integer"
+        },
+        "gpuMemoryUtilization": {
+          "type": "number"
+        },
+        "tensorParallelSize": {
+          "type": "integer"
+        },
+        "quantization": {
+          "type": "string"
+        },
+        "maxNumBatchedTokens": {
+          "type": "integer"
+        },
+        "maxNumSeqs": {
+          "type": "integer"
+        },
+        "enablePrefixCaching": {
+          "type": "boolean"
+        },
+        "enableChunkedPrefill": {
+          "type": "boolean"
+        },
+        "enableLora": {
+          "type": "boolean"
+        },
+        "loraModules": {
+          "type": "array"
+        },
+        "extraArgs": {
+          "type": "array"
+        }
+      }
+    },
+    "shmSize": {
+      "type": "string"
+    },
+    "probes": {
+      "type": "object"
+    },
+    "securityContext": {
+      "type": "object"
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "properties": {
+            "gpu": {
+              "type": "integer"
+            },
+            "memory": {
+              "type": "string"
+            }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "existingClaim": {
+          "type": "string"
+        },
+        "storageClassName": {
+          "type": "string"
+        },
+        "accessModes": {
+          "type": "array"
+        },
+        "size": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,0 @@
-apiVersion: v2
-name: dga-secret-sync
-description: A Helm chart for syncing secrets to a PVC
-type: application
-version: 0.1.0
-appVersion: "1.0.0"

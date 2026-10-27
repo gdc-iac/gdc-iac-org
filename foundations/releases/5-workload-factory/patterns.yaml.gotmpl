@@ -1,0 +1,97 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+bases:
+  - ../../bases/environments.yaml.gotmpl
+  - ../../bases/helmDefaults.yaml.gotmpl
+---
+{{- $vals := .Values }}
+{{- $envData := .Values | get .Environment.Name dict }}
+
+templates:
+  pattern-template:
+    kubeContext: {{ $vals | get "gdc_context_cluster" ($vals | get "gdc_context_zone" "zonal-api-context") }}
+    namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
+    createNamespace: false
+    installed: {{ $vals | get "install_patterns" true }}
+
+releases:
+  {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+    {{- $patternsBasePath := $vals | get "gdc_patterns_base_path" "../../../blueprints/patterns" }}
+    {{- $globalProjects := ($tenantConfig | get "global" dict) | get "projects" list }}
+    {{- $zonalProjects := $tenantConfig | get "projects" list }}
+    {{- $allProjects := concat $zonalProjects $globalProjects }}
+    {{- $seenPatterns := dict }}
+
+    {{- range $project := $allProjects }}
+      {{- if and $project.resources (hasKey $project.resources "patterns") }}
+        {{- range $pattern := $project.resources.patterns }}
+          {{- $patternId := $pattern | get "pattern" "" }}
+          {{- $releaseName := $pattern | get "name" (printf "%s-%s" $project.name $patternId) }}
+          {{- if not (hasKey $seenPatterns $releaseName) }}
+            {{- $_ := set $seenPatterns $releaseName true }}
+          {{- $chartPathKey := $pattern | get "chart_path_key" "" }}
+          {{- $defaultChartPath := printf "%s/%s/chart" $patternsBasePath $patternId }}
+          {{- if and $chartPathKey (hasKey $vals $chartPathKey) }}
+          {{- $defaultChartPath = index $vals $chartPathKey }}
+          {{- end }}
+          {{- $chartPath := $pattern | get "chart_path" $defaultChartPath }}
+          {{- $chartVersionKey := $pattern | get "chart_version_key" "" }}
+      - name: {{ $releaseName | quote }}
+        chart: {{ $chartPath | quote }}
+        {{- if hasKey $pattern "version" }}
+        version: {{ $pattern.version | quote }}
+        {{- else if and $chartVersionKey ($vals | get $chartVersionKey "") }}
+        version: {{ $vals | get $chartVersionKey | quote }}
+        {{- end }}
+        {{- if hasKey $pattern "kube_context" }}
+        kubeContext: {{ $pattern.kube_context | quote }}
+        {{- end }}
+        labels:
+          stage: 5-workload-factory
+          tenant: {{ $tenantName | quote }}
+          project: {{ $project.name | quote }}
+          pattern: {{ $patternId | quote }}
+          type: "patterns"
+        inherit:
+          - template: pattern-template
+        values:
+          {{- if hasKey $pattern "values_files" }}
+          {{- range $vf := $pattern.values_files }}
+          - {{ $vf | quote }}
+          {{- end }}
+          {{- end }}
+          - global:
+              projectId: {{ $project.name | quote }}
+              namespace: {{ $pattern | get "namespace" $project.name | quote }}
+              registry: {{ $pattern | get "registry" ($vals | get "gdc_default_registry" "harbor.gdc.local/blueprint-images") | quote }}
+              commonLabels:
+                tenant: {{ $tenantName | quote }}
+                project: {{ $project.name | quote }}
+                pattern: {{ $patternId | quote }}
+          - gdc:
+              # Stage 2 (2-resources) provisions Zonal databases/VMs via core charts/gdc-dbs & charts/gdc-vm
+              enabled: {{ $pattern | get "deploy_gdc_resources" false }}
+              failover:
+                enabled: false
+            apps:
+              enabled: {{ $pattern | get "deploy_apps" true }}
+          {{- if hasKey $pattern "values" }}
+          - {{ $pattern.values | toJson }}
+          {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}

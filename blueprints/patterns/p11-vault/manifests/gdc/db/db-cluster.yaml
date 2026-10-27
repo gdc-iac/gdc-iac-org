@@ -1,0 +1,16 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# NOTE: Pattern 11 (HashiCorp Vault) uses Integrated Raft Storage (3x 50Gi GDC Block Storage PVCs = 150Gi usable)
+# and GDC Cloud KMS for Auto-Unseal. No external PostgreSQL DBCluster is required or provisioned by this pattern.

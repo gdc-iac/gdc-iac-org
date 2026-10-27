@@ -1,4 +1,18 @@
 #!/bin/bash
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 set -e
 
 # Change straight to directory of this script, then go up one level to repo root
@@ -8,9 +22,10 @@ echo "================================================="
 echo "Starting CI/CD pre-deployment checks..."
 echo "================================================="
 
-# Loop through all subdirectories in chars/
-for chart in charts/*; do
+# Loop through all core charts and blueprint pattern wrapper charts
+for chart in charts/* blueprints/patterns/*/chart blueprints/gdc_gemma_gw/*/chart blueprints/gdc_gemma_gw/blueprints/*; do
   if [ -d "$chart" ] && [ -f "$chart/Chart.yaml" ]; then
+
     echo ""
     echo "================================================="
     echo "Testing Chart: $chart"
@@ -27,8 +42,8 @@ for chart in charts/*; do
 
     echo ""
     echo "3. Structural & Schema Validation (kubeconform)..."
-    # Note: Skipping custom GDC resource ProjectNetworkPolicy for now until OpenAPI schemas are supplied.
-    helm template test-release "$chart" | kubeconform -strict -summary -skip ProjectNetworkPolicy
+    # Note: Skipping custom GDC, Gateway/Cert-Manager, and Envoy AI Gateway / Inference Extension CRDs until OpenAPI schemas are supplied.
+    helm template test-release "$chart" | kubeconform -strict -summary -skip ProjectNetworkPolicy,DBCluster,Failover,VirtualMachine,Network,ProjectPolicy,CertificateRequest,GatewayClass,Gateway,HTTPRoute,Certificate,InferencePool,InferenceObjective,ClientTrafficPolicy,AIGatewayRoute,BackendTrafficPolicy,Notebook
     echo "✅ Kubeconform structural validation passed."
 
     echo ""

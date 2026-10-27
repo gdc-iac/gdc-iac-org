@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "registry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        },
+        "commonLabels": {
+          "type": "object"
+        },
+        "commonAnnotations": {
+          "type": "object"
+        }
+      }
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "string"
+    },
+    "gdc": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "notebook": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "machineType": {
+              "type": "string"
+            }
+          }
+        },
+        "failover": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "phase": {
+      "type": "integer"
+    },
+    "computeProfile": {
+      "type": "string"
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "allowSimulatedOidc": {
+          "type": ["string", "boolean"]
+        },
+        "headerUserKey": {
+          "type": "string"
+        },
+        "oidcAuthority": {
+          "type": "string"
+        },
+        "oidcClientId": {
+          "type": "string"
+        },
+        "oidcRedirectUri": {
+          "type": "string"
+        }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "backendMode": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "gatewayNamespace": {
+          "type": "string"
+        },
+        "openaiApiBaseUrl": {
+          "type": "string"
+        },
+        "tier1Model": {
+          "type": "string"
+        },
+        "coderModel": {
+          "type": "string"
+        },
+        "defaultModel": {
+          "type": "string"
+        },
+        "geminiModel": {
+          "type": "string"
+        },
+        "geminiTier1Model": {
+          "type": "string"
+        },
+        "geminiTier2Model": {
+          "type": "string"
+        },
+        "geminiBaseUrl": {
+          "type": "string"
+        },
+        "geminiEndpoint": {
+          "type": "string"
+        },
+        "noProxy": {
+          "type": "string"
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "className": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "adminDomain": {
+          "type": "string"
+        },
+        "tlsSecretName": {
+          "type": "string"
+        },
+        "clusterIssuer": {
+          "type": "string"
+        }
+      }
+    },
+    "antigravity": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "lightweight": {
+          "type": "boolean"
+        },
+        "gatewayTokenThreshold": {
+          "type": "integer"
+        },
+        "litertGpuTokenThreshold": {
+          "type": "integer"
+        },
+        "litertModelPath": {
+          "type": "string"
+        },
+        "skillsPath": {
+          "type": "string"
+        }
+      }
+    },
+    "notebooks": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "urlPrefix": {
+          "type": "string"
+        }
+      }
+    },
+    "storage": {
+      "type": "object"
+    }
+  }
+}

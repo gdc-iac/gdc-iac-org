@@ -1,0 +1,49 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+suite: gemma-standalone chart unit tests
+templates:
+  - templates/apps/workloads.yaml
+tests:
+  - it: should render User Cluster workloads by default
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 3
+      - isKind:
+          of: Deployment
+        documentIndex: 0
+  - it: should switch MODEL_ROUTING_CONFIG to vLLM services when apps.activeFramework is vllm
+    set:
+      apps.activeFramework: vllm
+    template: templates/apps/workloads.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[16].value
+          value: '{"gemma4:26b": "http://vllm-26b-vllm-service:8000", "gemma4:31b": "http://vllm-31b-vllm-service:8000", "*": "http://vllm-26b-vllm-service:8000"}'
+        documentIndex: 0
+  - it: should route MODEL_ROUTING_CONFIG through Envoy InferencePool when apps.envoyInferencePool.enabled is true
+    set:
+      apps.activeFramework: vllm
+      apps.envoyInferencePool.enabled: true
+      apps.envoyInferencePool.serviceUrl: http://gemma-envoy-inference-pool:80
+    template: templates/apps/workloads.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
+          value: "true"
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].env[16].value
+          value: '{"gemma4:26b": "http://gemma-envoy-inference-pool:80", "gemma4:31b": "http://gemma-envoy-inference-pool:80", "*": "http://gemma-envoy-inference-pool:80"}'
+        documentIndex: 0

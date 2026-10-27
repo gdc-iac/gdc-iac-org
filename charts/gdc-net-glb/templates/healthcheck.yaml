@@ -1,0 +1,28 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- if and .Values.name .Values.healthCheck.enabled }}
+apiVersion: networking.global.gdc.goog/v1
+kind: HealthCheck
+metadata:
+  namespace: {{ required "A valid namespace is required (.Values.namespace)" .Values.namespace | quote }}
+  name: {{ printf "%s-healthcheck" (required "A valid name is required (.Values.name)" .Values.name) | quote }}
+spec:
+  tcpHealthCheck:
+    port: {{ required "A valid healthcheck port is required (.Values.healthCheck.port)" .Values.healthCheck.port }}
+  timeoutSec: {{ .Values.healthCheck.timeoutSec }}
+  checkIntervalSec: {{ .Values.healthCheck.checkIntervalSec }}
+  healthyThreshold: {{ .Values.healthCheck.healthyThreshold }}
+  unhealthyThreshold: {{ .Values.healthCheck.unhealthyThreshold }}
+{{- end }}

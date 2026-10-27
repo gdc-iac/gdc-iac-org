@@ -1,0 +1,141 @@
+{{- if .Values.apps.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vllm.fullname" . }}
+  namespace: {{ include "vllm.namespace" . }}
+  labels:
+    {{- include "vllm.labels" . | nindent 4 }}
+spec:
+  strategy:
+    type: Recreate
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "vllm.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "vllm.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        inference.networking.k8s.io/engine-type: vllm
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: vllm
+          image: {{ include "vllm.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--model"
+            - "{{ .Values.model.name }}"
+            - "--max-model-len"
+            - "{{ .Values.model.maxModelLen }}"
+            - "--gpu-memory-utilization"
+            - "{{ .Values.model.gpuMemoryUtilization }}"
+            - "--max-num-batched-tokens"
+            - "{{ .Values.model.maxNumBatchedTokens | default 4096 }}"
+            {{- if .Values.model.maxNumSeqs }}
+            - "--max-num-seqs"
+            - "{{ .Values.model.maxNumSeqs }}"
+            {{- end }}
+            {{- if .Values.model.tensorParallelSize }}
+            - "--tensor-parallel-size"
+            - "{{ .Values.model.tensorParallelSize }}"
+            {{- end }}
+            {{- if .Values.model.quantization }}
+            - "--quantization"
+            - "{{ .Values.model.quantization }}"
+            {{- end }}
+            {{- if .Values.model.servedModelName }}
+            - "--served-model-name"
+            - "{{ .Values.model.servedModelName }}"
+            {{- end }}
+            {{- if .Values.model.enablePrefixCaching }}
+            - "--enable-prefix-caching"
+            {{- end }}
+            {{- if .Values.model.enableChunkedPrefill }}
+            - "--enable-chunked-prefill"
+            {{- end }}
+            {{- if .Values.model.enableLora }}
+            - "--enable-lora"
+            {{- if .Values.model.loraModules }}
+            - "--lora-modules"
+            {{- range .Values.model.loraModules }}
+            - {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range .Values.model.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ (.Values.probes).readinessInitialDelaySeconds | default 15 }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ (.Values.probes).startupInitialDelaySeconds | default 10 }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: {{ (.Values.probes).startupFailureThreshold | default 90 }}
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token-secret
+                  key: token
+                  optional: true
+            {{- if .Values.persistence.enabled }}
+            - name: HF_HOME
+              value: "/models/hf-cache"
+            {{- end }}
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            {{- if .Values.persistence.enabled }}
+            - name: model-weights
+              mountPath: /models
+            {{- end }}
+          resources:
+            limits:
+              nvidia.com/gpu: {{ .Values.resources.limits.gpu | default (index .Values.resources.limits "nvidia.com/gpu") | default 1 }}
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shmSize | default "16Gi" | quote }}
+      {{- if .Values.persistence.enabled }}
+        - name: model-weights
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (printf "%s-weights" (include "vllm.fullname" .)) }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end -}}

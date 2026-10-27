@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 {{- if .Values.notebooks }}
 {{- range $notebook := .Values.notebooks }}
 ---
@@ -17,6 +31,17 @@ metadata:
 spec:
   template:
     spec:
+      {{- if $notebook.serviceAccountName }}
+      serviceAccountName: {{ $notebook.serviceAccountName }}
+      {{- end }}
+      {{- if $notebook.nodeSelector }}
+      nodeSelector:
+        {{- toYaml $notebook.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if $notebook.tolerations }}
+      tolerations:
+        {{- toYaml $notebook.tolerations | nindent 8 }}
+      {{- end }}
       containers:
       - args:
         - jupyter labextension disable beatrix_jupyterlab dataproc_jupyter_plugin;
@@ -28,18 +53,31 @@ spec:
         image: {{ required "A valid nb_jupyter_image is required" $notebook.nb_jupyter_image }}
         imagePullPolicy: IfNotPresent
         name: {{ $notebook.name }}
+        {{- if $notebook.env }}
+        env:
+          {{- toYaml $notebook.env | nindent 8 }}
+        {{- end }}
         resources:
           limits:
             cpu: {{ default "1" $notebook.cpu_limit | quote }}
             memory: {{ default "2Gi" $notebook.memory_limit }}
+            {{- if $notebook.gpu_limit }}
+            nvidia.com/gpu: {{ $notebook.gpu_limit | quote }}
+            {{- end }}
           requests:
             cpu: {{ default "1" $notebook.cpu_request | quote }}
             memory: {{ default "2Gi" $notebook.memory_request }}
+            {{- if $notebook.gpu_request }}
+            nvidia.com/gpu: {{ $notebook.gpu_request | quote }}
+            {{- end }}
         volumeMounts:
         - mountPath: /home/jovyan
           name: {{ $notebook.name }}
         - mountPath: /dev/shm
           name: dshm
+        {{- if $notebook.volumeMounts }}
+        {{- toYaml $notebook.volumeMounts | nindent 8 }}
+        {{- end }}
       {{- if $notebook.sidecars }}
       {{- range $sidecar := $notebook.sidecars }}
       - name: {{ required "A sidecar name is required" $sidecar.name | quote }}
@@ -63,6 +101,9 @@ spec:
 {{ toYaml $sidecar.volumes | indent 6 }}
       {{- end }}
       {{- end }}
+      {{- end }}
+      {{- if $notebook.volumes }}
+      {{- toYaml $notebook.volumes | nindent 6 }}
       {{- end }}
     userCluster: {{ required "A valid user_cluster_name is required" $notebook.user_cluster_name }}
 {{- end }}

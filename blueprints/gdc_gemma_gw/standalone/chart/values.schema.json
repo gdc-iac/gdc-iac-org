@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "registry": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        },
+        "commonLabels": {
+          "type": "object"
+        },
+        "commonAnnotations": {
+          "type": "object"
+        }
+      }
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "registry": {
+      "type": "string"
+    },
+    "gdc": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "failover": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicas": {
+          "type": "integer"
+        },
+        "activeFramework": {
+          "type": "string"
+        },
+        "ollamaModelVariant": {
+          "type": "string"
+        },
+        "modelRoutingConfig": {
+          "type": "string"
+        },
+        "gpuVramTotalGb": {
+          "type": ["string", "number"]
+        },
+        "vllmGpuMemoryUtilization": {
+          "type": ["string", "number"]
+        },
+        "dcgmMetricsUrl": {
+          "type": "string"
+        },
+        "enableOidc": {
+          "type": ["boolean", "string"]
+        },
+        "adminRequireOidc": {
+          "type": ["boolean", "string"]
+        },
+        "keycloakUrl": {
+          "type": "string"
+        },
+        "gatewayStateFile": {
+          "type": "string"
+        },
+        "redisUrl": {
+          "type": "string"
+        },
+        "tier1ModelTag": {
+          "type": "string"
+        },
+        "tier2ModelTag": {
+          "type": "string"
+        },
+        "enforceParameterOverrides": {
+          "type": "boolean"
+        },
+        "envoyInferencePool": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "serviceUrl": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

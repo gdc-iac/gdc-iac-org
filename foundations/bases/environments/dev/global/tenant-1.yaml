@@ -1,0 +1,105 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+dev:
+  gdc_tenants:
+    tenant-1:
+      global:
+        admin_subject_name: &admin_subject_name "fop-iac@example.com"
+        shared_infra_project_names: &shared_infra_project_names ["mellons-prj"]
+        # customroles: # TODO: observed slowness deploying custom roles in sandbox env. Check if this the case in physical GDCag env. Use HELM_WAIT=false to mitigate for now?
+        #   - name: "project-viewer"
+        #     title: "Project Viewer"
+        #     description: "View projects"
+        #     stage: "GA"
+        #     scope: "project"
+        #     roleNamespaces: ["*"]
+        #     zonalRules: 
+        #     - apiGroups: ["resourcemanager.gdc.goog"]
+        #       resources: ["projects"]
+        #       verbs: ["get", "list", "watch"]
+        #   - name: &ro_bucket_role "ro-bucket-role"
+        #     title: *ro_bucket_role
+        #     description: *ro_bucket_role
+        #     stage: "GA"
+        #     scope: "project"
+        #     roleNamespaces: ["*"]
+        #     zonalRules:
+        #       - apiGroups: [object.gdc.goog]
+        #         resources: [buckets]
+        #         verbs: ["list", "read-object"]
+        #   - name: &rw_bucket_role "rw-bucket-role"
+        #     title: *rw_bucket_role
+        #     description: *rw_bucket_role
+        #     stage: "GA"
+        #     scope: "project"
+        #     roleNamespaces: ["*"]
+        #     zonalRules:
+        #       - apiGroups: [object.gdc.goog]
+        #         resources: [buckets]
+        #         verbs: ["list", "read-object"]
+        iamrolebindings:
+          - role: "user-cluster-node-viewer"
+          - role: "user-cluster-crd-viewer"
+        rbacrolebindings: []
+        #   - role: "custom-role-project-viewer"
+        org_policies: []
+        #   - name: "disable-marketplace-creation"
+        #     spec:
+        #       match:
+        #         kinds:
+        #           - apiGroups: ["marketplace.gdc.goog"]
+        #             kinds: ["MarketplaceService"]
+        #       parameters:
+        #         disabledOperations:
+        #           - "CREATE"
+        # 
+        org_network_policies: [] # TODO: Org network policies are not supported in GDCag Sandbox, test in actual GDCag env. (#kubectl api-resources | grep organizationnetworkpolicy)
+        #   - name: "allow-vertex-ai-access"
+        #     subject:
+        #       services:
+        #         match_types:
+        #           - "ai"
+        #     ingress:
+        #       - from:
+        #         - ip_block:
+        #             cidr: "10.0.0.0/8"
+        # billing:
+        #   accounts:
+        #     - name: "example-billing-account"
+        #       display_name: "Example Billing Account"
+        #       cloud_billing_config_account_id: "012345-6789AB-CDEF01"
+        projects:
+          - name: "mellons-prj"
+            iamrolebindings:
+              - role: "project-iam-admin"
+              - role: "secret-admin"
+              - role: "namespace-admin"
+              - role: "project-bucket-admin"
+              - role: "project-vm-admin"
+              - role: "project-networkpolicy-admin"
+              - role: "project-grafana-viewer"
+              - role: "project-bucket-object-admin"
+              - role: "project-bucket-object-viewer"
+              - role: "workload-viewer"
+              - role: "backup-creator"
+              - role: "harbor-instance-admin"
+              - role: "harbor-project-creator"
+              - role: "dashboard-editor"
+              - role: "workbench-notebooks-admin"
+            serviceaccounts:
+              - name: "mellons-frontend-sa"
+                namespace: "mellons-prj"
+            resources: []

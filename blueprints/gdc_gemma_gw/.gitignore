@@ -1,0 +1,29 @@
+# System files
+.DS_Store
+
+# Agentic state
+state.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# Staging/Dynamic configurations
+.env
+.env.*
+*-hydrated.yaml
+*-hydrated-import.yaml
+
+# IDE
+.idea/
+.vscode/
+
+# Packages output
+packages/
+deploy-to-production/packages/
+

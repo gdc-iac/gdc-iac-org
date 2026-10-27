@@ -1,0 +1,123 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+{{- if .Values.apps.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sql-agent
+  namespace: {{ include "p7-agentic-data-analyst.namespace" . }}
+  labels:
+    {{- include "p7-agentic-data-analyst.labels" . | nindent 4 }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sql-agent
+  template:
+    metadata:
+      labels:
+        app: sql-agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: adk-agent
+        image: {{ include "p7-agentic-data-analyst.registry" . }}/p7-agent:v1
+        imagePullPolicy: Always
+        command:
+        - python
+        - app.py
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: db-ro-creds
+              key: username
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: db-ro-creds
+              key: password
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: db-ro-creds
+              key: host
+        - name: DB_NAME
+          value: postgres
+        - name: LLM_PROVIDER
+          value: gemma
+        - name: LLM_GATEWAY_URL
+          value: http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1
+        - name: LLM_URL
+          value: http://gemma-gateway.gemma-inference.svc.cluster.local:80/v1
+        - name: GEMINI_MODEL
+          value: gemma-2-27b-it
+        - name: AO_PROJECT_ID
+          value: projects/{{ include "p7-agentic-data-analyst.projectId" . }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sql-agent
+  namespace: {{ include "p7-agentic-data-analyst.namespace" . }}
+  labels:
+    {{- include "p7-agentic-data-analyst.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: sql-agent
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-ro-creds
+  namespace: {{ include "p7-agentic-data-analyst.namespace" . }}
+  labels:
+    {{- include "p7-agentic-data-analyst.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  username: postgres
+  password: password
+  host: postgres-db
+{{- end }}

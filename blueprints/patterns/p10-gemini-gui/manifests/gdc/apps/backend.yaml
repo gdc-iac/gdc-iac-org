@@ -1,0 +1,69 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: test-project
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: gemini-gui-sa
+      containers:
+      - name: backend
+        image: us-central1-docker.pkg.dev/test-project/blueprint-images/p10-backend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PROJECT_ID
+          value: "test-project" # Placeholder
+        - name: INPUT_BUCKET
+          value: "gs://gemini-gui-files-test-project" # Placeholder
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: gemini-gui-db-credentials
+              key: connection_string
+        - name: REGION
+          value: "us-central1"
+        # - name: GEMINI_ENDPOINT
+        #   value: "us-central1-aiplatform.googleapis.com" # Uncomment to override
+        - name: GEMINI_MODEL
+          value: "gemini-2.5-flash"
+        - name: ENABLE_OIDC
+          value: "true"
+        - name: KEYCLOAK_URL
+          value: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: test-project
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
