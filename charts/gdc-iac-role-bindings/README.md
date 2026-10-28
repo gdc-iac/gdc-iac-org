@@ -1,4 +1,4 @@
-# gdc-iac
+# gdc-iac-role-bindings
 
 A Helm chart for managing Infrastructure as Code (IaC) RoleBindings in Google Distributed Cloud Hosted environments.
 
@@ -10,7 +10,7 @@ A Helm chart for managing Infrastructure as Code (IaC) RoleBindings in Google Di
 ## Usage / Installation
 
 ```bash
-helm install my-iac ./gdc-iac -f values.yaml
+helm install my-iac ./gdc-iac-role-bindings -f values.yaml
 ```
 
 ## Configuration Parameters

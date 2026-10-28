@@ -95,7 +95,7 @@ The tool expects a YAML configuration file that structures resources under speci
 
 The supported structure maps specific list keys directly to their respective underlying charts:
 ```yaml
-iac: # Mapped to: charts/gdc-iac
+iac: # Mapped to: charts/gdc-iac-role-bindings
 - role: "project-iam-admin"
   subject_kind: "User"
   subject_name: "fop-iac001@example.com"
@@ -104,7 +104,7 @@ global:
     billing # Mapped to: charts/gdc-billing (Legacy)
     billing-accounts # Mapped to: charts/gdc-billing-accounts
     projects: # Mapped to: charts/gdc-projects
-      - IAC # Mapped to: charts/gdc-iac
+      - IAC # Mapped to: charts/gdc-iac-role-bindings
       - iam-roles # Mapped to: charts/gdc-iam-roles
       - project-service-accounts # Mapped to: charts/gdc-project-service-accounts
       - iam-role-bindings # Mapped to: charts/gdc-iam-role-bindings
