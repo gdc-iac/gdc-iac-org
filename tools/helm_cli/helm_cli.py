@@ -19,7 +19,7 @@ helm_cli.py - GDCH Configured Helm execution wrapper
 This script is designed to parse GDCH (Google Distributed Cloud Hosted)
 specific YAML configuration objects (like 'global', 'projects', 'iac')
 and iterate through nested lists to dispatch contextual variables into
-local GDCH helm charts (such as 'gdc-iac', 'gdc-iam-role-bindings',
+local GDCH helm charts (such as 'gdc-iac-role-bindings', 'gdc-iam-role-bindings',
 'gdc-project-network-policies').
 
 Usage Examples:
@@ -321,7 +321,8 @@ def call_resource_action(
     charts_dir: str,
     output_dir: str,
     sync_wait: int,
-    max_retries: int
+    max_retries: int,
+    chart: str = None
 ) -> None:
     """
     Executes a helm action for a specific resource.
@@ -343,6 +344,8 @@ def call_resource_action(
         output_dir: Path layout for outputting hydrated resource renders.
         sync_wait: Pre-configured sleep amount waiting for GDCH IAM propagation.
         max_retries: Maximum number of retries for failed executions.
+        chart: Chart directory name to use (optional). Defaults to
+            `gdc-<resource_type>`.
     """
     if action == "hydrate":
         if output_dir is None:
@@ -362,7 +365,7 @@ def call_resource_action(
             cmd = action_cmd(
                     kubeconfig=kubeconfig, action=action,
                     release_name=normalize_name(release_name),
-                    chart=f"gdc-{resource_type}",
+                    chart=chart or f"gdc-{resource_type}",
                     chart_dir=charts_dir,
                     output_dir=output_dir,
                     values_file=tmp.name, extra_args=extra_args
@@ -463,7 +466,10 @@ def process_type(
                 charts_dir=charts_dir,
                 output_dir=output_dir,
                 sync_wait=sync_wait,
-                max_retries=max_retries
+                max_retries=max_retries,
+                # IAC rolebindings live in charts/gdc-iac-role-bindings, which
+                # does not follow the gdc-<resource_type> naming convention.
+                chart="gdc-iac-role-bindings"
             )
         return
     if resource_type not in config:

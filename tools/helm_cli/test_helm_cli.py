@@ -384,7 +384,7 @@ class TestHelmCli(unittest.TestCase):
                              'iamrolebindings': {'some': 'iac'}},
             release_name='root-iac', extra_args=[],
             charts_dir="../../charts", output_dir=None,
-            sync_wait=15, max_retries=3
+            sync_wait=15, max_retries=3, chart="gdc-iac-role-bindings"
         )
 
     def test_process_type_not_in_config(self):
