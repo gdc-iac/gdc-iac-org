@@ -105,6 +105,20 @@ entries:
     urls:
     - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-dashboards-0.1.1/gdc-dashboards-0.1.1.tgz
     version: 0.1.1
+  gdc-dbs:
+  - apiVersion: v2
+    appVersion: "1.0"
+    created: "2026-10-29T14:22:47.366273457Z"
+    description: A Helm chart for deploying GDCH Database Services (PostgreSQL or
+      Oracle)
+    digest: 873f61c14625d99c778b203ba680df9e905c67c19d4e18369c69157418665f29
+    maintainers:
+    - name: gdc-iac
+    name: gdc-dbs
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-dbs-0.1.2/gdc-dbs-0.1.2.tgz
+    version: 0.1.2
   gdc-harbors:
   - apiVersion: v2
     appVersion: 1.0.0
@@ -131,6 +145,18 @@ entries:
     - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-harbors-0.1.1/gdc-harbors-0.1.1.tgz
     version: 0.1.1
   gdc-iac-role-bindings:
+  - apiVersion: v2
+    appVersion: 1.14.6
+    created: "2026-10-29T14:22:47.55436666Z"
+    description: A Helm chart for Google Distributed Cloud organization management
+    digest: 2a53cd44dddb58c633fd84f6df4b1342903be63cc9a5bb2831d845936101093d
+    maintainers:
+    - name: gdc-iac
+    name: gdc-iac-role-bindings
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-iac-role-bindings-0.1.3/gdc-iac-role-bindings-0.1.3.tgz
+    version: 0.1.3
   - apiVersion: v2
     appVersion: 1.14.6
     created: "2026-09-23T09:27:40.345236279Z"
@@ -321,4 +347,4 @@ entries:
     urls:
     - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdch-dbs-0.1.1/gdch-dbs-0.1.1.tgz
     version: 0.1.1
-generated: "2026-10-06T09:47:32.812296711Z"
+generated: "2026-10-29T14:22:47.554389914Z"
