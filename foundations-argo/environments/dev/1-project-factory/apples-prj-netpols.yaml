@@ -12,9 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Chart: charts/gdc-projects
-# Stage: 1-project-factory (Sync Wave 2: Tenant-1 GDC Project creation)
-projects:
-  tenant-1:
-    name: "mellons-prj"
-    namespace: "platform"
+# Chart: charts/gdc-project-network-policies
+# Stage: 1-project-factory (Project Network Policies for apples-prj)
+namespace: "apples-prj"
+
+projectnetworkpolicies:
+  - name: "allow-mellons-traffic"
+    ingress:
+      - from:
+          - project_selector:
+              projects:
+                match_names:
+                  - "mellons-prj"

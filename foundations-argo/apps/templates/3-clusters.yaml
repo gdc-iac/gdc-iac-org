@@ -12,43 +12,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Stage 4: 3-clusters (Sync Wave 5)
-# Provisions Standard and User Kubernetes clusters and ProjectBindings on Zonal Management APIs.
+# Shared App #3: 3-clusters-<zone> (Sync Wave 3)
+# Provisions Shared User Clusters, Standard Clusters, and ProjectBindings on Zonal Management APIs
+# ahead of project Zonal workloads/Notebooks that reference cluster names.
+{{- if .Values.stages.clusters.enabled }}
+{{- range $zone, $files := .Values.sharedClusters }}
+{{- if $files }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.environment }}-3-clusters-zone1-tenant-1
-  namespace: {{ .Values.argocdNamespace }}
+  name: {{ $.Values.environment }}-3-clusters-{{ $zone }}
+  namespace: {{ $.Values.argocdNamespace }}
   labels:
-    environment: {{ .Values.environment }}
+    environment: {{ $.Values.environment }}
     stage: 3-clusters
-    zone: zone1
-    tenant: tenant-1
+    zone: {{ $zone }}
   annotations:
-    argocd.argoproj.io/sync-wave: "5"
+    argocd.argoproj.io/sync-wave: "3"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: {{ .Values.project }}
+  project: {{ $.Values.project }}
   sources:
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.git.repoURL }}
+      targetRevision: {{ $.Values.git.targetRevision }}
       ref: values
-    {{- if .Values.oci.enabled }}
-    - repoURL: {{ .Values.oci.repoURL }}
+    {{- range $idx, $file := $files }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
       chart: gdc-clusters
-      targetRevision: {{ .Values.oci.versions.gdcClusters | quote }}
+      targetRevision: {{ $.Values.oci.versions.gdcClusters | quote }}
     {{- else }}
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
       path: charts/gdc-clusters
     {{- end }}
       helm:
+        releaseName: clusters-{{ $zone }}-{{ $idx }}
         valueFiles:
-          - $values/foundations-argo/environments/{{ .Values.environment }}/3-clusters/zone1/tenant-1-clusters.yaml
+          - $values/{{ $file }}
+    {{- end }}
   destination:
-    name: {{ .Values.clusters.zone1 }}
+    name: {{ index $.Values.clusters.zones $zone }}
     namespace: platform
   syncPolicy:
-    {{- toYaml .Values.syncPolicy | nindent 4 }}
+    {{- toYaml $.Values.syncPolicy | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

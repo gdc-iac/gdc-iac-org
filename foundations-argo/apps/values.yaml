@@ -13,42 +13,142 @@
 # limitations under the License.
 
 # Centralized configuration for all GDC Foundations Argo CD Applications
+# Architecture: Option 3 (Pure iac001-sa, Zero Breakglass, 3 Shared Apps + 2 Apps per Project)
 environment: dev
 argocdNamespace: argocd
 project: gdc-foundations
 
-# Source Git repository containing environment values (and charts when oci.enabled is false)
+# Standalone Landing Zone Git repository containing apps/ and environments/<env>/ values
 git:
-  repoURL: http://gitea.gitea.svc:80/org-12345/gdc-iac-org.git
+  repoURL: ssh://git@gitea.gitea.svc/org-12345/landing-argo.git
   targetRevision: main
 
-# Optional: Pull packaged Helm charts from Managed Harbor OCI registry instead of Git paths
+# Fallback upstream library Git repository containing charts/ and blueprints/ (used when oci.enabled is false)
+chartsGit:
+  repoURL: ssh://git@gitea.gitea.svc/org-12345/gdc-iac-org.git
+  targetRevision: main
+
+# Managed Harbor OCI registry for packaged Helm charts (recommended default for standalone landing-argo.git)
 oci:
-  enabled: false
-  repoURL: harbor001-iac-root.org-12345.zone1-a.gdch.test/iac/charts
+  enabled: true
+  repoURL: harbor001-iac-root.org-12345.zone1.gdc.test/charts
   versions:
     gdcIamRoleBindings: 0.1.3
-    gdcProjects: 0.1.2
-    gdcProjectServiceAccounts: 0.1.2
+    gdcProjects: 0.1.1
+    gdcProjectServiceAccounts: 0.1.1
     gdcProjectNetworkPolicies: 0.1.2
     gdcHarbors: 0.1.2
     gdcBuckets: 0.1.2
-    gdcVm: 0.1.4
-    gdcClusters: 0.1.5
+    gdcVm: 0.1.5
+    gdcClusters: 0.1.3
     gdcNotebooks: 0.1.2
+    p1Resilient3TierWebapp: 0.1.0
 
 # Registered Argo CD target cluster names (matching Secret stringData.name)
 clusters:
   global: gdc-global
-  zone1: gdc-zone1
-  zone2: gdc-zone2
+  globalProjects: gdc-global-projects
+  zones:
+    zone1: gdc-zone1
+  zoneProjects:
+    zone1: gdc-zone1-projects
   userShared: gdc-user-shared
+
+# Pure iac001-sa automation identity automatically granted baseline admin bindings in every managed Project
+iacServiceAccount:
+  name: iac001-sa
+  namespace: iac-root
+  projectIamRoles:
+    - project-iam-admin
+    - secret-admin
+    - namespace-admin
+    - project-bucket-admin
+    - project-bucket-object-admin
+    - project-vm-admin
+    - project-networkpolicy-admin
+    - harbor-instance-admin
+    - harbor-project-creator
+    - workbench-notebooks-admin
+    - standard-cluster-admin
+    - dashboard-editor
+    - workload-viewer
+
+# Organization-level IAM files merged into Shared App #1 (0-foundation-global)
+foundationGlobal:
+  bootstrapFiles:
+    - environments/dev/0-bootstrap/iac-iam-global.yaml
+    - environments/dev/0-bootstrap/iac-iam-project.yaml
+  orgIamFiles:
+    - environments/dev/0-org-setup/tenant-1-iam.yaml
+
+# Shared & Standard Kubernetes Cluster files per zone for Shared App #3 (3-clusters-<zone>)
+sharedClusters:
+  zone1:
+    - environments/dev/3-clusters/zone1/tenant-1-clusters.yaml
+
+# Declarative Project Catalog (3 Shared Apps + 2 Per-Project Apps: 1 Global + 1 Zonal)
+# Adding a new Project is a pure Git change:
+#   1. Append an entry under `projects:` below (Project CR + iac001-sa project IAM + cluster Secret namespace sync happen automatically).
+#   2. Set any desired `global` or `zones.<zone>` feature to `true` (uses conventional file path) or a custom path string:
+#      - global.iam             -> environments/<env>/1-project-factory/<project>-iam.yaml
+#      - global.serviceAccounts -> environments/<env>/1-project-factory/<project>-sa.yaml
+#      - global.networkPolicies -> environments/<env>/1-project-factory/<project>-netpols.yaml
+#      - zones.<z>.harbors      -> environments/<env>/2-resources/<z>/<project>-harbors.yaml
+#      - zones.<z>.buckets      -> environments/<env>/2-resources/<z>/<project>-buckets.yaml
+#      - zones.<z>.vms          -> environments/<env>/2-resources/<z>/<project>-vms.yaml
+#      - zones.<z>.notebooks    -> environments/<env>/2-resources/<z>/<project>-notebooks.yaml
+projects:
+  - name: mellons-prj
+    tenant: tenant-1
+    global:
+      iam: true
+      serviceAccounts: true
+      networkPolicies: true
+    zones:
+      zone1:
+        harbors: true
+        buckets: true
+        vms: true
+        notebooks: true
+    workloads:
+      zone1:
+        - name: mellons-p1-webapp
+          namespace: mellons-prj
+          valuesFile: environments/dev/5-workload-factory/zone1/mellons-p1-webapp.yaml
+  - name: apples-prj
+    tenant: tenant-1
+    global:
+      iam: true
+      serviceAccounts: true
+      networkPolicies: true
+    zones:
+      zone1:
+        buckets: true
+
+# Stage feature gates (5-workload-factory disabled by default until blueprint charts are pushed to Harbor)
+stages:
+  foundationGlobal:
+    enabled: true
+  projectFactory:
+    enabled: true
+  clusters:
+    enabled: true
+  resources:
+    enabled: true
+  workloadFactory:
+    enabled: false
 
 # Default SyncPolicy applied to generated Applications
 syncPolicy:
   automated:
     prune: true
     selfHeal: true
+  retry:
+    limit: 5
+    backoff:
+      duration: 5s
+      factor: 2
+      maxDuration: 3m
   syncOptions:
     - CreateNamespace=false
     - ServerSideApply=true

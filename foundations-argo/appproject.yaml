@@ -28,9 +28,11 @@ spec:
   destinations:
     - name: gdc-global
       namespace: '*'
+    - name: gdc-global-projects
+      namespace: '*'
     - name: gdc-zone1
       namespace: '*'
-    - name: gdc-zone2
+    - name: gdc-zone1-projects
       namespace: '*'
     - name: gdc-user-shared
       namespace: '*'

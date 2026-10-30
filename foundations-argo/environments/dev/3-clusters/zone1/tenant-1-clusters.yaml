@@ -21,7 +21,7 @@ clusters:
       podCIDRSize: 21
       serviceCIDRSize: 23
     initialVersion:
-      kubernetesVersion: "1.35.3-gke.400"
+      kubernetesVersion: "1.32.13-gke.100"
     loadBalancer:
       ingressServiceIPSize: 21
     nodePools:
@@ -36,7 +36,7 @@ clusters:
       podCIDRSize: 21
       serviceCIDRSize: 23
     initialVersion:
-      kubernetesVersion: "1.35.3-gke.400"
+      kubernetesVersion: "1.32.13-gke.100"
     loadBalancer:
       ingressServiceIPSize: 21
     nodePools:

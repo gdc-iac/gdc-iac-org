@@ -24,9 +24,9 @@ metadata:
 spec:
   project: gdc-foundations
   source:
-    repoURL: http://gitea.gitea.svc:80/org-12345/gdc-iac-org.git
+    repoURL: ssh://git@gitea.gitea.svc/org-12345/landing-argo.git
     targetRevision: main
-    path: foundations-argo/apps
+    path: apps
     helm:
       valueFiles:
         - values.yaml

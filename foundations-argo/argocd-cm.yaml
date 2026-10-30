@@ -1,0 +1,129 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Argo CD ConfigMap scoped for 100% Pure iac001-sa (Zero Breakglass) operation on GDC 1.16+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Enable Sync Wave health progression across App-of-Apps child Applications
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil then
+      if obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+    end
+    return hs
+
+  # Explicit per-endpoint CRD inclusions matching iac001-sa LIST permissions:
+  # - Root endpoints (?scope omitted) include org/platform-scoped CRDs (Project, IAM, Cluster, ProjectBinding).
+  # - Project endpoints (?scope=projects) include all project-scoped Global & Zonal CRDs so each project
+  #   needs only 1 Global Application + 1 Zonal Application with 100% resource tracking.
+  resource.inclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - "*"
+      clusters:
+      - https://kubernetes.default.svc
+      - https://stress-test-kube.apiserver.org-12345.zone1.gdc.test
+    - apiGroups:
+      - iam.global.gdc.goog
+      kinds:
+      - IAMRoleBinding
+      - CustomRole
+      clusters:
+      - https://global-api.org-12345.zone1.gdc.test
+      - https://global-api.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - rbac.authorization.k8s.io
+      kinds:
+      - RoleBinding
+      clusters:
+      - https://global-api.org-12345.zone1.gdc.test
+      - https://global-api.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - resourcemanager.global.gdc.goog
+      kinds:
+      - Project
+      clusters:
+      - https://global-api.org-12345.zone1.gdc.test
+    - apiGroups:
+      - resourcemanager.global.gdc.goog
+      kinds:
+      - ProjectServiceAccount
+      clusters:
+      - https://global-api.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - networking.global.gdc.goog
+      kinds:
+      - ProjectNetworkPolicy
+      clusters:
+      - https://global-api.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - cluster.gdc.goog
+      kinds:
+      - Cluster
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test
+    - apiGroups:
+      - resourcemanager.gdc.goog
+      kinds:
+      - ProjectBinding
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test
+    - apiGroups:
+      - object.gdc.goog
+      kinds:
+      - Bucket
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - artifactregistry.gdc.goog
+      kinds:
+      - HarborInstance
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - virtualmachine.gdc.goog
+      kinds:
+      - VirtualMachine
+      - VirtualMachineDisk
+      - VirtualMachineExternalAccess
+      - VirtualMachineAccessRequest
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - networking.gdc.goog
+      kinds:
+      - ProjectNetworkPolicy
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test?scope=projects
+    - apiGroups:
+      - aiplatform.gdc.goog
+      kinds:
+      - Notebook
+      clusters:
+      - https://management-kube.apiserver.org-12345.zone1.gdc.test?scope=projects

@@ -1,0 +1,81 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Shared App #2: 1-projects (Sync Wave 1)
+# Automatically creates every Project CR listed in `.Values.projects` (in namespace `platform`)
+# AND binds `iac001-sa` with its baseline project IAM roles inside each project namespace on `gdc-global`
+# so `gdc-global-projects` and `gdc-zone1-projects` gain immediate LIST/CRUD access with zero manual steps.
+{{- if and .Values.stages.projectFactory.enabled .Values.projects }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.environment }}-1-projects
+  namespace: {{ .Values.argocdNamespace }}
+  labels:
+    environment: {{ .Values.environment }}
+    stage: 1-project-factory
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ .Values.project }}
+  sources:
+    {{- if .Values.oci.enabled }}
+    - repoURL: {{ .Values.oci.repoURL }}
+      chart: gdc-projects
+      targetRevision: {{ .Values.oci.versions.gdcProjects | quote }}
+    {{- else }}
+    - repoURL: {{ .Values.chartsGit.repoURL }}
+      targetRevision: {{ .Values.chartsGit.targetRevision }}
+      path: charts/gdc-projects
+    {{- end }}
+      helm:
+        releaseName: gdc-projects
+        values: |
+          projects:
+            {{- range $proj := .Values.projects }}
+            {{ $proj.name }}:
+              name: {{ $proj.name | quote }}
+              namespace: "platform"
+            {{- end }}
+    {{- range $proj := .Values.projects }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
+      chart: gdc-iam-role-bindings
+      targetRevision: {{ $.Values.oci.versions.gdcIamRoleBindings | quote }}
+    {{- else }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
+      path: charts/gdc-iam-role-bindings
+    {{- end }}
+      helm:
+        releaseName: {{ $proj.name }}-iac-iam
+        values: |
+          namespace: {{ $proj.name | quote }}
+          iamrolebindings:
+            {{- range $role := $.Values.iacServiceAccount.projectIamRoles }}
+            - role: {{ $role | quote }}
+              subject_kind: "ServiceAccount"
+              subject_name: {{ $.Values.iacServiceAccount.name | quote }}
+              subject_namespace: {{ $.Values.iacServiceAccount.namespace | quote }}
+            {{- end }}
+    {{- end }}
+  destination:
+    name: {{ .Values.clusters.global }}
+    namespace: platform
+  syncPolicy:
+    {{- toYaml .Values.syncPolicy | nindent 4 }}
+{{- end }}

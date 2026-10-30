@@ -12,122 +12,110 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Stage 3: 2-resources (Sync Wave 4)
-# Provisions project-scoped Zonal infrastructure (Harbor registries, Storage Buckets, VMs) on Zonal Management APIs.
+# Per-Project App #2: 2-resources-<zone>-<project> (Sync Wave 4)
+# Single Zonal Application per project/zone on `gdc-<zone>-projects` (?scope=projects) consolidating:
+# - Managed Harbor Instances (`harbors`)
+# - Object Storage Buckets (`buckets`)
+# - Virtual Machines, Disks, External Access & Zonal Network Policies (`vms`)
+# - Workbench Jupyter Notebooks (`notebooks`)
+{{- if .Values.stages.resources.enabled }}
+{{- range $proj := .Values.projects }}
+{{- range $zone, $zcfg := (default dict $proj.zones) }}
+{{- if or $zcfg.harbors $zcfg.buckets $zcfg.vms $zcfg.notebooks }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.environment }}-2-resources-zone1-mellons-harbors
-  namespace: {{ .Values.argocdNamespace }}
+  name: {{ $.Values.environment }}-2-resources-{{ $zone }}-{{ $proj.name }}
+  namespace: {{ $.Values.argocdNamespace }}
   labels:
-    environment: {{ .Values.environment }}
+    environment: {{ $.Values.environment }}
     stage: 2-resources
-    zone: zone1
-    tenant: tenant-1
-    project: mellons-prj
+    zone: {{ $zone }}
+    {{- if $proj.tenant }}
+    tenant: {{ $proj.tenant }}
+    {{- end }}
+    project: {{ $proj.name }}
   annotations:
     argocd.argoproj.io/sync-wave: "4"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: {{ .Values.project }}
+  project: {{ $.Values.project }}
   sources:
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.git.repoURL }}
+      targetRevision: {{ $.Values.git.targetRevision }}
       ref: values
-    {{- if .Values.oci.enabled }}
-    - repoURL: {{ .Values.oci.repoURL }}
+    {{- if $zcfg.harbors }}
+    {{- $harborFile := ternary $zcfg.harbors (printf "environments/%s/2-resources/%s/%s-harbors.yaml" $.Values.environment $zone $proj.name) (kindIs "string" $zcfg.harbors) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
       chart: gdc-harbors
-      targetRevision: {{ .Values.oci.versions.gdcHarbors | quote }}
+      targetRevision: {{ $.Values.oci.versions.gdcHarbors | quote }}
     {{- else }}
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
       path: charts/gdc-harbors
     {{- end }}
       helm:
+        releaseName: {{ $proj.name }}-harbors
         valueFiles:
-          - $values/foundations-argo/environments/{{ .Values.environment }}/2-resources/zone1/mellons-prj-harbors.yaml
-  destination:
-    name: {{ .Values.clusters.zone1 }}
-    namespace: mellons-prj
-  syncPolicy:
-    {{- toYaml .Values.syncPolicy | nindent 4 }}
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: {{ .Values.environment }}-2-resources-zone1-mellons-buckets
-  namespace: {{ .Values.argocdNamespace }}
-  labels:
-    environment: {{ .Values.environment }}
-    stage: 2-resources
-    zone: zone1
-    tenant: tenant-1
-    project: mellons-prj
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: {{ .Values.project }}
-  sources:
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
-      ref: values
-    {{- if .Values.oci.enabled }}
-    - repoURL: {{ .Values.oci.repoURL }}
+          - $values/{{ $harborFile }}
+    {{- end }}
+    {{- if $zcfg.buckets }}
+    {{- $bucketFile := ternary $zcfg.buckets (printf "environments/%s/2-resources/%s/%s-buckets.yaml" $.Values.environment $zone $proj.name) (kindIs "string" $zcfg.buckets) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
       chart: gdc-buckets
-      targetRevision: {{ .Values.oci.versions.gdcBuckets | quote }}
+      targetRevision: {{ $.Values.oci.versions.gdcBuckets | quote }}
     {{- else }}
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
       path: charts/gdc-buckets
     {{- end }}
       helm:
+        releaseName: {{ $proj.name }}-buckets
         valueFiles:
-          - $values/foundations-argo/environments/{{ .Values.environment }}/2-resources/zone1/mellons-prj-buckets.yaml
-  destination:
-    name: {{ .Values.clusters.zone1 }}
-    namespace: mellons-prj
-  syncPolicy:
-    {{- toYaml .Values.syncPolicy | nindent 4 }}
----
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: {{ .Values.environment }}-2-resources-zone1-mellons-vms
-  namespace: {{ .Values.argocdNamespace }}
-  labels:
-    environment: {{ .Values.environment }}
-    stage: 2-resources
-    zone: zone1
-    tenant: tenant-1
-    project: mellons-prj
-  annotations:
-    argocd.argoproj.io/sync-wave: "4"
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: {{ .Values.project }}
-  sources:
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
-      ref: values
-    {{- if .Values.oci.enabled }}
-    - repoURL: {{ .Values.oci.repoURL }}
+          - $values/{{ $bucketFile }}
+    {{- end }}
+    {{- if $zcfg.vms }}
+    {{- $vmFile := ternary $zcfg.vms (printf "environments/%s/2-resources/%s/%s-vms.yaml" $.Values.environment $zone $proj.name) (kindIs "string" $zcfg.vms) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
       chart: gdc-vm
-      targetRevision: {{ .Values.oci.versions.gdcVm | quote }}
+      targetRevision: {{ $.Values.oci.versions.gdcVm | quote }}
     {{- else }}
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
       path: charts/gdc-vm
     {{- end }}
       helm:
+        releaseName: {{ $proj.name }}-vms
         valueFiles:
-          - $values/foundations-argo/environments/{{ .Values.environment }}/2-resources/zone1/mellons-prj-vms.yaml
+          - $values/{{ $vmFile }}
+    {{- end }}
+    {{- if $zcfg.notebooks }}
+    {{- $nbFile := ternary $zcfg.notebooks (printf "environments/%s/2-resources/%s/%s-notebooks.yaml" $.Values.environment $zone $proj.name) (kindIs "string" $zcfg.notebooks) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
+      chart: gdc-notebooks
+      targetRevision: {{ $.Values.oci.versions.gdcNotebooks | quote }}
+    {{- else }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
+      path: charts/gdc-notebooks
+    {{- end }}
+      helm:
+        releaseName: {{ $proj.name }}-notebooks
+        valueFiles:
+          - $values/{{ $nbFile }}
+    {{- end }}
   destination:
-    name: {{ .Values.clusters.zone1 }}
-    namespace: mellons-prj
+    name: {{ index $.Values.clusters.zoneProjects $zone }}
+    namespace: {{ $proj.name }}
   syncPolicy:
-    {{- toYaml .Values.syncPolicy | nindent 4 }}
+    {{- toYaml $.Values.syncPolicy | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

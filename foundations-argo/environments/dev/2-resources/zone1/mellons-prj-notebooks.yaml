@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Chart: charts/gdc-notebooks
-# Stage: 4-notebooks (Sync Wave 6: Workbench Jupyter Notebooks in zone1)
+# Stage: 2-resources (Workbench Jupyter Notebooks in zone1 for mellons-prj)
 namespace: "mellons-prj"
 
 notebooks:
