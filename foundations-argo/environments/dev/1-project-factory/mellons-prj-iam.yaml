@@ -13,7 +13,9 @@
 # limitations under the License.
 
 # Chart: charts/gdc-iam-role-bindings
-# Stage: 1-project-factory (Sync Wave 3: Project-scoped IAM RoleBindings for mellons-prj)
+# Stage: 1-project-factory (Tenant/User IAM RoleBindings for mellons-prj)
+# Note: Baseline `iac001-sa` project IAM RoleBindings are generated automatically by `1-projects.yaml`
+# for every project listed in `apps/values.yaml` (`projects:`), so project IAM files only need tenant subjects.
 namespace: "mellons-prj"
 
 iamrolebindings:

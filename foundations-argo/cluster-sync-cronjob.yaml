@@ -1,0 +1,330 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# In-cluster Pure iac001-sa Reconciler CronJob (Zero Breakglass):
+# 1. Signs an ES256 service-account JWT using Secret/iac001-sa-key and exchanges it at GDC STS
+#    for fresh audience-scoped bearerTokens (preventing 1h token expiry / SYNC: Unknown).
+# 2. Reads desired Projects from Application/dev-1-projects + live Projects in `platform`, pre-registers
+#    desired projects on `gdc-global` so `dev-1-projects` can create Project CRs & iac001-sa IAM bindings,
+#    and verifies per-project RBAC readiness before syncing `namespaces:` on the `?scope=projects` Secrets.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-cluster-sync
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-cluster-sync
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames:
+      - gdc-global-api-secret
+      - gdc-global-projects-secret
+      - gdc-mgmt-api-secret
+      - gdc-mgmt-projects-secret
+      - gdc-user-shared-secret
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    resourceNames:
+      - dev-1-projects
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-cluster-sync
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-cluster-sync
+subjects:
+  - kind: ServiceAccount
+    name: argocd-cluster-sync
+    namespace: argocd
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cluster-sync-scripts
+  namespace: argocd
+data:
+  sign_jwt.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    b64u() { base64 | tr -d '\n=' | tr '+/' '-_'; }
+    pad64() {
+      local h="0000000000000000000000000000000000000000000000000000000000000000$1"
+      printf '%s' "${h: -64}"
+    }
+    hex_to_raw() {
+      local hex="$1" i
+      for ((i=0; i<${#hex}; i+=2)); do
+        printf "\\x${hex:$i:2}"
+      done
+    }
+
+    ACCOUNT_ID="$(tr -d '\r\n' < /var/run/secrets/iac-sa/account_id)"
+    KEY_ID="$(tr -d '\r\n' < /var/run/secrets/iac-sa/private_key_id)"
+    TOKEN_URI="$(tr -d '\r\n' < /var/run/secrets/iac-sa/token_uri)"
+    NOW="$(date +%s)"
+    IAT=$((NOW - 10))
+    EXP=$((NOW + 3590))
+
+    HDR="$(printf '{"alg":"ES256","typ":"JWT","kid":"%s"}' "$KEY_ID" | b64u)"
+    CLAIMS="$(printf '{"iss":"%s","sub":"%s","aud":"%s","iat":%d,"exp":%d}' \
+      "$ACCOUNT_ID" "$ACCOUNT_ID" "$TOKEN_URI" "$IAT" "$EXP" | b64u)"
+
+    DER_B64="$(printf '%s.%s' "$HDR" "$CLAIMS" | openssl dgst -sha256 -sign /var/run/secrets/iac-sa/private_key | base64 | tr -d '\n')"
+    mapfile -t INTS < <(printf '%s' "$DER_B64" | base64 -d | openssl asn1parse -inform DER | awk -F'INTEGER           :' '/INTEGER/{gsub(/[^0-9A-Fa-f]/,"",$2); print $2}')
+
+    if [[ "${#INTS[@]}" -lt 2 ]]; then
+      echo "ERROR: failed to parse ECDSA R/S integers from signature" >&2
+      exit 1
+    fi
+
+    RS_HEX="$(pad64 "${INTS[0]}")$(pad64 "${INTS[1]}")"
+    SIG="$(hex_to_raw "$RS_HEX" | b64u)"
+
+    umask 022
+    printf '%s.%s.%s' "$HDR" "$CLAIMS" "$SIG" > /work/subject_token.jwt
+    echo "Signed ES256 subject assertion for ${ACCOUNT_ID}"
+
+  reconcile_secrets.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    TOKEN_URI="$(tr -d '\r\n' < /var/run/secrets/iac-sa/token_uri)"
+    SUBJECT_JWT="$(cat /work/subject_token.jwt)"
+    K8S_API="https://kubernetes.default.svc"
+    SA_TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+    SA_CA="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+    GLOBAL_URL="https://global-api.org-12345.zone1.gdc.test"
+    ZONAL_URL="https://management-kube.apiserver.org-12345.zone1.gdc.test"
+    USER_URL="https://stress-test-kube.apiserver.org-12345.zone1.gdc.test"
+
+    mint_sts_token() {
+      local audience="$1"
+      local resp tok
+      resp="$(curl -skf -X POST "$TOKEN_URI" \
+        -H "Content-Type: application/json" \
+        -d "{\"grant_type\":\"urn:ietf:params:oauth:token-type:token-exchange\",\"audience\":\"${audience}\",\"requested_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\"subject_token\":\"${SUBJECT_JWT}\",\"subject_token_type\":\"urn:k8s:params:oauth:token-type:serviceaccount\"}")"
+      tok="$(printf '%s' "$resp" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')"
+      if [[ -z "$tok" ]]; then
+        echo "ERROR: empty STS access_token for audience ${audience}" >&2
+        exit 1
+      fi
+      printf '%s' "$tok"
+    }
+
+    append_csv() {
+      local cur="$1" item="$2"
+      if [[ -z "$cur" ]]; then printf '%s' "$item"; else printf '%s,%s' "$cur" "$item"; fi
+    }
+
+    check_http_200() {
+      local url="$1" tok="$2" code
+      code="$(curl -sk -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${tok}" "$url")"
+      [[ "$code" == "200" ]]
+    }
+
+    patch_cluster_secret() {
+      local secret_name="$1" bearer="$2" desired_ns="$3"
+      local sec_yaml cfg_b64 ca_data new_cfg_b64 patch_body
+      sec_yaml="$(curl -s --fail --cacert "$SA_CA" -H "Authorization: Bearer ${SA_TOKEN}" -H "Accept: application/yaml" \
+        "${K8S_API}/api/v1/namespaces/argocd/secrets/${secret_name}" || true)"
+      if [[ -z "$sec_yaml" ]]; then
+        echo "WARN: Secret ${secret_name} not found, skipping"
+        return 0
+      fi
+      cfg_b64="$(printf '%s\n' "$sec_yaml" | awk '/^data:/{d=1; next} /^[a-z]/{d=0} d && /^  config: /{print $2}')"
+      ca_data="$(printf '%s' "$cfg_b64" | base64 -d | sed -n 's/.*"caData":"\([^"]*\)".*/\1/p')"
+
+      if [[ -n "$ca_data" ]]; then
+        new_cfg_b64="$(printf '{"bearerToken":"%s","tlsClientConfig":{"insecure":false,"caData":"%s"}}' "$bearer" "$ca_data" | base64 | tr -d '\n')"
+      else
+        new_cfg_b64="$(printf '{"bearerToken":"%s","tlsClientConfig":{"insecure":true}}' "$bearer" | base64 | tr -d '\n')"
+      fi
+
+      if [[ -n "$desired_ns" ]]; then
+        local ns_b64
+        ns_b64="$(printf '%s' "$desired_ns" | base64 | tr -d '\n')"
+        patch_body="{\"data\":{\"config\":\"${new_cfg_b64}\",\"namespaces\":\"${ns_b64}\"}}"
+      else
+        patch_body="{\"data\":{\"config\":\"${new_cfg_b64}\"}}"
+      fi
+
+      curl -s --fail --cacert "$SA_CA" -X PATCH \
+        -H "Authorization: Bearer ${SA_TOKEN}" \
+        -H "Content-Type: application/strategic-merge-patch+json" \
+        -d "$patch_body" \
+        "${K8S_API}/api/v1/namespaces/argocd/secrets/${secret_name}" >/dev/null
+
+      echo "Updated ${secret_name} (namespaces=${desired_ns:-<unchanged>})"
+    }
+
+    GLOBAL_TOK="$(mint_sts_token "$GLOBAL_URL")"
+    ZONAL_TOK="$(mint_sts_token "$ZONAL_URL")"
+    USER_TOK="$(mint_sts_token "$USER_URL")"
+
+    # 1. Read desired Projects from Application/dev-1-projects (if present) + live Projects in platform
+    APP_YAML="$(curl -s --cacert "$SA_CA" -H "Authorization: Bearer ${SA_TOKEN}" -H "Accept: application/yaml" \
+      "${K8S_API}/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/dev-1-projects" || true)"
+    DESIRED_PROJECTS="$(printf '%s\n' "$APP_YAML" | sed -n "s/.*releaseName: *[\"']*\([a-z0-9-]*\)-iac-iam[\"']*$/\1/p" | sort -u)"
+
+    PROJECTS_YAML="$(curl -sk --fail -H "Authorization: Bearer ${GLOBAL_TOK}" -H "Accept: application/yaml" \
+      "${GLOBAL_URL}/apis/resourcemanager.global.gdc.goog/v1/namespaces/platform/projects")"
+    LIVE_PROJECTS="$(printf '%s\n' "$PROJECTS_YAML" | awk '/^  metadata:/{m=1; next} /^  [a-z]/{m=0} m && /^    name: /{print $2}' | sort -u)"
+
+    ALL_GLOBAL_PROJECTS="$(printf '%s\n%s\n' "$LIVE_PROJECTS" "$DESIRED_PROJECTS" | sed '/^$/d' | sort -u)"
+    GLOBAL_NS="platform"
+    for prj in $ALL_GLOBAL_PROJECTS; do
+      GLOBAL_NS="$(append_csv "$GLOBAL_NS" "$prj")"
+    done
+
+    # Pre-sync gdc-global-api-secret first so dev-1-projects can create any brand-new Project CR & iac001-sa IAM
+    patch_cluster_secret "gdc-global-api-secret" "$GLOBAL_TOK" "$GLOBAL_NS"
+
+    # Trigger refresh on dev-1-projects if any desired project is not yet live in platform
+    for dprj in $DESIRED_PROJECTS; do
+      if ! printf '%s\n' "$LIVE_PROJECTS" | grep -qx "$dprj"; then
+        echo "New desired project ${dprj} detected in dev-1-projects; triggering refresh and awaiting IAM propagation..."
+        curl -s --cacert "$SA_CA" -X PATCH \
+          -H "Authorization: Bearer ${SA_TOKEN}" \
+          -H "Content-Type: application/merge-patch+json" \
+          -d '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"normal"}}}' \
+          "${K8S_API}/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/dev-1-projects" >/dev/null || true
+        break
+      fi
+    done
+
+    # 2. Probe per-project RBAC readiness (retrying up to 6x10s if a newly onboarded project is still propagating)
+    for attempt in 1 2 3 4 5 6; do
+      PROJECTS_YAML="$(curl -sk --fail -H "Authorization: Bearer ${GLOBAL_TOK}" -H "Accept: application/yaml" \
+        "${GLOBAL_URL}/apis/resourcemanager.global.gdc.goog/v1/namespaces/platform/projects")"
+      PROJECTS="$(printf '%s\n' "$PROJECTS_YAML" | awk '/^  metadata:/{m=1; next} /^  [a-z]/{m=0} m && /^    name: /{print $2}' | sort -u)"
+
+      GLOBAL_PROJ_NS=""
+      ZONAL_NS="platform"
+      ZONAL_PROJ_NS=""
+      PENDING=0
+
+      for prj in $PROJECTS; do
+        if check_http_200 "${GLOBAL_URL}/apis/networking.global.gdc.goog/v1/namespaces/${prj}/projectnetworkpolicies?limit=1" "$GLOBAL_TOK" && \
+           check_http_200 "${GLOBAL_URL}/apis/resourcemanager.global.gdc.goog/v1/namespaces/${prj}/projectserviceaccounts?limit=1" "$GLOBAL_TOK"; then
+          GLOBAL_PROJ_NS="$(append_csv "$GLOBAL_PROJ_NS" "$prj")"
+        else
+          PENDING=1
+        fi
+
+        if check_http_200 "${ZONAL_URL}/apis/cluster.gdc.goog/v1/namespaces/${prj}/clusters?limit=1" "$ZONAL_TOK"; then
+          ZONAL_NS="$(append_csv "$ZONAL_NS" "$prj")"
+        fi
+
+        if check_http_200 "${ZONAL_URL}/apis/virtualmachine.gdc.goog/v1/namespaces/${prj}/virtualmachines?limit=1" "$ZONAL_TOK" && \
+           check_http_200 "${ZONAL_URL}/apis/object.gdc.goog/v1/namespaces/${prj}/buckets?limit=1" "$ZONAL_TOK"; then
+          ZONAL_PROJ_NS="$(append_csv "$ZONAL_PROJ_NS" "$prj")"
+        else
+          PENDING=1
+        fi
+      done
+
+      for dprj in $DESIRED_PROJECTS; do
+        if ! printf '%s\n' "$PROJECTS" | grep -qx "$dprj"; then
+          PENDING=1
+        fi
+      done
+
+      if [[ "$PENDING" -eq 0 || "$attempt" -eq 6 ]]; then
+        break
+      fi
+      echo "Waiting 10s for newly onboarded project namespace/RBAC propagation (attempt ${attempt}/6)..."
+      sleep 10
+    done
+
+    patch_cluster_secret "gdc-global-projects-secret" "$GLOBAL_TOK" "$GLOBAL_PROJ_NS"
+    patch_cluster_secret "gdc-mgmt-api-secret"        "$ZONAL_TOK"  "$ZONAL_NS"
+    patch_cluster_secret "gdc-mgmt-projects-secret"   "$ZONAL_TOK"  "$ZONAL_PROJ_NS"
+    patch_cluster_secret "gdc-user-shared-secret"     "$USER_TOK"   ""
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argocd-cluster-sync
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: gdc-foundations
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 1800
+      template:
+        spec:
+          serviceAccountName: argocd-cluster-sync
+          restartPolicy: Never
+          imagePullSecrets:
+            - name: harbor001-creds
+          initContainers:
+            - name: sign-sts-jwt
+              image: harbor.org-12345.zone1.gdc.test/iac/argocd:latest
+              imagePullPolicy: IfNotPresent
+              command: ["/usr/bin/bash", "/scripts/sign_jwt.sh"]
+              volumeMounts:
+                - name: iac-sa-key
+                  mountPath: /var/run/secrets/iac-sa
+                  readOnly: true
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+          containers:
+            - name: reconcile-secrets
+              image: harbor001-iac-root.org-12345.zone1.gdc.test/iac/gitea:latest
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/bash", "/scripts/reconcile_secrets.sh"]
+              volumeMounts:
+                - name: iac-sa-key
+                  mountPath: /var/run/secrets/iac-sa
+                  readOnly: true
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: work
+                  mountPath: /work
+          volumes:
+            - name: iac-sa-key
+              secret:
+                secretName: iac001-sa-key
+                defaultMode: 0444
+            - name: scripts
+              configMap:
+                name: argocd-cluster-sync-scripts
+                defaultMode: 0555
+            - name: work
+              emptyDir:
+                medium: Memory

@@ -13,12 +13,15 @@
 # limitations under the License.
 
 # Chart: charts/gdc-harbors
-# Stage: 2-resources (Sync Wave 4: Managed Harbor instance and project in zone1)
+# Stage: 2-resources (Managed Harbor instance in zone1)
+# Note: Under Pure iac001-sa (Zero Breakglass) on GDC 1.16, `artifactregistry.gdc.goog/HarborInstanceProject`
+# does not grant `list` to `harbor-instance-admin` / `harbor-project-creator`, so `projects:` is omitted here
+# to keep `HarborInstance` 100% synced and tracked in Argo CD with zero ExcludedResourceWarning.
 harbors:
   - name: "example-harbor"
     namespace: "mellons-prj"
-    projects:
-      - name: "mellons-prj"
-        autoscan: true
-        creatorkind: "User"
-        creatorname: "fop-iac@example.com"
+    # projects:
+    #   - name: "mellons-prj"
+    #     autoscan: true
+    #     creatorkind: "User"
+    #     creatorname: "fop-iac@example.com"

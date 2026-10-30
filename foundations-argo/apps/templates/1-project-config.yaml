@@ -1,0 +1,102 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Per-Project App #1: 1-project-<project> (Sync Wave 2)
+# Single Global Application per project on `gdc-global-projects` (?scope=projects) consolidating:
+# - Project IAM RoleBindings (`iam`)
+# - Project Service Accounts (`serviceAccounts` — tracked natively via `resource.inclusions`)
+# - Project Network Policies (`networkPolicies`)
+{{- if .Values.stages.projectFactory.enabled }}
+{{- range $proj := .Values.projects }}
+{{- $g := default dict $proj.global }}
+{{- if or $g.iam $g.serviceAccounts $g.networkPolicies }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ $.Values.environment }}-1-project-{{ $proj.name }}
+  namespace: {{ $.Values.argocdNamespace }}
+  labels:
+    environment: {{ $.Values.environment }}
+    stage: 1-project-factory
+    {{- if $proj.tenant }}
+    tenant: {{ $proj.tenant }}
+    {{- end }}
+    project: {{ $proj.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ $.Values.project }}
+  sources:
+    - repoURL: {{ $.Values.git.repoURL }}
+      targetRevision: {{ $.Values.git.targetRevision }}
+      ref: values
+    {{- if $g.iam }}
+    {{- $iamFile := ternary $g.iam (printf "environments/%s/1-project-factory/%s-iam.yaml" $.Values.environment $proj.name) (kindIs "string" $g.iam) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
+      chart: gdc-iam-role-bindings
+      targetRevision: {{ $.Values.oci.versions.gdcIamRoleBindings | quote }}
+    {{- else }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
+      path: charts/gdc-iam-role-bindings
+    {{- end }}
+      helm:
+        releaseName: {{ $proj.name }}-iam
+        valueFiles:
+          - $values/{{ $iamFile }}
+    {{- end }}
+    {{- if $g.serviceAccounts }}
+    {{- $saFile := ternary $g.serviceAccounts (printf "environments/%s/1-project-factory/%s-sa.yaml" $.Values.environment $proj.name) (kindIs "string" $g.serviceAccounts) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
+      chart: gdc-project-service-accounts
+      targetRevision: {{ $.Values.oci.versions.gdcProjectServiceAccounts | quote }}
+    {{- else }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
+      path: charts/gdc-project-service-accounts
+    {{- end }}
+      helm:
+        releaseName: {{ $proj.name }}-sa
+        valueFiles:
+          - $values/{{ $saFile }}
+    {{- end }}
+    {{- if $g.networkPolicies }}
+    {{- $npFile := ternary $g.networkPolicies (printf "environments/%s/1-project-factory/%s-netpols.yaml" $.Values.environment $proj.name) (kindIs "string" $g.networkPolicies) }}
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
+      chart: gdc-project-network-policies
+      targetRevision: {{ $.Values.oci.versions.gdcProjectNetworkPolicies | quote }}
+    {{- else }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
+      path: charts/gdc-project-network-policies
+    {{- end }}
+      helm:
+        releaseName: {{ $proj.name }}-netpols
+        valueFiles:
+          - $values/{{ $npFile }}
+    {{- end }}
+  destination:
+    name: {{ $.Values.clusters.globalProjects }}
+    namespace: {{ $proj.name }}
+  syncPolicy:
+    {{- toYaml $.Values.syncPolicy | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -12,39 +12,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Stage 6: 5-workload-factory (Sync Wave 7)
-# Deploys Blueprint Workload Patterns onto User Shared or Standard Clusters.
+# Optional Stage: 5-workload-factory (Sync Wave 5)
+# Deploys Blueprint Workload Patterns onto User Shared or Standard Clusters per project.
+{{- if .Values.stages.workloadFactory.enabled }}
+{{- range $proj := .Values.projects }}
+{{- range $zone, $wlist := (default dict $proj.workloads) }}
+{{- range $w := $wlist }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{ .Values.environment }}-5-workload-factory-zone1-mellons-p1-webapp
-  namespace: {{ .Values.argocdNamespace }}
+  name: {{ $.Values.environment }}-5-workload-factory-{{ $zone }}-{{ $w.name }}
+  namespace: {{ $.Values.argocdNamespace }}
   labels:
-    environment: {{ .Values.environment }}
+    environment: {{ $.Values.environment }}
     stage: 5-workload-factory
-    zone: zone1
-    tenant: tenant-1
-    project: mellons-prj
-    pattern: p1-resilient-3-tier-webapp
+    zone: {{ $zone }}
+    {{- if $proj.tenant }}
+    tenant: {{ $proj.tenant }}
+    {{- end }}
+    project: {{ $proj.name }}
+    pattern: {{ default "p1-resilient-3-tier-webapp" $w.pattern }}
   annotations:
-    argocd.argoproj.io/sync-wave: "7"
+    argocd.argoproj.io/sync-wave: "5"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: {{ .Values.project }}
+  project: {{ $.Values.project }}
   sources:
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
+    - repoURL: {{ $.Values.git.repoURL }}
+      targetRevision: {{ $.Values.git.targetRevision }}
       ref: values
-    - repoURL: {{ .Values.git.repoURL }}
-      targetRevision: {{ .Values.git.targetRevision }}
-      path: blueprints/patterns/p1-resilient-3-tier-webapp/chart
+    {{- if $.Values.oci.enabled }}
+    - repoURL: {{ $.Values.oci.repoURL }}
+      chart: {{ default "p1-resilient-3-tier-webapp" $w.chart }}
+      targetRevision: {{ $.Values.oci.versions.p1Resilient3TierWebapp | quote }}
+    {{- else }}
+    - repoURL: {{ $.Values.chartsGit.repoURL }}
+      targetRevision: {{ $.Values.chartsGit.targetRevision }}
+      path: {{ default "blueprints/patterns/p1-resilient-3-tier-webapp/chart" $w.path }}
+    {{- end }}
       helm:
+        releaseName: {{ $w.name }}
         valueFiles:
-          - $values/foundations-argo/environments/{{ .Values.environment }}/5-workload-factory/zone1/mellons-p1-webapp.yaml
+          - $values/{{ $w.valuesFile }}
   destination:
-    name: {{ .Values.clusters.userShared }}
-    namespace: mellons-prj
+    name: {{ default $.Values.clusters.userShared $w.cluster }}
+    namespace: {{ default $proj.name $w.namespace }}
   syncPolicy:
-    {{- toYaml .Values.syncPolicy | nindent 4 }}
+    {{- toYaml $.Values.syncPolicy | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

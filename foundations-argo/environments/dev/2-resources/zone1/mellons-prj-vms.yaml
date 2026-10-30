@@ -17,7 +17,7 @@
 virtualMachines:
   - name: "mellons-frontend-vm"
     namespace: "mellons-prj"
-    imageName: "ubuntu-24.04-v20260601-gdch"
+    imageName: "ubuntu-24.04-v20260224-gdch"
     imageNamespace: "vm-system"
     bootDiskSize: "20Gi"
     machineType: "n3-standard-2-gdc"
