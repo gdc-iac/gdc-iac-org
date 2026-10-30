@@ -1,0 +1,20 @@
+{{- if .Values.networkPolicy.create }}
+apiVersion: networking.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: {{ .Values.server.name }}-ingress
+  namespace: {{ required "namespace is required" .Values.namespace }}
+spec:
+  policyType: Ingress
+  subject:
+    subjectType: UserWorkload
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - port: {{ .Values.server.port }}
+      protocol: TCP
+    - port: {{ .Values.server.port }}
+      protocol: UDP
+{{- end }}

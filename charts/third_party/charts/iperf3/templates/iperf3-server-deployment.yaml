@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.server.name }}
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    app: {{ .Values.server.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.server.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.server.name }}
+    spec:
+      containers:
+      - name: iperf3-server
+        image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
+        imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+        command: ["iperf3"]
+        args: ["-s"]
+        ports:
+        - containerPort: {{ .Values.server.port }}
+          name: iperf-port
+          protocol: TCP
+        - containerPort: {{ .Values.server.port }}
+          name: iperf-port-udp
+          protocol: UDP
+        resources:
+          {{- toYaml .Values.server.resources | nindent 10 }}

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: gdc-iperf3
+description: A Helm chart for running container-to-container iperf3 network performance tests on GDC
+version: 0.1.0
+keywords:
+  - gdc
+  - iperf3
+  - container
+  - network-performance
+maintainers:
+  - name: gdc-iac
