@@ -42,10 +42,10 @@ flowchart TB
 
     subgraph GKE["GKE Stepping-Stone Cluster (Current Up-and-Running Environment)"]
         subgraph NS_APP["Application Namespace (${NAMESPACE}: mission-app)"]
-            GW["🌐 Unified Gateway API (Port 8081)\ngdc-platform-gateway + HealthCheckPolicies\n• / -> frontend-svc:80\n• /api -> backend-svc:8000\n• /auth -> keycloak-svc:8080"]
+            GW["🌐 Unified Gateway API (Port 8081)\ngdc-platform-gateway + HealthCheckPolicies\n• / -> frontend-svc:80\n• /api -> backend-svc:8000\n• /auth -> keycloak:80"]
             FE["🖥️ AI Mission Portal UI (frontend)\n• Keycloak OIDC PKCE Login\n• 1-Click Pre-Canned AI Scenarios\n• Live AI Gateway Telemetry Badge"]
             BE["⚙️ FastAPI AI Backend (backend)\n• RS256 JWKS Token Validation\n• RBAC: user (UNCLASSIFIED) vs admin (SECRET)\n• POST /api/analyze (AI Tactical Briefing)\n• GET /api/ai/status (Gateway Probe)"]
-            KC["🔐 Keycloak OIDC (keycloak-svc:8080)\nRealm: gdc-app-realm (alice / charlie)"]
+            KC["🔐 Keycloak OIDC (keycloak:80 -> 8080)\nRealm: gdc-app-realm (alice / charlie)"]
             PG[("🐘 PostgreSQL + pgvector\n(postgres-svc:5432)\nStores Records + AI Briefings")]
             GCS[("🪣 Google Cloud Storage (GKE)\n/ GDC-ag S3 Bucket (Prod)\nStores Uploaded Field Logs")]
         end
@@ -191,20 +191,28 @@ Once your code is on the Cloud Workstation (or if you prefer developing 100% in 
 | Workstation Port / Tool | Service / Component | How Developers Use It During AI App Development |
 | :--- | :--- | :--- |
 | **Port `80` (Default Web URL)** | **Cloud Workstations Browser IDE (`Code-OSS`) + Gemini Code Assist + Cloud Code** | Full VS Code-compatible IDE in your browser with integrated bash terminals, Git graph, **Gemini Code Assist** (inline AI code completion & chat), and the **Cloud Code Kubernetes Explorer** for viewing live pod logs and editing YAML manifests. |
-| **Port `8084` Web Preview** | **GDC Unified Developer IDE & Integrated JupyterLab 4 (`gdc-dev-landing-page` in namespace `gdc-dev`)** | **Interactive AI & RAG Prototyping Lab:** Click the **JupyterLab** tab inside Port `8084` to launch an in-cluster `Python 3 (ipykernel)` notebook. Because JupyterLab runs *inside* the GKE cluster, you can interactively test prompts against `http://gemma-gateway.gemma-inference.svc.cluster.local/v1/chat/completions` and query `postgres-svc.mission-app.svc.cluster.local:5432` before baking the final code into `src/backend/main.py`. |
-| **Port `8080` Web Preview** | **Gemma 4 Inference Gateway Control Plane (`gemma-gateway` in namespace `gemma-inference`)** | **Live LLM Governance & Routing Inspector:** View real-time GPU VRAM utilization, test how the prompt classifier routes between **Tier 1 (`gemma4:26b` MoE)** and **Tier 2 (`gemma4:31b` Dense)**, tune global `temperature` / `top_p` parameters, and inspect or terminate active inference sessions. |
-| **Port `8083` Web Preview** | **Sovereign Admin Telemetry Console (`gdc-dev-operator` in namespace `gdc-dev`)** | **Cluster & CRD Health Dashboard:** Inspect simulated GDC Custom Resources (`DBCluster`, `Bucket`), namespace resource quotas, and pod readiness across your cluster. |
+| **Port `8084` Web Preview *(Optional `p13-gdc-dev` Add-On)*** | **GDC Unified Developer IDE & Integrated JupyterLab 4 (`svc/gdc-dev-landing-page` port `8080` in namespace `gdc-dev`)** | **Interactive AI & RAG Prototyping Lab:** When the optional `p13-gdc-dev` (or `p14-antigravity-dev`) pattern from `gdc-iac-org` is installed, click the **JupyterLab** tab inside Port `8084` to launch an in-cluster `Python 3 (ipykernel)` notebook. Because JupyterLab runs *inside* the GKE cluster, its default `NetworkPolicy/gdc-dev-netpol` allows direct prompts against `http://gemma-gateway.gemma-inference.svc.cluster.local/v1/chat/completions` (`Port 80`). *(Note: if you also want a notebook in `gdc-dev` to query `postgres-svc.${NAMESPACE}.svc.cluster.local:5432` directly rather than via the application API, add an egress rule for port `5432` to `gdc-dev-netpol`.)* |
+| **Port `8080` Web Preview** | **Gemma 4 Inference Gateway Control Plane (`svc/gemma-gateway` in namespace `gemma-inference`)** | **Live LLM Governance & Routing Inspector:** View real-time GPU VRAM utilization, test how the prompt classifier routes between **Tier 1 (`gemma4:26b` MoE)** and **Tier 2 (`gemma4:31b` Dense)**, tune global `temperature` / `top_p` parameters, and inspect or terminate active inference sessions. |
+| **Port `8083` Web Preview *(Optional `p13-gdc-dev` Add-On)*** | **Sovereign Admin Telemetry Console (`svc/gdc-dev-landing-page` port `8081` in namespace `gdc-dev`)** | **Cluster & CRD Health Dashboard:** Exposed on container port `8081` of `svc/gdc-dev-landing-page` when `p13-gdc-dev` is installed; inspects simulated GDC Custom Resources (`DBCluster`, `Bucket`), namespace resource quotas, and pod readiness across your cluster. |
 | **Port `8081` Web Preview** | **Unified GDC Application Gateway API (`gdc-platform-gateway` in namespace `${NAMESPACE}`)** | **Production-Identical Staging Entrypoint:** Single-origin Envoy Gateway (`/` $\rightarrow$ frontend, `/api` $\rightarrow$ backend, `/auth` $\rightarrow$ Keycloak OIDC) where you test real browser PKCE logins and run automated integration tests before packaging. |
 
 > [!TIP]
-> **Quick Command to Ensure All Workstation Web Preview Tunnels (`8080`, `8081`, `8083`, `8084`) Are Running:**  
-> At any time on your Cloud Workstation terminal, you can check and start all four Web Preview port-forwards with:
+> **Quick Command to Ensure All Workstation Web Preview Tunnels (`8080`, `8081`, and Optional `8083`/`8084`) Are Running:**  
+> At any time on your Cloud Workstation terminal, you can check and start the Web Preview port-forwards (bound to `127.0.0.1` for local workstation loopback security) with:
 > ```bash
 > source ~/GitHub/gdc-dev-env.sh
-> curl -sf http://127.0.0.1:8080/health >/dev/null || (kubectl port-forward --address 0.0.0.0 -n gemma-inference svc/gemma-gateway 8080:80 >/dev/null 2>&1 &)
-> curl -sf http://127.0.0.1:8083/ >/dev/null       || (kubectl port-forward --address 0.0.0.0 -n gdc-dev svc/gdc-dev-operator 8083:8083 >/dev/null 2>&1 &)
-> curl -sf http://127.0.0.1:8084/ >/dev/null       || (kubectl port-forward --address 0.0.0.0 -n gdc-dev svc/gdc-dev-landing-page 8084:8080 >/dev/null 2>&1 &)
-> curl -sf http://127.0.0.1:8081/api/health >/dev/null || (nohup bash -c "while true; do kubectl port-forward --address 0.0.0.0 -n ${NAMESPACE} svc/gdc-gateway-tunnel 8081:80 >> /tmp/pf-8081.log 2>&1; sleep 1; done" >/dev/null 2>&1 &)
+> # 1. Gemma 4 Gateway Control Plane (probe /v1/models on port 8080)
+> curl -sf http://127.0.0.1:8080/v1/models >/dev/null || (kubectl port-forward --address 127.0.0.1 -n gemma-inference svc/gemma-gateway 8080:80 >/dev/null 2>&1 &)
+> 
+> # 2. Optional p13-gdc-dev Admin Telemetry Console (8083 -> 8081) & Workspace/JupyterLab (8084 -> 8080)
+> #    (To install p13-gdc-dev if not yet deployed: helm upgrade --install gdc-dev ~/GitHub/gdc-iac-org/blueprints/patterns/p13-gdc-dev/chart -n gdc-dev --create-namespace)
+> if kubectl get ns gdc-dev >/dev/null 2>&1; then
+>   curl -sf http://127.0.0.1:8083/ >/dev/null || (kubectl port-forward --address 127.0.0.1 -n gdc-dev svc/gdc-dev-landing-page 8083:8081 >/dev/null 2>&1 &)
+>   curl -sf http://127.0.0.1:8084/ >/dev/null || (kubectl port-forward --address 127.0.0.1 -n gdc-dev svc/gdc-dev-landing-page 8084:8080 >/dev/null 2>&1 &)
+> fi
+> 
+> # 3. Unified GDC Application Gateway API (8081 -> 80)
+> curl -sf http://127.0.0.1:8081/api/health >/dev/null || (nohup bash -c "while true; do kubectl port-forward --address 127.0.0.1 -n ${NAMESPACE} svc/gdc-gateway-tunnel 8081:80 >> /tmp/pf-8081.log 2>&1; sleep 1; done" >/dev/null 2>&1 &)
 > ```
 
 ---
@@ -224,23 +232,57 @@ kubectl get pods,svc,gateway -n "${NAMESPACE}"
 echo "=== 2. Checking Shared GPU Gemma 4 Inference Gateway (gemma-inference) ==="
 kubectl get pods,svc -n gemma-inference
 
-echo "=== 3. Probing Gemma 4 Gateway Over Internal Cluster DNS ==="
-kubectl exec -n "${NAMESPACE}" deploy/postgres -- \
-  sh -c "wget -qO- --timeout=5 http://gemma-gateway.gemma-inference.svc.cluster.local/health 2>/dev/null || echo '{\"status\":\"gateway_warming_or_cpu_mode\"}'"
+echo "=== 3. Probing Gemma 4 Gateway Over Internal Cluster DNS (/v1/models) ==="
+kubectl run gemma-dns-probe -n "${NAMESPACE}" --rm -i --restart=Never --quiet \
+  --image=curlimages/curl:8.10.1 -- \
+  curl -sf --max-time 5 http://gemma-gateway.gemma-inference.svc.cluster.local/v1/models \
+  || echo '{"status":"gateway_warming_or_cpu_mode"}'
 echo ""
 ```
 
 <details>
 <summary><b>Starting from a Brand-New Namespace? (Click to expand only if <code>postgres</code>, <code>keycloak</code>, or <code>gdc-platform-gateway</code> are not yet running in <code>${NAMESPACE}</code>)</b></summary>
 
-If you already completed the Greenfield Guide validation in `mission-app`, **skip this box**—your PostgreSQL database, GCS bucket, Keycloak OIDC server, and Gateway API (`Port 8081`) are already running! If you are running in a brand-new namespace where those services haven't been applied yet, apply the existing `manifests/gcp/*.yaml` files from the Greenfield Guide:
+If you already completed the Greenfield Guide validation in `mission-app`, **skip this box**—your PostgreSQL database, GCS bucket, Keycloak OIDC server, and Gateway API (`Port 8081`) are already running! If you are running in a brand-new namespace where those services and secrets haven't been applied yet, run this complete bootstrap block using the `manifests/gcp/*.yaml` files from the Greenfield Guide:
 ```bash
+source ~/GitHub/gdc-dev-env.sh
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+# 1. Create the Database & Storage Secrets expected by the staging pods and application backend
+kubectl create secret generic "${APP_NAME}-db-credentials" \
+  --namespace "${NAMESPACE}" \
+  --from-literal=host="postgres-svc" \
+  --from-literal=username="postgres" \
+  --from-literal=password="password" \
+  --from-literal=database="postgres" \
+  --from-literal=connection_string="postgresql://postgres:password@postgres-svc:5432/postgres" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic "${APP_NAME}-s3-credentials" \
+  --namespace "${NAMESPACE}" \
+  --from-literal=S3_ENDPOINT="" \
+  --from-literal=AWS_ACCESS_KEY_ID="" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="" \
+  --from-literal=BUCKET_NAME="${APP_NAME}-files-${PROJECT_ID}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# 2. Apply the GKE staging emulation manifests and wait for StatefulSet/Deployment readiness
 kubectl apply -f ~/GitHub/${APP_NAME}/manifests/gcp/postgres-emulation.yaml -n "${NAMESPACE}"
 kubectl apply -f ~/GitHub/${APP_NAME}/manifests/gcp/gcs-workload-identity.yaml -n "${NAMESPACE}"
 kubectl apply -f ~/GitHub/${APP_NAME}/manifests/gcp/gateway-api-staging.yaml -n "${NAMESPACE}"
 kubectl apply -f ~/GitHub/${APP_NAME}/manifests/gcp/keycloak-emulation.yaml -n "${NAMESPACE}"
-kubectl rollout status deployment/postgres deployment/keycloak -n "${NAMESPACE}" --timeout=180s
+kubectl rollout status statefulset/postgres -n "${NAMESPACE}" --timeout=180s
+kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=180s
+
+# 3. Bind the Gateway Internal Load Balancer VIP to deployment/gdc-gateway-tunnel
+GATEWAY_VIP=""
+for i in $(seq 1 30); do
+  GATEWAY_VIP=$(kubectl get gateway gdc-platform-gateway -n "${NAMESPACE}" -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true)
+  [ -n "${GATEWAY_VIP}" ] && break
+  sleep 5
+done
+kubectl set env deployment/gdc-gateway-tunnel -n "${NAMESPACE}" GATEWAY_VIP="${GATEWAY_VIP}"
+kubectl rollout status deployment/gdc-gateway-tunnel -n "${NAMESPACE}" --timeout=60s
 ```
 </details>
 
@@ -278,6 +320,9 @@ EOF
 cat << 'EOF' > ~/GitHub/${APP_NAME}/src/backend/main.py
 import os
 import time
+from contextlib import asynccontextmanager
+from enum import Enum
+from urllib.parse import quote_plus
 import boto3
 import jwt
 import psycopg2
@@ -289,7 +334,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWTError
 
-app = FastAPI(title="GDC-ag Sovereign AI Mission & Intelligence API")
+
+class Classification(str, Enum):
+    UNCLASSIFIED = "UNCLASSIFIED"
+    SECRET = "SECRET"
+
 
 # ---------------------------------------------------------------------------
 # 1. Dual-Mode Authentication: Live Keycloak OIDC RS256 JWKS (Default) +
@@ -298,7 +347,7 @@ app = FastAPI(title="GDC-ag Sovereign AI Mission & Intelligence API")
 AUTH_MODE = os.getenv("AUTH_MODE", "keycloak").lower()
 KEYCLOAK_INTERNAL_URL = os.getenv(
     "KEYCLOAK_URL",
-    "http://keycloak-svc:8080/auth/realms/gdc-app-realm",
+    "http://keycloak/auth/realms/gdc-app-realm",
 )
 bearer_scheme = HTTPBearer(auto_error=False)
 jwks_client = PyJWKClient(f"{KEYCLOAK_INTERNAL_URL}/protocol/openid-connect/certs")
@@ -341,14 +390,62 @@ async def get_current_user(
 # ---------------------------------------------------------------------------
 # 2. Database (PostgreSQL + pgvector) & Dual-Mode Storage (GCS <-> GDC-ag S3)
 # ---------------------------------------------------------------------------
-DB_CONN = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres-svc:5432/postgres")
+def build_db_dsn() -> str:
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    if dsn:
+        return dsn
+    db_host = os.getenv("DB_HOST", "postgres-svc").strip()
+    db_port = os.getenv("DB_PORT", "5432").strip()
+    db_user = os.getenv("DB_USER", "postgres").strip()
+    db_pass = os.getenv("DB_PASSWORD", "password")
+    db_name = os.getenv("DB_NAME", "postgres").strip()
+    return f"postgresql://{quote_plus(db_user)}:{quote_plus(db_pass)}@{db_host}:{db_port}/{db_name}"
+
+
+DB_CONN = build_db_dsn()
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "").strip()
 S3_REGION = os.getenv("S3_REGION", "zone1").strip()
+S3_CA_BUNDLE = os.getenv("AWS_CA_BUNDLE") or os.getenv("REQUESTS_CA_BUNDLE") or True
 BUCKET_NAME = (
     os.getenv("BUCKET_NAME", "p15-sovereign-mission-app-bucket")
     .removeprefix("s3://")
     .removeprefix("gs://")
 )
+
+
+def ensure_db_schema() -> None:
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mission_records (
+                        id SERIAL PRIMARY KEY,
+                        author VARCHAR(64) NOT NULL,
+                        classification VARCHAR(32) NOT NULL DEFAULT 'UNCLASSIFIED',
+                        summary TEXT NOT NULL,
+                        s3_object_key VARCHAR(256),
+                        embedding vector(768),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
+    finally:
+        conn.close()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        ensure_db_schema()
+    except Exception as exc:
+        print(f"Warning: Database schema initialization deferred: {exc}")
+    yield
+
+
+app = FastAPI(title="GDC-ag Sovereign AI Mission & Intelligence API", lifespan=lifespan)
 
 # ---------------------------------------------------------------------------
 # 3. Sovereign AI Inference Configuration (Gemma 4 Gateway in gemma-inference)
@@ -357,7 +454,6 @@ OPENAI_API_BASE_URL = os.getenv(
     "OPENAI_API_BASE_URL",
     "http://gemma-gateway.gemma-inference.svc.cluster.local/v1",
 ).rstrip("/")
-AI_GATEWAY_ROOT_URL = OPENAI_API_BASE_URL.removesuffix("/v1")
 AI_TIMEOUT_SECONDS = float(os.getenv("AI_TIMEOUT_SECONDS", "45.0"))
 
 s3_client = None
@@ -371,6 +467,7 @@ if S3_ENDPOINT:
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
         config=Config(signature_version="s3v4", connect_timeout=5, read_timeout=10),
         region_name=S3_REGION,
+        verify=S3_CA_BUNDLE,
     )
 else:
     try:
@@ -398,7 +495,7 @@ def upload_object_bytes(object_key: str, content: bytes, content_type: str) -> s
 
 def call_sovereign_llm(
     prompt: str,
-    classification: str,
+    classification: Classification | str,
     username: str,
     attachment_excerpt: str = "",
 ) -> dict:
@@ -408,8 +505,9 @@ def call_sovereign_llm(
     Tier 2 (gemma4:31b Dense). Automatically provides a deterministic sovereign
     tactical synthesis fallback if GPU pods are scaled down or warming up.
     """
-    complexity_tier = "tier2" if classification == "SECRET" else "tier1"
-    requested_model = "gemma4:31b" if classification == "SECRET" else "gemma4:26b"
+    cls_val = classification.value if isinstance(classification, Classification) else str(classification)
+    complexity_tier = "tier2" if cls_val == Classification.SECRET.value else "tier1"
+    requested_model = "gemma4:31b" if cls_val == Classification.SECRET.value else "gemma4:26b"
     context_block = (
         f"\n\n[Attached Field Telemetry Excerpt]:\n{attachment_excerpt[:1500]}"
         if attachment_excerpt
@@ -426,7 +524,7 @@ def call_sovereign_llm(
         },
         {
             "role": "user",
-            "content": f"[{classification} REQUEST by {username}] {prompt}{context_block}",
+            "content": f"[{cls_val} REQUEST by {username}] {prompt}{context_block}",
         },
     ]
 
@@ -472,7 +570,7 @@ def call_sovereign_llm(
 
     latency_ms = int((time.monotonic() - start_ts) * 1000)
     fallback_briefing = (
-        f"• [Operational Summary ({classification})]: Analyzed input from operator '{username}' "
+        f"• [Operational Summary ({cls_val})]: Analyzed input from operator '{username}' "
         f"({prompt[:120]})."
         + (f" Ingested {len(attachment_excerpt)} bytes of attached telemetry." if attachment_excerpt else "")
         + "\n• [Risk/Anomaly Assessment]: Sovereign air-gap boundary integrity verified; "
@@ -483,7 +581,7 @@ def call_sovereign_llm(
         "ai_briefing": fallback_briefing,
         "ai_engine": "sovereign-tactical-fallback",
         "model_used": f"{requested_model} (fallback)",
-        "model_tier": "Dense" if classification == "SECRET" else "MoE",
+        "model_tier": "Dense" if cls_val == Classification.SECRET.value else "MoE",
         "latency_ms": latency_ms,
     }
 
@@ -500,13 +598,13 @@ def health():
 
 @app.get("/ai/status")
 def ai_status():
-    """Probes the in-cluster Gemma 4 Inference Gateway and reports environment readiness."""
+    """Probes the in-cluster Gemma 4 Inference Gateway (/v1/models) and reports environment readiness."""
     gw_reachable = False
     gw_status_code = None
     try:
-        r = requests.get(f"{AI_GATEWAY_ROOT_URL}/health", timeout=3.0)
+        r = requests.get(f"{OPENAI_API_BASE_URL}/models", timeout=3.0)
         gw_status_code = r.status_code
-        gw_reachable = r.status_code < 500
+        gw_reachable = r.status_code == 200
     except Exception:
         gw_reachable = False
 
@@ -524,13 +622,27 @@ def ai_status():
 
 @app.get("/records")
 def list_records(user: dict = Depends(get_current_user)):
-    with psycopg2.connect(DB_CONN) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, author, classification, summary, s3_object_key, created_at "
-                "FROM mission_records ORDER BY id DESC LIMIT 50;"
-            )
-            rows = cur.fetchall()
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                if "admin" in user["roles"]:
+                    cur.execute(
+                        "SELECT id, author, classification, summary, s3_object_key, created_at "
+                        "FROM mission_records ORDER BY id DESC LIMIT 50;"
+                    )
+                else:
+                    cur.execute(
+                        "SELECT id, author, classification, summary, s3_object_key, created_at "
+                        "FROM mission_records "
+                        "WHERE classification = 'UNCLASSIFIED' AND author = %s "
+                        "ORDER BY id DESC LIMIT 50;",
+                        (user["username"],),
+                    )
+                rows = cur.fetchall()
+    finally:
+        conn.close()
+
     return {
         "authenticated_user": user["username"],
         "roles": user["roles"],
@@ -550,12 +662,12 @@ def list_records(user: dict = Depends(get_current_user)):
 
 @app.post("/records")
 async def create_record(
-    classification: str = Form("UNCLASSIFIED"),
+    classification: Classification = Form(Classification.UNCLASSIFIED),
     summary: str = Form(...),
     attachment: UploadFile = File(None),
     user: dict = Depends(get_current_user),
 ):
-    if classification == "SECRET" and "admin" not in user["roles"]:
+    if classification == Classification.SECRET and "admin" not in user["roles"]:
         raise HTTPException(status_code=403, detail="Only 'admin' role (e.g. charlie) can file SECRET records")
 
     storage_uri = None
@@ -565,22 +677,25 @@ async def create_record(
         content = await attachment.read()
         storage_uri = upload_object_bytes(object_key, content, attachment.content_type)
 
-    with psycopg2.connect(DB_CONN) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO mission_records (author, classification, summary, s3_object_key) "
-                "VALUES (%s, %s, %s, %s) RETURNING id;",
-                (user["username"], classification, summary, storage_uri),
-            )
-            record_id = cur.fetchone()[0]
-        conn.commit()
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO mission_records (author, classification, summary, s3_object_key) "
+                    "VALUES (%s, %s, %s, %s) RETURNING id;",
+                    (user["username"], classification.value, summary, storage_uri),
+                )
+                record_id = cur.fetchone()[0]
+    finally:
+        conn.close()
 
     return {"status": "created", "id": record_id, "author": user["username"], "s3_object_key": storage_uri}
 
 
 @app.post("/analyze")
 async def analyze_mission_intelligence(
-    classification: str = Form("UNCLASSIFIED"),
+    classification: Classification = Form(Classification.UNCLASSIFIED),
     prompt: str = Form(...),
     attachment: UploadFile = File(None),
     user: dict = Depends(get_current_user),
@@ -592,7 +707,7 @@ async def analyze_mission_intelligence(
     3. Invokes Gemma 4 Inference Gateway (/v1/chat/completions) with automatic complexity routing.
     4. Persists the prompt + AI-generated tactical briefing to PostgreSQL (mission_records).
     """
-    if classification == "SECRET" and "admin" not in user["roles"]:
+    if classification == Classification.SECRET and "admin" not in user["roles"]:
         raise HTTPException(
             status_code=403,
             detail="Only 'admin' role (e.g. charlie) can run SECRET AI threat assessments",
@@ -616,21 +731,24 @@ async def analyze_mission_intelligence(
 
     combined_summary = f"[AI-BRIEFING | {ai_result['model_used']}] Prompt: {prompt} || Assessment: {ai_result['ai_briefing']}"
 
-    with psycopg2.connect(DB_CONN) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO mission_records (author, classification, summary, s3_object_key) "
-                "VALUES (%s, %s, %s, %s) RETURNING id;",
-                (user["username"], classification, combined_summary, storage_uri),
-            )
-            record_id = cur.fetchone()[0]
-        conn.commit()
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO mission_records (author, classification, summary, s3_object_key) "
+                    "VALUES (%s, %s, %s, %s) RETURNING id;",
+                    (user["username"], classification.value, combined_summary, storage_uri),
+                )
+                record_id = cur.fetchone()[0]
+    finally:
+        conn.close()
 
     return {
         "status": "analyzed",
         "id": record_id,
         "author": user["username"],
-        "classification": classification,
+        "classification": classification.value,
         "prompt": prompt,
         "ai_briefing": ai_result["ai_briefing"],
         "ai_engine": ai_result["ai_engine"],
@@ -907,7 +1025,7 @@ EOF
 
 ## 6. Step 4: Update the Helm Chart (`chart/`) & Production Manifests (`manifests/`) with AI Gateway Wiring
 
-Update `manifests/apps/workloads.yaml`, `chart/values.yaml`, `chart/values.schema.json`, and `chart/templates/apps/workloads.yaml` so `OPENAI_API_BASE_URL` (`http://gemma-gateway.gemma-inference.svc.cluster.local/v1`) is declaratively injected into your backend container:
+Update `manifests/apps/workloads.yaml`, `chart/values.yaml`, `chart/values.schema.json`, `chart/templates/apps/workloads.yaml`, and `chart/tests/pattern_test.yaml` so `OPENAI_API_BASE_URL` (`http://gemma-gateway.gemma-inference.svc.cluster.local/v1`), the hardened `ServiceAccount`, `NetworkPolicy`, discrete DB/S3 `secretKeyRef` mappings, custom `caBundle` mount, and `Service/keycloak:80` routing are declaratively wired:
 
 ```bash
 source ~/GitHub/gdc-dev-env.sh
@@ -915,6 +1033,12 @@ cd ~/GitHub/${APP_NAME}
 
 # 1. Production User Cluster Workloads (manifests/apps/workloads.yaml)
 cat <<EOF > ~/GitHub/${APP_NAME}/manifests/apps/workloads.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${APP_NAME}-sa
+  namespace: ${NAMESPACE}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -947,13 +1071,57 @@ spec:
             secretKeyRef:
               name: ${APP_NAME}-db-credentials
               key: connection_string
+              optional: true
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: host
+              optional: true
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: username
+              optional: true
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: password
+              optional: true
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: database
+              optional: true
         - name: KEYCLOAK_URL
-          value: "http://keycloak-svc:8080/auth/realms/gdc-app-realm"
+          value: "http://keycloak/auth/realms/gdc-app-realm"
         - name: OPENAI_API_BASE_URL
           value: "http://gemma-gateway.gemma-inference.svc.cluster.local/v1"
+        - name: S3_ENDPOINT
+          value: "https://objectstorage.gdc.goog"
+        - name: S3_REGION
+          value: "zone1"
+        - name: BUCKET_NAME
+          value: "${APP_NAME}-bucket"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-s3-credentials
+              key: access-key-id
+              optional: true
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-s3-credentials
+              key: secret-access-key
+              optional: true
         envFrom:
         - secretRef:
             name: ${APP_NAME}-s3-credentials
+            optional: true
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
@@ -1076,8 +1244,8 @@ spec:
         - name: X-Forwarded-Proto
           value: https
     backendRefs:
-    - name: keycloak-svc
-      port: 8080
+    - name: keycloak
+      port: 80
   - matches:
     - path:
         type: PathPrefix
@@ -1098,9 +1266,24 @@ spec:
     backendRefs:
     - name: frontend-svc
       port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${APP_NAME}-allow-mesh
+  namespace: ${NAMESPACE}
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}
+  egress:
+  - {}
 EOF
 
-# 2. Update Helm Chart values.yaml, values.schema.json, and templates/apps/workloads.yaml
+# 2. Update Helm Chart values.yaml, values.schema.json, templates/apps/workloads.yaml, and tests/pattern_test.yaml
 cat <<EOF > ~/GitHub/${APP_NAME}/chart/values.yaml
 global:
   projectId: "test-project"
@@ -1115,15 +1298,38 @@ registry: ""
 
 gdc:
   enabled: false
+  location: "zone1"
+  dbVersion: "15"
+  dbCpu: 2
+  dbMemory: "8Gi"
+  dbDiskSize: "50Gi"
 
 apps:
   enabled: true
   imageTag: "latest"
+  createServiceAccount: true
   serviceAccountName: "${APP_NAME}-sa"
-  keycloakUrl: "http://keycloak-svc:8080/auth/realms/gdc-app-realm"
+  dbSecretName: "${APP_NAME}-db-credentials"
+  s3SecretName: "${APP_NAME}-s3-credentials"
+  keycloakUrl: "http://keycloak/auth/realms/gdc-app-realm"
+  keycloak:
+    serviceName: "keycloak"
+    servicePort: 80
+    relativePath: "/auth"
+    realm: "gdc-app-realm"
   openaiApiBaseUrl: "http://gemma-gateway.gemma-inference.svc.cluster.local/v1"
   s3Endpoint: "https://objectstorage.gdc.goog"
+  s3Region: "zone1"
   bucketName: "${APP_NAME}-bucket"
+  caBundle:
+    enabled: false
+    secretName: "gdc-root-ca"
+    certKey: "ca.crt"
+    mountPath: "/etc/ssl/certs/gdc-root-ca.crt"
+  gateway:
+    name: "gdc-platform-gateway"
+    namespace: ""
+    hostnames: []
 EOF
 
 cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
@@ -1142,7 +1348,12 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
     "gdc": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "location": { "type": "string" },
+        "dbVersion": { "type": "string" },
+        "dbCpu": { "type": "integer" },
+        "dbMemory": { "type": "string" },
+        "dbDiskSize": { "type": "string" }
       }
     },
     "apps": {
@@ -1150,10 +1361,14 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
       "properties": {
         "enabled": { "type": "boolean" },
         "imageTag": { "type": "string" },
+        "createServiceAccount": { "type": "boolean" },
         "serviceAccountName": { "type": "string" },
+        "dbSecretName": { "type": "string" },
+        "s3SecretName": { "type": "string" },
         "keycloakUrl": { "type": "string" },
         "openaiApiBaseUrl": { "type": "string" },
         "s3Endpoint": { "type": "string" },
+        "s3Region": { "type": "string" },
         "bucketName": { "type": "string" }
       }
     }
@@ -1163,6 +1378,14 @@ EOF
 
 cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/apps/workloads.yaml
 {{- if .Values.apps.enabled }}
+{{- if .Values.apps.createServiceAccount }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.apps.serviceAccountName | default "${APP_NAME}-sa" }}
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1193,19 +1416,65 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: ${APP_NAME}-db-credentials
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
               key: connection_string
+              optional: true
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: host
+              optional: true
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: username
+              optional: true
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: password
+              optional: true
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: database
+              optional: true
         - name: KEYCLOAK_URL
           value: {{ .Values.apps.keycloakUrl | quote }}
         - name: OPENAI_API_BASE_URL
           value: {{ .Values.apps.openaiApiBaseUrl | default "http://gemma-gateway.gemma-inference.svc.cluster.local/v1" | quote }}
         - name: S3_ENDPOINT
           value: {{ .Values.apps.s3Endpoint | quote }}
+        - name: S3_REGION
+          value: {{ .Values.apps.s3Region | default "zone1" | quote }}
         - name: BUCKET_NAME
           value: {{ .Values.apps.bucketName | quote }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.s3SecretName | default "${APP_NAME}-s3-credentials" }}
+              key: access-key-id
+              optional: true
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.s3SecretName | default "${APP_NAME}-s3-credentials" }}
+              key: secret-access-key
+              optional: true
+        {{- if and .Values.apps.caBundle .Values.apps.caBundle.enabled }}
+        - name: AWS_CA_BUNDLE
+          value: {{ .Values.apps.caBundle.mountPath | default "/etc/ssl/certs/gdc-root-ca.crt" | quote }}
+        - name: REQUESTS_CA_BUNDLE
+          value: {{ .Values.apps.caBundle.mountPath | default "/etc/ssl/certs/gdc-root-ca.crt" | quote }}
+        {{- end }}
         envFrom:
         - secretRef:
-            name: ${APP_NAME}-s3-credentials
+            name: {{ .Values.apps.s3SecretName | default "${APP_NAME}-s3-credentials" }}
+            optional: true
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
@@ -1216,6 +1485,12 @@ spec:
         volumeMounts:
         - name: tmp-dir
           mountPath: /tmp
+        {{- if and .Values.apps.caBundle .Values.apps.caBundle.enabled }}
+        - name: gdc-ca-bundle
+          mountPath: {{ .Values.apps.caBundle.mountPath | default "/etc/ssl/certs/gdc-root-ca.crt" | quote }}
+          subPath: {{ .Values.apps.caBundle.certKey | default "ca.crt" | quote }}
+          readOnly: true
+        {{- end }}
         resources:
           requests:
             cpu: "100m"
@@ -1226,6 +1501,11 @@ spec:
       volumes:
       - name: tmp-dir
         emptyDir: {}
+      {{- if and .Values.apps.caBundle .Values.apps.caBundle.enabled }}
+      - name: gdc-ca-bundle
+        secret:
+          secretName: {{ .Values.apps.caBundle.secretName | default "gdc-root-ca" }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -1314,13 +1594,17 @@ spec:
   parentRefs:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: gdc-platform-gateway
-    namespace: {{ include "${APP_NAME}.namespace" . }}
+    name: {{ (.Values.apps.gateway).name | default "gdc-platform-gateway" }}
+    namespace: {{ (.Values.apps.gateway).namespace | default (include "${APP_NAME}.namespace" .) }}
+  {{- if and .Values.apps.gateway .Values.apps.gateway.hostnames }}
+  hostnames:
+  {{- toYaml .Values.apps.gateway.hostnames | nindent 2 }}
+  {{- end }}
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: /auth
+        value: {{ (.Values.apps.keycloak).relativePath | default "/auth" }}
     filters:
     - type: RequestHeaderModifier
       requestHeaderModifier:
@@ -1328,8 +1612,8 @@ spec:
         - name: X-Forwarded-Proto
           value: https
     backendRefs:
-    - name: keycloak-svc
-      port: 8080
+    - name: {{ (.Values.apps.keycloak).serviceName | default "keycloak" }}
+      port: {{ (.Values.apps.keycloak).servicePort | default 80 }}
   - matches:
     - path:
         type: PathPrefix
@@ -1350,7 +1634,64 @@ spec:
     backendRefs:
     - name: frontend-svc
       port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${APP_NAME}-allow-mesh
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}
+  egress:
+  - {}
 {{- end }}
+EOF
+
+cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/tests/pattern_test.yaml
+suite: test Sovereign Application Pattern
+templates:
+  - gdc/resources.yaml
+  - apps/workloads.yaml
+tests:
+  - it: should render GDC CRDs ONLY when gdc.enabled is true
+    set:
+      gdc.enabled: true
+      apps.enabled: false
+    template: gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: DBCluster
+        documentIndex: 0
+      - isKind:
+          of: Bucket
+        documentIndex: 1
+
+  - it: should render User Cluster apps ONLY when apps.enabled is true
+    set:
+      gdc.enabled: false
+      apps.enabled: true
+    template: apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 7
+      - isKind:
+          of: Deployment
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+        documentIndex: 1
 EOF
 ```
 
@@ -1358,7 +1699,7 @@ EOF
 
 ## 7. Step 5: Build, Push & Deploy the AI-Enabled Application to Your Running GKE Environment
 
-Now build and push the updated AI-enabled container images to `blueprint-images` (`us-central1`), upgrade the Helm release in `${NAMESPACE}`, and restart `backend` and `frontend` so your running environment immediately picks up the new AI capabilities:
+Now build and push the updated AI-enabled container images to `blueprint-images` (`us-central1`), upgrade the Helm release in `${NAMESPACE}` (passing `--set apps.createServiceAccount=false` so the Workload Identity-annotated ServiceAccount from `manifests/gcp/gcs-workload-identity.yaml` is preserved on GKE), and restart `backend` and `frontend` so your running environment immediately picks up the new AI capabilities:
 
 ```bash
 source ~/GitHub/gdc-dev-env.sh
@@ -1379,6 +1720,7 @@ helm upgrade --install "${APP_NAME}" ./chart \
   --set global.registry="${REGISTRY_HOST}" \
   --set gdc.enabled=false \
   --set apps.enabled=true \
+  --set apps.createServiceAccount=false \
   --set apps.serviceAccountName="${APP_NAME}-sa" \
   --set apps.openaiApiBaseUrl="http://gemma-gateway.gemma-inference.svc.cluster.local/v1" \
   --set apps.s3Endpoint="" \
@@ -1392,7 +1734,7 @@ curl -sf http://127.0.0.1:8081/api/ai/status >/dev/null || (
   pkill -f "while true.*8081" || true
   pkill -f "port-forward.*8081" || true
   sleep 1
-  nohup bash -c "while true; do kubectl port-forward --address 0.0.0.0 -n ${NAMESPACE} svc/gdc-gateway-tunnel 8081:80 >> /tmp/pf-8081.log 2>&1; sleep 1; done" >/dev/null 2>&1 &
+  nohup bash -c "while true; do kubectl port-forward --address 127.0.0.1 -n ${NAMESPACE} svc/gdc-gateway-tunnel 8081:80 >> /tmp/pf-8081.log 2>&1; sleep 1; done" >/dev/null 2>&1 &
   sleep 3
 )
 
@@ -1405,8 +1747,8 @@ curl -s http://127.0.0.1:8081/api/ai/status | python3 -m json.tool
 ## 8. Step 6: Run the Automated AI Unit Tests, 8-Check Live AI + Keycloak Integration Suite & Promotion Gates 1–3
 
 Before packaging for production, run this single verification block to validate:
-1. **`[Check 0]` Unit, Functional, AI Gateway Mock & RBAC Test Suite (`src/backend/test_main.py` — 7 tests using `unittest.IsolatedAsyncioTestCase`)**: Tests `/health`, `/ai/status`, `401` invalid JWT, RS256 claim mapping, `alice` (`user`) `UNCLASSIFIED` AI briefing generation, `403` RBAC blocking `alice` from `SECRET` AI threat assessments, and `charlie` (`admin`) `SECRET` AI threat assessment with file attachment upload.
-2. **`[Checks 1-8]` Live 8-Check Keycloak OIDC + Gemma 4 AI Gateway + GCS + PostgreSQL Integration Suite (`scripts/test-ai-app-integration.py`)**: Tests live OIDC discovery (`[AI-01]`), backend health (`[AI-02]`), `/api/ai/status` Gemma 4 Gateway readiness (`[AI-03]`), `401` unauthenticated/forged token rejection (`[AI-04]`), `alice` RS256 token + `UNCLASSIFIED` AI briefing via `/api/analyze` (`[AI-05]`), `alice` `403` RBAC rejection on `SECRET` `/api/analyze` (`[AI-06]`), `charlie` Admin `SECRET` `/api/analyze` with live GCS telemetry upload (`[AI-07]`), and PostgreSQL audit log readback confirming the `[AI-BRIEFING | ...]` record persisted (`[AI-08]`).
+1. **`[Check 0]` Unit, Functional, AI Gateway Mock, BOLA & RBAC Test Suite (`src/backend/test_main.py` — 8 tests using `unittest.IsolatedAsyncioTestCase`)**: Tests `/health`, `/ai/status` (`/v1/models`), `401` invalid JWT, RS256 claim mapping, `alice` (`user`) `UNCLASSIFIED` AI briefing generation, `GET /records` BOLA clearance filtering + connection cleanup, `403` RBAC blocking `alice` from `SECRET` AI threat assessments, and `charlie` (`admin`) `SECRET` AI threat assessment with file attachment upload.
+2. **`[Checks 1-8]` Live 8-Check Keycloak OIDC PKCE (`S256`) + Gemma 4 AI Gateway + GCS + PostgreSQL Integration Suite (`scripts/test-ai-app-integration.py`)**: Tests live OIDC discovery (`[AI-01]`), backend health (`[AI-02]`), `/api/ai/status` Gemma 4 Gateway readiness (`[AI-03]`), `401` unauthenticated/forged token rejection (`[AI-04]`), `alice` Authorization Code + PKCE (`S256`) token + `UNCLASSIFIED` AI briefing via `/api/analyze` (`[AI-05]`), `alice` `403` RBAC rejection on `SECRET` `/api/analyze` (`[AI-06]`), `charlie` Admin `SECRET` `/api/analyze` with live GCS telemetry upload (`[AI-07]`), and PostgreSQL audit log readback confirming both the `[AI-BRIEFING | ...]` record persisted for `charlie` and BOLA isolation filters `SECRET` records from `alice` (`[AI-08]`).
 3. **`[Gates 1-3]` Trivy `HIGH,CRITICAL` Scan, 4-Layer `gdc-iac-org` Chart + OPA `policy/security.rego` Validation, and Air-Gap Release Bundle Packaging**.
 
 ```bash
@@ -1429,13 +1771,14 @@ class TestAIMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ai_gateway_url", body)
 
     @patch("main.requests.get")
-    def test_02_ai_status_endpoint_probes_gemma_gateway(self, mock_get):
+    def test_02_ai_status_endpoint_probes_gemma_gateway_models(self, mock_get):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_get.return_value = mock_resp
         status = main.ai_status()
         self.assertEqual(status["status"], "ready")
         self.assertTrue(status["ai_gateway_reachable"])
+        mock_get.assert_called_once_with(f"{main.OPENAI_API_BASE_URL}/models", timeout=3.0)
 
     async def test_03_forged_or_invalid_jwt_rejected_401(self):
         with self.assertRaises(HTTPException) as ctx:
@@ -1473,7 +1816,7 @@ class TestAIMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
 
         alice = {"username": "alice", "roles": ["user"]}
         res = await main.analyze_mission_intelligence(
-            classification="UNCLASSIFIED",
+            classification=main.Classification.UNCLASSIFIED,
             prompt="Analyze Sector 4 perimeter sensors",
             attachment=None,
             user=alice,
@@ -1482,12 +1825,30 @@ class TestAIMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["ai_engine"], "live-gemma-gateway")
         self.assertEqual(res["model_used"], "gemma4:26b")
         self.assertEqual(res["model_tier"], "MoE")
+        mock_conn.close.assert_called()
+
+    @patch("main.psycopg2.connect")
+    def test_05b_list_records_enforces_bola_and_closes_connection(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_cur.fetchall.return_value = [(1, "alice", "UNCLASSIFIED", "Sector 4", None, None)]
+        mock_conn.__enter__.return_value = mock_conn
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+        mock_connect.return_value = mock_conn
+
+        alice = {"username": "alice", "roles": ["user"]}
+        listed = main.list_records(user=alice)
+        self.assertEqual(listed["authenticated_user"], "alice")
+        self.assertEqual(len(listed["records"]), 1)
+        executed_sql = mock_cur.execute.call_args[0][0]
+        self.assertIn("WHERE classification = 'UNCLASSIFIED' AND author = %s", executed_sql)
+        mock_conn.close.assert_called()
 
     async def test_06_standard_user_blocked_from_secret_ai_analysis_403(self):
         alice = {"username": "alice", "roles": ["user"]}
         with self.assertRaises(HTTPException) as ctx:
             await main.analyze_mission_intelligence(
-                classification="SECRET",
+                classification=main.Classification.SECRET,
                 prompt="Unauthorized SECRET threat correlation",
                 attachment=None,
                 user=alice,
@@ -1523,7 +1884,7 @@ class TestAIMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
 
         charlie = {"username": "charlie", "roles": ["admin", "user"]}
         res = await main.analyze_mission_intelligence(
-            classification="SECRET",
+            classification=main.Classification.SECRET,
             prompt="Correlate Grid 9B RF bursts",
             attachment=mock_file,
             user=charlie,
@@ -1532,6 +1893,7 @@ class TestAIMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["model_used"], "gemma4:31b")
         self.assertEqual(res["model_tier"], "Dense")
         self.assertEqual(res["s3_object_key"], "gs://test-bucket/charlie/ai-rf-log.txt")
+        mock_conn.close.assert_called()
 
 
 if __name__ == "__main__":
@@ -1542,10 +1904,10 @@ docker run --rm -v "$HOME/GitHub/${APP_NAME}/src/backend/test_main.py:/app/test_
   --entrypoint python3 "${REGISTRY_HOST}/${APP_NAME}-backend:latest" \
   -m unittest discover -s /app -p "test_*.py" -v
 
-echo "=== [Checks 1-8] Automated 8-Check Live Keycloak OIDC + Gemma 4 AI Gateway Integration Suite ==="
+echo "=== [Checks 1-8] Automated 8-Check Live Keycloak OIDC PKCE + Gemma 4 AI Gateway Integration Suite ==="
 cat << 'EOF' > ~/GitHub/${APP_NAME}/scripts/test-ai-app-integration.py
 #!/usr/bin/env python3
-import base64, json, os, sys, urllib.error, urllib.parse, urllib.request, uuid
+import base64, hashlib, html, http.cookiejar, json, os, re, secrets, sys, urllib.error, urllib.parse, urllib.request, uuid
 
 BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8081").rstrip("/")
 REALM = os.getenv("KEYCLOAK_REALM", "gdc-app-realm")
@@ -1559,14 +1921,65 @@ def http_request(url, method="GET", headers=None, data=None):
     except urllib.error.HTTPError as err:
         return err.code, err.read().decode("utf-8", errors="replace")
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 def get_keycloak_token(username, password):
+    """Obtains an RS256 OIDC JWT using standard OAuth 2.0 Authorization Code + PKCE (S256)."""
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+    redirect_uri = f"{BASE_URL}/"
+
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), _NoRedirectHandler())
+
+    auth_params = urllib.parse.urlencode({
+        "client_id": CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid profile",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    })
+    auth_url = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/auth?{auth_params}"
+    with opener.open(auth_url, timeout=15) as resp:
+        login_html = resp.read().decode("utf-8", errors="replace")
+
+    match = re.search(r'action="([^"]+)"', login_html)
+    if not match:
+        raise RuntimeError(f"Could not find Keycloak login form action URL for {username}")
+    action_url = html.unescape(match.group(1))
+    if action_url.startswith("/"):
+        action_url = f"{BASE_URL}{action_url}"
+
+    form_body = urllib.parse.urlencode({"username": username, "password": password, "credentialId": ""}).encode("utf-8")
+    req = urllib.request.Request(action_url, data=form_body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    location = None
+    try:
+        with opener.open(req, timeout=15) as resp:
+            location = resp.headers.get("Location")
+    except urllib.error.HTTPError as err:
+        if err.code in (301, 302, 303, 307, 308):
+            location = err.headers.get("Location")
+        else:
+            raise RuntimeError(f"Keycloak PKCE login failed for {username} (HTTP {err.code})")
+
+    if not location or "code=" not in location:
+        raise RuntimeError(f"Keycloak PKCE redirect missing authorization code for {username}: {location}")
+    code = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)["code"][0]
+
     token_url = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/token"
-    body = urllib.parse.urlencode({
-        "client_id": CLIENT_ID, "grant_type": "password", "username": username, "password": password
+    token_body = urllib.parse.urlencode({
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": verifier,
     }).encode("utf-8")
-    status, text = http_request(token_url, method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, data=body)
+    status, text = http_request(token_url, method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, data=token_body)
     if status != 200:
-        raise RuntimeError(f"Keycloak token grant failed for {username} (HTTP {status}): {text}")
+        raise RuntimeError(f"Keycloak PKCE token exchange failed for {username} (HTTP {status}): {text}")
     return json.loads(text)["access_token"]
 
 def build_multipart(fields, file_field=None):
@@ -1620,7 +2033,7 @@ a_status, a_text = http_request(f"{BASE_URL}/api/analyze", method="POST", header
 assert a_status == 200, f"Expected 200 for alice UNCLASSIFIED /api/analyze, got {a_status}: {a_text}"
 a_data = json.loads(a_text)
 assert len(a_data.get("ai_briefing", "")) > 10
-print(f"[AI-05] 'alice' UNCLASSIFIED AI Briefing ({a_data.get('ai_engine')} | {a_data.get('model_used')}) [PASS]")
+print(f"[AI-05] 'alice' PKCE Token + UNCLASSIFIED AI Briefing ({a_data.get('ai_engine')} | {a_data.get('model_used')}) [PASS]")
 
 # [AI-06] Alice ('user') Blocked from SECRET AI Threat Assessment (HTTP 403)
 ctype_s, body_s = build_multipart({
@@ -1646,11 +2059,14 @@ c_data = json.loads(c_text)
 assert c_data.get("s3_object_key", "").startswith(("gs://", "s3://"))
 print(f"[AI-07] 'charlie' Admin SECRET AI Briefing + GCS Upload ({c_data['s3_object_key']}) [PASS]")
 
-# [AI-08] PostgreSQL Audit Trail Readback (/api/records)
+# [AI-08] PostgreSQL Audit Trail Readback & BOLA Isolation (/api/records)
 r_status, r_text = http_request(f"{BASE_URL}/api/records", headers={"Authorization": f"Bearer {charlie_token}"})
 records = json.loads(r_text).get("records", [])
 assert r_status == 200 and any("[AI-BRIEFING |" in r.get("summary", "") for r in records)
-print(f"[AI-08] PostgreSQL AI Briefing Audit Persistence Verified ({len(records)} records) . [PASS]")
+ra_status, ra_text = http_request(f"{BASE_URL}/api/records", headers={"Authorization": f"Bearer {alice_token}"})
+alice_records = json.loads(ra_text).get("records", [])
+assert ra_status == 200 and all(r.get("classification") == "UNCLASSIFIED" and r.get("author") == "alice" for r in alice_records)
+print(f"[AI-08] PostgreSQL AI Audit Persistence & BOLA Isolation Verified ({len(records)} admin / {len(alice_records)} user) [PASS]")
 print("================================================================================")
 print("✅ ALL 8 SOVEREIGN AI & KEYCLOAK OIDC INTEGRATION TESTS PASSED (8/8)")
 print("================================================================================")

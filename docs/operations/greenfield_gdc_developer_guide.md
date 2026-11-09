@@ -99,9 +99,9 @@ By adhering to the contracts below, your application code (`src/`) runs **unchan
 | **Developer Toolchain** | **`docker`**, **`helm`**, **`kubectl`** *(plus one-time `gcloud` for Artifact Registry, GCS bucket / Workload Identity, or optional cluster setup)* | **`docker`**, **`helm`** / **`helmfile`**, **`kubectl`** | Zero `gcloud` calls inside application containers, Helm charts, or runtime scripts. |
 | **OCI Container Registry (Push & Pull)** | **Google Artifact Registry** (`${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}`) — Workstation pushes via `docker push`; GKE nodes pull via `roles/artifactregistry.reader` | **GDC Managed Harbor OCI Registry** (`harbor.infra.gdc.local/gdc-iac`) — Populated via `ingest-airgap-bundle.sh` & `mirror_images.py` | Parameterized `{{ .Values.global.registry }}` in Helm `values.yaml` (or `./configure-blueprints.sh -r ${REGISTRY_HOST}`). |
 | **Compute (CPU & GPU)** | GKE CPU nodes (`app=client`) + optional GPU nodes (`nvidia.com/gpu`) | GDC User Cluster CPU nodes + `gpu-moe` / `gpu-dense` H100 pools | Standard K8s `resources.limits["nvidia.com/gpu"]` and parameterized `nodeSelector`. |
-| **Authentication (Mandatory)** | In-cluster **Keycloak OIDC** (`quay.io/keycloak/keycloak:24.0.4`) with `ConfigMap` Realm Import | **HA Keycloak OIDC (`p12-keycloak`)** federated with Enterprise AD/LDAP & PKI | Frontend uses OIDC Auth Code + PKCE (`S256`); Backend verifies RS256 JWTs via internal KubeDNS (`http://keycloak-svc:8080/auth/.../certs`). |
-| **PostgreSQL + `pgvector`** | In-cluster **`pgvector/pgvector:pg16` `StatefulSet`** | Zonal Managed **`DBCluster` CRD** (`postgresql.dbadmin.gdc.goog/v1`, `ZONAL_HA`) | Both expose `Secret/<app>-db-credentials` (`connection_string`, `username`, `password`, `db_name`). |
-| **Object Storage (RAG / Files)** | **Actual Google Cloud Storage (`gs://<app>-files-${PROJECT_ID}`)** via **GKE Workload Identity** (`iam.gke.io/gcp-service-account`) | Zonal Managed **`Bucket` CRD** (`buckets.object.gdc.goog/v1` at `https://objectstorage.gdc.goog`) | **Dual-Mode Storage Adapter (`google-cloud-storage` + `boto3`):** Uses native GCS via Workload Identity when `S3_ENDPOINT` is empty on GKE, and automatically uses `boto3` S3 v4 when `S3_ENDPOINT="https://objectstorage.gdc.goog"` is set on `GDC-ag`. |
+| **Authentication (Mandatory)** | In-cluster **Keycloak OIDC** (`quay.io/keycloak/keycloak:24.0.4`) with `ConfigMap` Realm Import | **HA Keycloak OIDC (`p12-keycloak`)** federated with Enterprise AD/LDAP & PKI | Frontend uses OIDC Auth Code + PKCE (`S256`); Backend verifies RS256 JWTs via internal KubeDNS (`http://keycloak:80/auth/.../certs`). |
+| **PostgreSQL + `pgvector`** | In-cluster **`pgvector/pgvector:pg16` `StatefulSet`** | Zonal Managed **`DBCluster` CRD** (`postgresql.dbadmin.gdc.goog/v1`, `primarySpec`) | Exposes `Secret/<app>-db-credentials` (`host`, `username`, `password`, `database`, `connection_string`) projected to the User Cluster. |
+| **Object Storage (RAG / Files)** | **Actual Google Cloud Storage (`gs://<app>-files-${PROJECT_ID}`)** via **GKE Workload Identity** (`iam.gke.io/gcp-service-account`) | Zonal Managed **`Bucket` CRD** (`object.gdc.goog/v1` at `https://objectstorage.gdc.goog`) | **Dual-Mode Storage Adapter (`google-cloud-storage` + `boto3`):** Uses native GCS via Workload Identity when `S3_ENDPOINT` is empty on GKE, and automatically uses `boto3` S3 v4 (with `AWS_CA_BUNDLE` sovereign PKI verification) when `S3_ENDPOINT="https://objectstorage.gdc.goog"` is set on `GDC-ag`. |
 | **Load Balancing & Routing** | **Kubernetes Gateway API** (`Gateway/gdc-platform-gateway`, `HTTPRoute`) + `gdc-gateway-tunnel` (`socat` L4 bridge) | **Kubernetes Gateway API** (`gateway.networking.k8s.io/v1` on GDC Hardware Load Balancers) | Single-origin `HTTPRoute` mapping `/auth` $\rightarrow$ Keycloak, `/api` $\rightarrow$ Backend, and `/` $\rightarrow$ Frontend. |
 
 ---
@@ -132,9 +132,9 @@ cd ~/GitHub/${APP_NAME}
 git init
 ```
 
-### 2.2. Enable, Create & Authenticate Google Artifact Registry (For Pushing & Pulling Container Images)
+### 2.2. Authenticate Docker with Google Artifact Registry & Save Your Developer Environment Config
 
-Before building and deploying containers, **Google Artifact Registry (`artifactregistry.googleapis.com`)** must be enabled and available in your GCP project, your Cloud Workstation `docker` daemon must be authenticated to push images (`docker push`), and your GKE cluster nodes must have IAM permissions (`roles/artifactregistry.reader`) to pull images (`imagePull`):
+Your Platform Administrator pre-provisions **Google Artifact Registry (`${AR_REPO_NAME}`)** and grants your GKE node service account (`roles/artifactregistry.reader`) and Workstation service account (`roles/artifactregistry.writer`) access in **[Appendix A](#appendix-a-complete-platform-administrator-guide--provisioning--bootstrapping-the-cloud-workstation--gke-environment)**. On your Cloud Workstation terminal, authenticate `docker` and save `~/GitHub/gdc-dev-env.sh`:
 
 ```bash
 export PROJECT_ID=$(gcloud config get-value project 2>/dev/null || echo "${PROJECT_ID:-gdc-tenant-project}")
@@ -142,30 +142,14 @@ export AR_REGION="${AR_REGION:-us-east4}"
 export AR_REPO_NAME="${AR_REPO_NAME:-blueprint-images}"
 export REGISTRY_HOST="${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}"
 
-# 1. Enable the Artifact Registry API in your GCP project
-gcloud services enable artifactregistry.googleapis.com --project="${PROJECT_ID}"
-
-# 2. Create the Docker-format Artifact Registry repository if it does not already exist
+# 1. Verify the pre-provisioned Artifact Registry repository is reachable
 gcloud artifacts repositories describe "${AR_REPO_NAME}" \
-  --location="${AR_REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
-gcloud artifacts repositories create "${AR_REPO_NAME}" \
-  --repository-format=docker \
-  --location="${AR_REGION}" \
-  --description="GDC-ag Stepping-Stone Container Registry" \
-  --project="${PROJECT_ID}"
+  --location="${AR_REGION}" --project="${PROJECT_ID}" >/dev/null
 
-# 3. Configure Docker on your Cloud Workstation to authenticate with Artifact Registry (for docker push/pull)
+# 2. Configure Docker on your Cloud Workstation to authenticate with Artifact Registry (for docker push/pull)
 gcloud auth configure-docker "${AR_REGION}-docker.pkg.dev" --quiet
 
-# 4. Ensure GKE cluster nodes have IAM permission to pull images from Artifact Registry (prevents ImagePullBackOff)
-PROJECT_NUMBER=$(gcloud projects describe "${PROJECT_ID}" --format="value(projectNumber)")
-gcloud artifacts repositories add-iam-policy-binding "${AR_REPO_NAME}" \
-  --location="${AR_REGION}" \
-  --project="${PROJECT_ID}" \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/artifactregistry.reader" --quiet >/dev/null
-
-# 5. Save your Developer Environment Config (~/GitHub/gdc-dev-env.sh)
+# 3. Save your Developer Environment Config (~/GitHub/gdc-dev-env.sh)
 cat <<EOF > ~/GitHub/gdc-dev-env.sh
 # ============================================================================
 # Greenfield GDC-ag Developer Environment Variables
@@ -186,7 +170,7 @@ echo "=================================================================="
 EOF
 
 source ~/GitHub/gdc-dev-env.sh
-kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${NAMESPACE}"
 ```
 
 > [!TIP]
@@ -216,8 +200,10 @@ export CLUSTER_NAME="${CLUSTER_NAME:-gdc-stepping-stone}"
 export REGION="${REGION:-us-east4}"
 export ZONE="${ZONE:-us-east4-a}"
 export AR_REPO_NAME="${AR_REPO_NAME:-blueprint-images}"
+export GKE_NODE_SA_NAME="gdc-gke-node-sa"
+export GKE_NODE_SA_EMAIL="${GKE_NODE_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# 1. Enable required GCP APIs & create Artifact Registry Docker repository
+# 1. Enable required GCP APIs, create Artifact Registry, and create a least-privilege GKE Node Service Account
 gcloud services enable container.googleapis.com artifactregistry.googleapis.com \
   cloudresourcemanager.googleapis.com iamcredentials.googleapis.com --project="${PROJECT_ID}"
 
@@ -227,12 +213,22 @@ gcloud artifacts repositories create "${AR_REPO_NAME}" \
   --location="${REGION}" \
   --project="${PROJECT_ID}"
 
-# 2. Create CPU-Only GKE cluster with Workload Identity, Dataplane V2, and Gateway API enabled
+gcloud iam service-accounts describe "${GKE_NODE_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+gcloud iam service-accounts create "${GKE_NODE_SA_NAME}" \
+  --display-name="GDC GKE Node Least-Privilege SA" --project="${PROJECT_ID}"
+
+for NODE_ROLE in "roles/artifactregistry.reader" "roles/logging.logWriter" "roles/monitoring.metricWriter" "roles/monitoring.viewer"; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GKE_NODE_SA_EMAIL}" --role="${NODE_ROLE}" --condition=None --quiet >/dev/null
+done
+
+# 2. Create CPU-Only GKE cluster with dedicated Node SA, Workload Identity, Dataplane V2, and Gateway API
 if ! gcloud container clusters describe "${CLUSTER_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
   gcloud container clusters create "${CLUSTER_NAME}" \
     --project "${PROJECT_ID}" \
     --zone "${ZONE}" \
     --release-channel "regular" \
+    --service-account "${GKE_NODE_SA_EMAIL}" \
     --enable-dataplane-v2 \
     --gateway-api=standard \
     --workload-pool "${PROJECT_ID}.svc.id.goog" \
@@ -277,9 +273,20 @@ Because GPU capacity (`nvidia-l4`, `nvidia-tesla-a100`, `nvidia-rtx-6000`) can e
 export PROJECT_ID=$(gcloud config get-value project)
 export CLUSTER_NAME="${CLUSTER_NAME:-gdc-gpu-stepping-stone}"
 export AR_REPO_NAME="${AR_REPO_NAME:-blueprint-images}"
+export GKE_NODE_SA_NAME="gdc-gke-node-sa"
+export GKE_NODE_SA_EMAIL="${GKE_NODE_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 gcloud services enable container.googleapis.com artifactregistry.googleapis.com \
   cloudresourcemanager.googleapis.com iamcredentials.googleapis.com --project="${PROJECT_ID}"
+
+gcloud iam service-accounts describe "${GKE_NODE_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+gcloud iam service-accounts create "${GKE_NODE_SA_NAME}" \
+  --display-name="GDC GKE Node Least-Privilege SA" --project="${PROJECT_ID}"
+
+for NODE_ROLE in "roles/artifactregistry.reader" "roles/logging.logWriter" "roles/monitoring.metricWriter" "roles/monitoring.viewer"; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GKE_NODE_SA_EMAIL}" --role="${NODE_ROLE}" --condition=None --quiet >/dev/null
+done
 
 GPU_CONFIGS=(
   "nvidia-l4:g2-standard-24:2"
@@ -305,6 +312,7 @@ else
         echo "Trying ${ZONE_CANDIDATE} for ${MACHINE} (${COUNT}x ${GPU_TYPE})..."
         if gcloud container clusters create "${CLUSTER_NAME}" \
           --project "${PROJECT_ID}" --zone "${ZONE_CANDIDATE}" --release-channel "regular" \
+          --service-account "${GKE_NODE_SA_EMAIL}" \
           --machine-type "${MACHINE}" --accelerator "type=${GPU_TYPE},count=${COUNT},gpu-driver-version=LATEST" \
           --num-nodes 1 --enable-dataplane-v2 --gateway-api=standard \
           --workload-pool "${PROJECT_ID}.svc.id.goog" --disk-size=300 \
@@ -326,6 +334,7 @@ gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone "${ZONE}" --p
 # Add standard CPU node pool (client-pool) and Gateway API proxy-only subnet
 gcloud container node-pools describe client-pool --cluster "${CLUSTER_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" >/dev/null 2>&1 || \
 gcloud container node-pools create client-pool --cluster "${CLUSTER_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" \
+  --service-account "${GKE_NODE_SA_EMAIL}" \
   --machine-type "e2-standard-4" --num-nodes 2 --node-labels="app=client" --quiet
 
 if [ -z "$(gcloud compute networks subnets list --filter="region:${REGION} AND purpose:REGIONAL_MANAGED_PROXY" --format="value(name)" --project="${PROJECT_ID}")" ]; then
@@ -360,7 +369,7 @@ When a team of developers shares **one GKE Stepping-Stone cluster** (with each d
 | **Container Registry Image Tags (`docker push`)** | Pushing `${REGISTRY_HOST}/${APP_NAME}-backend:latest` is safe because only one developer pushes `:latest`. | **Prefix `APP_NAME` (`export APP_NAME="${DEV_ID}-mission-app"`) or set `--set apps.imageTag="${DEV_ID}-dev"`** so `bob` pushing `:latest` into the shared `blueprint-images` Artifact Registry never overwrites `alice`'s container image! |
 | **Gateway API (`gdc-platform-gateway`)** | One `Gateway` (`gke-l7-rilb`) in `mission-app`. | **Small teams ($\le 8$ devs):** Each developer deploys their own per-namespace `Gateway` + `gdc-gateway-tunnel` inside `dev-<dev_id>`, giving each developer an isolated ILB VIP so root-path `/` + `/auth` + `/api` routing works without hostname conflicts.<br>**Larger teams ($> 8$ devs):** Watch VPC Internal Forwarding Rule quotas; if sharing a single central `Gateway`, each developer's `HTTPRoute` **must** specify a distinct `hostnames: ["${DEV_ID}.app.gdc.local"]` filter so `/` routes do not collide. |
 | **GPU & LLM Inference (`nvidia.com/gpu`)** | Developer deploys `gdc_gemma_gw` or `vLLM` directly whenever needed. | **Never deploy duplicate GPU LLM pods in `dev-<dev_id>`**—GPUs are whole-device scheduled and duplicate pods will hang in `Pending (Insufficient nvidia.com/gpu)`. Consume the **single shared gateway** in `gemma-inference` via `http://gemma-gateway.gemma-inference.svc.cluster.local/v1`. |
-| **In-Namespace vs. Cross-Namespace KubeDNS** | Short service names (`postgres-svc`, `keycloak-svc`) or FQDNs work interchangeably. | Short names (`http://keycloak-svc:8080/...`, `postgres-svc:5432`) resolve automatically to **your own `dev-<dev_id>` namespace** via pod DNS search domains, keeping your DB and Keycloak isolated from teammates, while shared services use full FQDNs (`*.gemma-inference.svc.cluster.local`). |
+| **In-Namespace vs. Cross-Namespace KubeDNS** | Short service names (`postgres-svc`, `keycloak`) or FQDNs work interchangeably. | Short names (`http://keycloak:80/...`, `postgres-svc:5432`) resolve automatically to **your own `dev-<dev_id>` namespace** via pod DNS search domains, keeping your DB and Keycloak isolated from teammates, while shared services use full FQDNs (`*.gemma-inference.svc.cluster.local`). |
 | **Cluster-Scoped K8s Objects (`ClusterRole`, CRDs)** | Static names (e.g., `ClusterRole/app-operator-role`) do not collide. | **Avoid `ClusterRole` / `ClusterRoleBinding` in app charts**—use namespace-scoped `Role` and `RoleBinding` instead. Unprefixed cluster-scoped resources fail Helm ownership checks when a second developer installs the same chart in another namespace. |
 | **GCS Buckets & Workload Identity** | Bound to `[mission-app/p15-sovereign-mission-app-sa]`. | Workload Identity IAM bindings match the **exact `[NAMESPACE/KSA_NAME]` tuple** (`${PROJECT_ID}.svc.id.goog[dev-alice/alice-mission-app-sa]`). Each developer must use their own bucket and KSA binding. |
 | **Teardown & Cleanup** | `kubectl delete namespace mission-app` is safe. | **Never delete shared namespaces (`gemma-inference`, `gdc-dev`) or PA-managed namespaces (`dev-alice`, which holds your `ResourceQuota` and RBAC `RoleBinding`)!** Clean up via `helm uninstall "${APP_NAME}" -n "${NAMESPACE}"` and `kubectl delete -f manifests/gcp/ -n "${NAMESPACE}"`. |
@@ -379,13 +388,15 @@ Because `manifests/gcp/` is only used on your GKE Stepping-Stone cluster (and is
 
 ### 3.1. Emulate GDC Managed PostgreSQL + `pgvector` (`manifests/gcp/postgres-emulation.yaml`)
 
-On `GDC-ag`, the Zonal `DBCluster` CRD (`postgresql.dbadmin.gdc.goog/v1`) provisions HA PostgreSQL and populates a Kubernetes `Secret` containing `connection_string`, `username`, `password`, and `db_name`. Create the identical `Secret` and a `pgvector/pgvector:pg16` `StatefulSet`:
+On `GDC-ag`, the Zonal `DBCluster` CRD (`postgresql.dbadmin.gdc.goog/v1`) provisions HA PostgreSQL and exposes a Kubernetes `Secret` with keys `host`, `username`, `password`, `database` (and `db_name`/`connection_string` when projected to the User Cluster). Create the identical `Secret` and a `pgvector/pgvector:pg16` `StatefulSet`:
 
 ```bash
-# 1. Create the Database Credentials Secret Contract
+# 1. Create the Database Credentials Secret Contract (supporting both discrete keys and connection_string)
 kubectl create secret generic "${APP_NAME}-db-credentials" \
+  --from-literal=host="postgres-svc.${NAMESPACE}.svc.cluster.local" \
   --from-literal=username=postgres \
   --from-literal=password=password \
+  --from-literal=database=postgres \
   --from-literal=db_name=postgres \
   --from-literal=connection_string="postgresql://postgres:password@postgres-svc.${NAMESPACE}.svc.cluster.local:5432/postgres" \
   -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
@@ -492,7 +503,7 @@ kubectl rollout status statefulset/postgres -n "${NAMESPACE}" --timeout=120s
 > 
 > In **Section 5.1**, your Python backend uses a **Dual-Mode Storage Adapter (`google-cloud-storage` + `boto3`)**:
 > - **On GKE (`S3_ENDPOINT=""`):** Automatically uses `google.cloud.storage.Client()` authenticated via GKE Workload Identity against `gs://${APP_NAME}-files-${PROJECT_ID}`.
-> - **On Physical `GDC-ag` (`S3_ENDPOINT="https://objectstorage.gdc.goog"`):** Automatically switches to `boto3.client("s3")` (`s3v4`) against your Zonal `Bucket` (`buckets.object.gdc.goog/v1`) with **zero code changes**!
+> - **On Physical `GDC-ag` (`S3_ENDPOINT="https://objectstorage.gdc.goog"`):** Automatically switches to `boto3.client("s3")` (`s3v4`, verifying against `AWS_CA_BUNDLE`) against your Zonal `Bucket` (`object.gdc.goog/v1`) with **zero code changes**!
 
 ```bash
 export PROJECT_ID=$(gcloud config get-value project 2>/dev/null || echo "${PROJECT_ID}")
@@ -502,30 +513,10 @@ export GSA_NAME="${APP_NAME}-sa"
 export KSA_NAME="${APP_NAME}-sa"
 export GSA_EMAIL="${GSA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# 1. Create the actual Google Cloud Storage (GCS) bucket
-gcloud storage buckets describe "gs://${BUCKET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
-gcloud storage buckets create "gs://${BUCKET_NAME}" \
-  --project="${PROJECT_ID}" \
-  --location="${REGION}" \
-  --uniform-bucket-level-access
+# 1. Verify the pre-provisioned GCS bucket (created by the Platform Administrator in Appendix A.3 / A.6)
+gcloud storage buckets describe "gs://${BUCKET_NAME}" --project="${PROJECT_ID}" >/dev/null
 
-# 2. Create the Google Service Account (GSA) and grant Storage Object Admin on the bucket
-gcloud iam service-accounts describe "${GSA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
-gcloud iam service-accounts create "${GSA_NAME}" \
-  --display-name="GDC App GCS Workload Identity SA" \
-  --project="${PROJECT_ID}"
-
-gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
-  --member="serviceAccount:${GSA_EMAIL}" \
-  --role="roles/storage.objectAdmin" --quiet >/dev/null
-
-# 3. Bind GKE Workload Identity between the GSA and the Kubernetes ServiceAccount (KSA)
-gcloud iam service-accounts add-iam-policy-binding "${GSA_EMAIL}" \
-  --project="${PROJECT_ID}" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${KSA_NAME}]" --quiet >/dev/null
-
-# 4. Save and apply the annotated Kubernetes ServiceAccount + Storage Secret Contract
+# 2. Save and apply the annotated Kubernetes ServiceAccount + Storage Secret Contract
 cat <<EOF > ~/GitHub/${APP_NAME}/manifests/gcp/gcs-workload-identity.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -536,10 +527,12 @@ metadata:
 EOF
 kubectl apply -f ~/GitHub/${APP_NAME}/manifests/gcp/gcs-workload-identity.yaml -n "${NAMESPACE}"
 
-# 5. Create the Object Storage Secret Contract
+# 3. Create the Object Storage Secret Contract
 #    - On GKE: S3_ENDPOINT is empty ("") so the Dual-Mode adapter uses native GCS via Workload Identity
-#    - On GDC-ag: S3_ENDPOINT is "https://objectstorage.gdc.goog" with S3 credentials from the Zonal Bucket
+#    - On GDC-ag: S3_ENDPOINT is "https://objectstorage.gdc.goog" with projected access-key-id / secret-access-key
 kubectl create secret generic "${APP_NAME}-s3-credentials" \
+  --from-literal=access-key-id="" \
+  --from-literal=secret-access-key="" \
   --from-literal=AWS_ACCESS_KEY_ID="" \
   --from-literal=AWS_SECRET_ACCESS_KEY="" \
   --from-literal=S3_ENDPOINT="" \
@@ -547,6 +540,28 @@ kubectl create secret generic "${APP_NAME}-s3-credentials" \
   --from-literal=BUCKET_NAME="gs://${BUCKET_NAME}" \
   -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+<details>
+<summary><b>Self-Managed Sandbox? Create the GCS Bucket & Workload Identity IAM Binding Yourself (Requires Storage/IAM Admin)</b></summary>
+
+If you are running in a self-managed sandbox project where a Platform Administrator did not already run Appendix A.3 / A.6, create the bucket and GSA Workload Identity binding directly:
+```bash
+gcloud storage buckets describe "gs://${BUCKET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+gcloud storage buckets create "gs://${BUCKET_NAME}" \
+  --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
+
+gcloud iam service-accounts describe "${GSA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+gcloud iam service-accounts create "${GSA_NAME}" \
+  --display-name="GDC App GCS Workload Identity SA" --project="${PROJECT_ID}"
+
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
+  --member="serviceAccount:${GSA_EMAIL}" --role="roles/storage.objectAdmin" --quiet >/dev/null
+
+gcloud iam service-accounts add-iam-policy-binding "${GSA_EMAIL}" \
+  --project="${PROJECT_ID}" --role="roles/iam.workloadIdentityUser" \
+  --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${NAMESPACE}/${KSA_NAME}]" --quiet >/dev/null
+```
+</details>
 
 <details>
 <summary><b>Optional Fallback: In-Cluster S3-Compatible MinIO (If Running Without GCS IAM Permissions)</b></summary>
@@ -643,7 +658,7 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: keycloak-svc
+    name: keycloak
 ---
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -764,14 +779,15 @@ helm upgrade --install p5-hybrid-llm-gateway ~/GitHub/gdc-iac-org/blueprints/pat
 
 > [!IMPORTANT]
 > **Why Keycloak Must Be Available in Your Development Environment:**  
-> Even if you develop and test your application's core functional features first (such as database queries, RAG pipelines, LLM prompts, or file uploads) using local/mock authentication, **you cannot promote an application to `GDC-ag` without end-to-end verification against a live Keycloak OIDC Identity Provider**. Having `keycloak` (`svc/keycloak-svc:8080`) running in your namespace and exposed at `/auth` on your Gateway API (`Port 8081`) ensures you can:
+> Even if you develop and test your application's core functional features first (such as database queries, RAG pipelines, LLM prompts, or file uploads) using local/mock authentication, **you cannot promote an application to `GDC-ag` without end-to-end verification against a live Keycloak OIDC Identity Provider**. Having `keycloak` (`svc/keycloak:80` targeting containerPort `8080`, matching `blueprints/patterns/p12-keycloak`) running in your namespace and exposed at `/auth` on your Gateway API (`Port 8081`) ensures you can:
 > 1. Test real browser OIDC Authorization Code + PKCE (`S256`) redirects under the same single-origin Gateway API (`/` + `/auth` + `/api`) used on physical `GDC-ag` racks.
-> 2. Verify that your backend cryptographically validates RS256 signatures against live JWKS endpoints (`http://keycloak-svc:8080/auth/realms/<realm>/protocol/openid-connect/certs`) over internal KubeDNS.
+> 2. Verify that your backend cryptographically validates RS256 signatures against live JWKS endpoints (`http://keycloak:80/auth/realms/<realm>/protocol/openid-connect/certs`) over internal KubeDNS.
 > 3. Run automated integration tests (`401 Unauthorized` on missing/forged tokens, `403 Forbidden` on insufficient roles, `200 OK` on authorized roles) before packaging your air-gap release bundle.
 
 > [!CAUTION]
-> **Why Automated Realm Import (`ConfigMap`) Is Required on Cloud Workstations:**  
-> Keycloak's interactive Admin UI uses a sandboxed iframe (`login-status-iframe.html`) that strips the Cloud Workstation authentication cookie (`forwardAuthCookie`), resulting in `403 Forbidden`. **Never manually click the Keycloak Admin UI to configure realms!** Always import your realm (`gdc-app-realm`), client (`mission-frontend`), roles (`admin`, `user`), and test users (`alice`, `charlie`) declaratively via a Kubernetes `ConfigMap` mounted at `/opt/keycloak/data/import` with `--import-realm` and `KC_DB_POOL_MIN_SIZE="1"`.
+> **Why Automated Realm Import (`ConfigMap`) & Explicit Origin Locking Are Required:**  
+> 1. Keycloak's interactive Admin UI uses a sandboxed iframe (`login-status-iframe.html`) that strips the Cloud Workstation authentication cookie (`forwardAuthCookie`), resulting in `403 Forbidden`. **Never manually click the Keycloak Admin UI to configure realms!** Always import your realm (`gdc-app-realm`), client (`mission-frontend`), roles (`admin`, `user`), and test users (`alice`, `charlie`) declaratively via a Kubernetes `ConfigMap` mounted at `/opt/keycloak/data/import` with `--import-realm` and `KC_DB_POOL_MIN_SIZE="1"`.
+> 2. **Never use wildcard `redirectUris: ["*"]` or `webOrigins: ["*"]` or enable ROPC (`directAccessGrantsEnabled: true`) on a public browser client (`publicClient: true`)**—doing so allows silent cross-origin SSO token theft. Lock `redirectUris` and `webOrigins` to exact origins (`http://127.0.0.1:8081/*` and, if using Cloud Workstation Web Preview, your exact Port-8081 preview origin `https://8081-<workstation-host>/*`; note that Keycloak only permits `*` as a trailing path suffix, never mid-hostname).
 
 ### 4.1. Deploy Pre-Configured Keycloak OIDC (`manifests/gcp/keycloak-emulation.yaml`)
 
@@ -823,9 +839,9 @@ data:
           "enabled": true,
           "publicClient": true,
           "standardFlowEnabled": true,
-          "directAccessGrantsEnabled": true,
-          "redirectUris": ["*"],
-          "webOrigins": ["*"],
+          "directAccessGrantsEnabled": false,
+          "redirectUris": ["http://127.0.0.1:8081/*"],
+          "webOrigins": ["http://127.0.0.1:8081"],
           "attributes": { "pkce.code.challenge.method": "S256" },
           "protocolMappers": [
             {
@@ -880,6 +896,8 @@ spec:
           value: "edge"
         - name: KC_HTTP_ENABLED
           value: "true"
+        - name: KC_HTTP_RELATIVE_PATH
+          value: "/auth"
         - name: KC_DB
           value: "dev-mem"
         - name: KC_DB_POOL_MIN_SIZE
@@ -915,15 +933,24 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: keycloak-svc
+  name: keycloak
 spec:
   selector:
     app: keycloak
   ports:
   - name: http
-    port: 8080
+    port: 80
     targetPort: 8080
 EOF
+
+# Optional: If testing in a browser via Cloud Workstation Web Preview (e.g. export WS_PREVIEW_ORIGIN="https://8081-w-....cloudworkstations.dev"),
+# inject the exact Workstation preview origin into redirectUris and webOrigins before applying:
+if [ -n "${WS_PREVIEW_ORIGIN:-}" ]; then
+  sed -i "s|\"redirectUris\": \[\"http://127.0.0.1:8081/\*\"\]|\"redirectUris\": [\"http://127.0.0.1:8081/*\", \"${WS_PREVIEW_ORIGIN%/}/*\"]|" \
+    ~/GitHub/${APP_NAME}/manifests/gcp/keycloak-emulation.yaml
+  sed -i "s|\"webOrigins\": \[\"http://127.0.0.1:8081\"\]|\"webOrigins\": [\"http://127.0.0.1:8081\", \"${WS_PREVIEW_ORIGIN%/}\"]|" \
+    ~/GitHub/${APP_NAME}/manifests/gcp/keycloak-emulation.yaml
+fi
 
 kubectl apply -f ~/GitHub/${APP_NAME}/manifests/gcp/keycloak-emulation.yaml -n "${NAMESPACE}"
 kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=180s
@@ -931,7 +958,7 @@ kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=180s
 
 ### 4.2. Verify Keycloak Is Available & Customize Realm Roles/Clients for Your Application
 
-Before (or while) developing your application, verify that `keycloak-svc` is running and serving OIDC discovery metadata and RS256 JWKS keys inside `${NAMESPACE}`:
+Before (or while) developing your application, verify that `Service/keycloak` (`port: 80`) is running and serving OIDC discovery metadata and RS256 JWKS keys inside `${NAMESPACE}`:
 
 ```bash
 # Verify Keycloak pod & service are Ready in your namespace
@@ -960,9 +987,9 @@ When adapting `manifests/gcp/keycloak-emulation.yaml` to match the specific role
 ## 5. Step 4: Write Your GDC-Compliant Application Code & Dockerfiles (`src/`)
 
 Below is a complete, production-hardened reference implementation (`src/backend/` and `src/frontend/`) that integrates:
-1. **Keycloak OIDC RS256 JWT validation** over internal KubeDNS (`http://keycloak-svc:8080/auth/realms/gdc-app-realm/protocol/openid-connect/certs`) with `admin` / `user` RBAC.
-2. **PostgreSQL (`pgvector`) persistence** via `Secret/${APP_NAME}-db-credentials`.
-3. **Dual-Mode Object Storage (`google-cloud-storage` + `boto3`)** aligning with [`gdc-iac-org/blueprints/patterns/p6-resilient-rag-agent`](https://github.com/gdc-iac/gdc-iac-org/tree/main/blueprints/patterns/p6-resilient-rag-agent): uses **actual Google Cloud Storage (`gs://...`)** via GKE Workload Identity when `S3_ENDPOINT` is empty on GCP, and automatically switches to **GDC-ag Native Object Storage (`https://objectstorage.gdc.goog`)** via `boto3` (`s3v4`) on `GDC-ag` production.
+1. **Keycloak OIDC RS256 JWT validation** over internal KubeDNS (`http://keycloak:80/auth/realms/gdc-app-realm/protocol/openid-connect/certs`) with `admin` / `user` RBAC and strict `Classification` (`UNCLASSIFIED` | `SECRET`) enum enforcement.
+2. **PostgreSQL (`pgvector`) persistence** via `Secret/${APP_NAME}-db-credentials` (supporting both `DATABASE_URL` and `GDC-ag` discrete `DB_HOST`/`DB_USER`/`DB_PASSWORD`/`DB_NAME` keys, with automatic `lifespan` DDL schema initialization).
+3. **Dual-Mode Object Storage (`google-cloud-storage` + `boto3`)** aligning with [`gdc-iac-org/blueprints/patterns/p6-resilient-rag-agent`](https://github.com/gdc-iac/gdc-iac-org/tree/main/blueprints/patterns/p6-resilient-rag-agent): uses **actual Google Cloud Storage (`gs://...`)** via GKE Workload Identity when `S3_ENDPOINT` is empty on GCP, and automatically switches to **GDC-ag Native Object Storage (`https://objectstorage.gdc.goog`)** via `boto3` (`s3v4`, honoring `AWS_CA_BUNDLE` sovereign PKI root CAs) on `GDC-ag` production.
 4. **Rootless, non-privileged container execution** (`USER 1000`) compliant with `gdc-iac-org/policy/security.rego`.
 
 ### 5.1. Backend FastAPI Service (`src/backend/main.py`, `requirements.txt`, `Dockerfile`)
@@ -982,7 +1009,10 @@ python-multipart>=0.0.22
 EOF
 
 cat << 'EOF' > ~/GitHub/${APP_NAME}/src/backend/main.py
+from contextlib import asynccontextmanager
+from enum import Enum
 import os
+from urllib.parse import quote_plus
 import boto3
 import jwt
 import psycopg2
@@ -993,13 +1023,61 @@ from fastapi.security import OAuth2PasswordBearer
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWTError
 
-app = FastAPI(title="GDC-ag Sovereign Mission API")
+
+class Classification(str, Enum):
+    UNCLASSIFIED = "UNCLASSIFIED"
+    SECRET = "SECRET"
+
+
+def build_db_dsn() -> str:
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    if dsn:
+        return dsn
+    db_user = os.getenv("DB_USER", "postgres")
+    db_pass = quote_plus(os.getenv("DB_PASSWORD", "password"))
+    db_host = os.getenv("DB_HOST", "postgres-svc")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "postgres")
+    return f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+
+
+DB_CONN = build_db_dsn()
+
+
+def ensure_db_schema() -> None:
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS mission_records ("
+                "  id SERIAL PRIMARY KEY,"
+                "  author VARCHAR(128) NOT NULL,"
+                "  classification VARCHAR(64) NOT NULL,"
+                "  summary TEXT NOT NULL,"
+                "  s3_object_key TEXT,"
+                "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                ");"
+            )
+    finally:
+        conn.close()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        ensure_db_schema()
+    except Exception as exc:
+        print(f"Warning: Database schema initialization deferred: {exc}")
+    yield
+
+
+app = FastAPI(title="GDC-ag Sovereign Mission API", lifespan=lifespan)
 
 # 1. Keycloak OIDC Configuration (Always verify RS256 JWKS over internal KubeDNS!)
 OAUTH2_SCHEME = OAuth2PasswordBearer(tokenUrl="token")
 KEYCLOAK_INTERNAL_URL = os.getenv(
     "KEYCLOAK_URL",
-    "http://keycloak-svc:8080/auth/realms/gdc-app-realm",
+    "http://keycloak:80/auth/realms/gdc-app-realm",
 )
 jwks_client = PyJWKClient(f"{KEYCLOAK_INTERNAL_URL}/protocol/openid-connect/certs")
 
@@ -1020,10 +1098,10 @@ async def get_current_user(token: str = Depends(OAUTH2_SCHEME)) -> dict:
     except (PyJWTError, Exception) as exc:
         raise HTTPException(status_code=401, detail=f"OIDC JWT validation failed: {exc}")
 
-# 2. Database & Dual-Mode Object Storage Clients (GCS on GKE Workload Identity <-> S3 on GDC-ag)
-DB_CONN = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres-svc:5432/postgres")
+# 2. Dual-Mode Object Storage Clients (GCS on GKE Workload Identity <-> S3 on GDC-ag)
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "").strip()
 S3_REGION = os.getenv("S3_REGION", "zone1").strip()
+S3_CA_BUNDLE = os.getenv("AWS_CA_BUNDLE") or os.getenv("REQUESTS_CA_BUNDLE") or True
 BUCKET_NAME = os.getenv("BUCKET_NAME", "p15-sovereign-mission-app-bucket").removeprefix("s3://").removeprefix("gs://")
 
 s3_client = None
@@ -1038,6 +1116,7 @@ if S3_ENDPOINT:
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY") or None,
         config=Config(signature_version="s3v4", connect_timeout=5, read_timeout=10),
         region_name=S3_REGION,
+        verify=S3_CA_BUNDLE,
     )
 else:
     # GCP Stepping-Stone Cluster: Actual Google Cloud Storage via GKE Workload Identity
@@ -1072,13 +1151,24 @@ def health():
 
 @app.get("/records")
 def list_records(user: dict = Depends(get_current_user)):
-    with psycopg2.connect(DB_CONN) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, author, classification, summary, s3_object_key, created_at "
-                "FROM mission_records ORDER BY id DESC LIMIT 50;"
-            )
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn, conn.cursor() as cur:
+            if "admin" in user["roles"]:
+                cur.execute(
+                    "SELECT id, author, classification, summary, s3_object_key, created_at "
+                    "FROM mission_records ORDER BY id DESC LIMIT 50;"
+                )
+            else:
+                cur.execute(
+                    "SELECT id, author, classification, summary, s3_object_key, created_at "
+                    "FROM mission_records WHERE classification = 'UNCLASSIFIED' AND author = %s "
+                    "ORDER BY id DESC LIMIT 50;",
+                    (user["username"],),
+                )
             rows = cur.fetchall()
+    finally:
+        conn.close()
     return {
         "authenticated_user": user["username"],
         "roles": user["roles"],
@@ -1097,12 +1187,12 @@ def list_records(user: dict = Depends(get_current_user)):
 
 @app.post("/records")
 async def create_record(
-    classification: str = Form("UNCLASSIFIED"),
+    classification: Classification = Form(Classification.UNCLASSIFIED),
     summary: str = Form(...),
     attachment: UploadFile = File(None),
     user: dict = Depends(get_current_user),
 ):
-    if classification == "SECRET" and "admin" not in user["roles"]:
+    if classification == Classification.SECRET and "admin" not in user["roles"]:
         raise HTTPException(status_code=403, detail="Only 'admin' role (e.g. charlie) can file SECRET records")
 
     storage_uri = None
@@ -1112,15 +1202,17 @@ async def create_record(
         content = await attachment.read()
         storage_uri = upload_object_bytes(object_key, content, attachment.content_type)
 
-    with psycopg2.connect(DB_CONN) as conn:
-        with conn.cursor() as cur:
+    conn = psycopg2.connect(DB_CONN)
+    try:
+        with conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO mission_records (author, classification, summary, s3_object_key) "
                 "VALUES (%s, %s, %s, %s) RETURNING id;",
-                (user["username"], classification, summary, storage_uri),
+                (user["username"], classification.value, summary, storage_uri),
             )
             record_id = cur.fetchone()[0]
-        conn.commit()
+    finally:
+        conn.close()
 
     return {"status": "created", "id": record_id, "author": user["username"], "s3_object_key": storage_uri}
 EOF
@@ -1255,7 +1347,7 @@ EOF
 
 When building a new customer application (such as a RAG assistant, an agentic Text-to-SQL service, a telemetry dashboard, or a workflow API), developers typically follow a **Two-Phase Development Workflow**:
 - **Phase 1 (Functional Development First):** Build and verify your core business logic, database schema, GCS/S3 storage, and LLM calls first using a lightweight **Mock Auth mode (`AUTH_MODE=mock`)** so you can iterate rapidly with `curl`, `pytest`, or a UI persona switcher without browser login redirects.
-- **Phase 2 (Keycloak OIDC Integration & Hardening):** Once your functional endpoints and UI work as expected, switch to **Live Keycloak OIDC mode (`AUTH_MODE=keycloak`)** against the `keycloak` service running in your GKE namespace (`svc/keycloak-svc:8080`)—**without rewriting any of your functional route handlers!**
+- **Phase 2 (Keycloak OIDC Integration & Hardening):** Once your functional endpoints and UI work as expected, switch to **Live Keycloak OIDC mode (`AUTH_MODE=keycloak`)** against the `keycloak` service running in your GKE namespace (`svc/keycloak:80`)—**without rewriting any of your functional route handlers!**
 
 ```mermaid
 flowchart LR
@@ -1266,7 +1358,7 @@ flowchart LR
 
     subgraph PHASE2["Phase 2: Keycloak OIDC Integration (AUTH_MODE=keycloak)"]
         K1["3. Align Realm Roles & Users\nin keycloak-emulation.yaml"]
-        K2["4. Switch Backend to RS256 JWKS\n(http://keycloak-svc:8080/auth/...)"]
+        K2["4. Switch Backend to RS256 JWKS\n(http://keycloak:80/auth/...)"]
         K3["5. Wire Frontend OIDC PKCE\n(Vanilla JS or React AuthProvider)"]
         K4["6. Run Unit (pytest) & Live\nKeycloak Integration Tests"]
     end
@@ -1290,7 +1382,7 @@ from jwt.exceptions import PyJWTError
 AUTH_MODE = os.getenv("AUTH_MODE", "keycloak").lower()
 KEYCLOAK_INTERNAL_URL = os.getenv(
     "KEYCLOAK_URL",
-    "http://keycloak-svc:8080/auth/realms/gdc-app-realm",
+    "http://keycloak:80/auth/realms/gdc-app-realm",
 )
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -1390,10 +1482,10 @@ When you finish functional testing and are ready to switch to Keycloak OIDC:
 
 #### Step D: Verify the 4-Point Keycloak Integration Checklist
 Before deploying, confirm these 4 wiring points between your app, Keycloak, and the Gateway API:
-1. **Internal KubeDNS for Backend JWKS Verification:** `KEYCLOAK_URL` in `Deployment/backend` points to `http://keycloak-svc:8080/auth/realms/gdc-app-realm` (never the external workstation preview URL or public load balancer hostname).
+1. **Internal KubeDNS for Backend JWKS Verification:** `KEYCLOAK_URL` in `Deployment/backend` points to `http://keycloak:80/auth/realms/gdc-app-realm` (matching `Service/keycloak:80` in `blueprints/patterns/p12-keycloak`, never the external workstation preview URL or public load balancer hostname).
 2. **Single-Origin Browser Authority:** The frontend uses `${window.location.origin}/auth/realms/gdc-app-realm` so `/`, `/api`, and `/auth` share the exact same origin and port (`Port 8081` on Cloud Workstation; `https://app.gdc.local` on `GDC-ag`).
-3. **Gateway API `/auth` Route Header Injection:** `HTTPRoute` sets `X-Forwarded-Proto: https` on `/auth` and `Deployment/keycloak` sets `KC_PROXY="edge"`, `KC_HTTP_ENABLED="true"`, and `KC_HOSTNAME_STRICT="false"`.
-4. **GKE `HealthCheckPolicy` on `keycloak-svc`:** `HealthCheckPolicy/keycloak-healthcheck` probes `port: 8080` at `requestPath: /auth/realms/gdc-app-realm` (or `/auth/realms/master`) so GKE's `gke-l7-rilb` Load Balancer marks the Keycloak NEG healthy (`HTTP 200`) rather than failing on `GET /` (`302 Found` $\rightarrow$ `no healthy upstream`).
+3. **Gateway API `/auth` Route Header Injection:** `HTTPRoute` sets `X-Forwarded-Proto: https` on `/auth` and `Deployment/keycloak` sets `KC_PROXY="edge"`, `KC_HTTP_ENABLED="true"`, `KC_HTTP_RELATIVE_PATH="/auth"`, and `KC_HOSTNAME_STRICT="false"`.
+4. **GKE `HealthCheckPolicy` on `keycloak`:** `HealthCheckPolicy/keycloak-healthcheck` probes `port: 8080` at `requestPath: /auth/realms/gdc-app-realm` (or `/auth/realms/master`) on `Service/keycloak` so GKE's `gke-l7-rilb` Load Balancer marks the Keycloak NEG healthy (`HTTP 200`) rather than failing on `GET /` (`302 Found` $\rightarrow$ `no healthy upstream`).
 
 ---
 
@@ -1453,20 +1545,21 @@ class TestMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(listed["records"]), 1)
 
         created = await main.create_record(
-            classification="UNCLASSIFIED",
+            classification=main.Classification.UNCLASSIFIED,
             summary="Routine patrol check",
             attachment=None,
             user=alice,
         )
         self.assertEqual(created["status"], "created")
         self.assertEqual(created["author"], "alice")
+        mock_conn.close.assert_called()
 
     async def test_05_standard_user_blocked_from_secret_record_403(self):
         """RBAC enforcement: 'alice' (role: user) must be blocked with 403 when filing SECRET records."""
         alice = {"username": "alice", "roles": ["user"]}
         with self.assertRaises(HTTPException) as ctx:
             await main.create_record(
-                classification="SECRET",
+                classification=main.Classification.SECRET,
                 summary="Attempted unauthorized SECRET post",
                 attachment=None,
                 user=alice,
@@ -1492,7 +1585,7 @@ class TestMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
 
         charlie = {"username": "charlie", "roles": ["admin", "user"]}
         created = await main.create_record(
-            classification="SECRET",
+            classification=main.Classification.SECRET,
             summary="Verified sector 9 telemetry",
             attachment=mock_file,
             user=charlie,
@@ -1500,6 +1593,7 @@ class TestMissionBackendUnitAndRBAC(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created["id"], 42)
         self.assertEqual(created["s3_object_key"], "gs://test-bucket/charlie/intel.txt")
         mock_upload.assert_called_once_with("charlie/intel.txt", b"classified payload", "text/plain")
+        mock_conn.close.assert_called()
 
 
 if __name__ == "__main__":
@@ -1544,14 +1638,17 @@ metadata:
   name: ${APP_NAME}-db
   namespace: ${NAMESPACE}
 spec:
-  version: POSTGRESQL_15
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: "2"
+  primarySpec:
+    version: "15"
+    adminUser:
+      passwordRef:
+        name: db-pw-${APP_NAME}-db
+    resources:
+      cpu: 2
       memory: 8Gi
-  storage:
-    size: 50G
+      disks:
+      - name: DataDisk
+        size: 50Gi
 ---
 apiVersion: object.gdc.goog/v1
 kind: Bucket
@@ -1560,11 +1657,18 @@ metadata:
   namespace: ${NAMESPACE}
 spec:
   description: "Sovereign Mission Attachment Storage"
+  location: "zone1"
   storageClass: Standard
 EOF
 
-# 3. Production User Cluster Workloads & Unified Gateway API HTTPRoute (manifests/apps/workloads.yaml)
+# 3. Production User Cluster Workloads, ServiceAccount, NetworkPolicy & Gateway API HTTPRoute (manifests/apps/workloads.yaml)
 cat <<EOF > ~/GitHub/${APP_NAME}/manifests/apps/workloads.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${APP_NAME}-sa
+  namespace: ${NAMESPACE}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1597,11 +1701,49 @@ spec:
             secretKeyRef:
               name: ${APP_NAME}-db-credentials
               key: connection_string
+              optional: true
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: host
+              optional: true
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: username
+              optional: true
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: password
+              optional: true
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-db-credentials
+              key: database
+              optional: true
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-s3-credentials
+              key: access-key-id
+              optional: true
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ${APP_NAME}-s3-credentials
+              key: secret-access-key
+              optional: true
         - name: KEYCLOAK_URL
-          value: "http://keycloak-svc:8080/auth/realms/gdc-app-realm"
+          value: "http://keycloak:80/auth/realms/gdc-app-realm"
         envFrom:
         - secretRef:
             name: ${APP_NAME}-s3-credentials
+            optional: true
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
@@ -1701,6 +1843,21 @@ spec:
   - port: 80
     targetPort: 8080
 ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${APP_NAME}-allow-mesh
+  namespace: ${NAMESPACE}
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}
+  egress:
+  - {}
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -1724,8 +1881,8 @@ spec:
         - name: X-Forwarded-Proto
           value: https
     backendRefs:
-    - name: keycloak-svc
-      port: 8080
+    - name: keycloak
+      port: 80
   - matches:
     - path:
         type: PathPrefix
@@ -1778,14 +1935,34 @@ registry: ""
 # Stage 2 provisions Zonal CRDs, so gdc.enabled defaults to false for Stage 5 User Cluster deployment
 gdc:
   enabled: false
+  location: "zone1"
 
 apps:
   enabled: true
   imageTag: "latest"
+  createServiceAccount: true
   serviceAccountName: "${APP_NAME}-sa"
-  keycloakUrl: "http://keycloak-svc:8080/auth/realms/gdc-app-realm"
+  serviceAccountAnnotations: {}
+  dbSecretName: "${APP_NAME}-db-credentials"
+  s3SecretName: "${APP_NAME}-s3-credentials"
+  caBundle:
+    enabled: false
+    secretName: "gdc-sovereign-ca-bundle"
+    certKey: "ca.crt"
+    mountPath: "/etc/ssl/certs/gdc-ca.crt"
+  keycloak:
+    serviceName: "keycloak"
+    servicePort: 80
+    relativePath: "/auth"
+    realm: "gdc-app-realm"
+  keycloakUrl: ""
+  gateway:
+    name: "gdc-platform-gateway"
+    namespace: ""
+    hostnames: []
   # Defaults to GDC-ag Native Object Storage for production; set s3Endpoint="" on GKE to use native GCS via Workload Identity
   s3Endpoint: "https://objectstorage.gdc.goog"
+  s3Region: "zone1"
   bucketName: "${APP_NAME}-bucket"
 EOF
 
@@ -1805,7 +1982,8 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
     "gdc": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "location": { "type": "string" }
       }
     },
     "apps": {
@@ -1813,10 +1991,40 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
       "properties": {
         "enabled": { "type": "boolean" },
         "imageTag": { "type": "string" },
+        "createServiceAccount": { "type": "boolean" },
         "serviceAccountName": { "type": "string" },
+        "dbSecretName": { "type": "string" },
+        "s3SecretName": { "type": "string" },
         "keycloakUrl": { "type": "string" },
         "s3Endpoint": { "type": "string" },
-        "bucketName": { "type": "string" }
+        "s3Region": { "type": "string" },
+        "bucketName": { "type": "string" },
+        "caBundle": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "secretName": { "type": "string" },
+            "certKey": { "type": "string" },
+            "mountPath": { "type": "string" }
+          }
+        },
+        "keycloak": {
+          "type": "object",
+          "properties": {
+            "serviceName": { "type": "string" },
+            "servicePort": { "type": "integer" },
+            "relativePath": { "type": "string" },
+            "realm": { "type": "string" }
+          }
+        },
+        "gateway": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "namespace": { "type": "string" },
+            "hostnames": { "type": "array", "items": { "type": "string" } }
+          }
+        }
       }
     }
   }
@@ -1831,6 +2039,14 @@ cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/_helpers.tpl
 {{- define "${APP_NAME}.registry" -}}
 {{- default .Values.global.registry .Values.registry -}}
 {{- end -}}
+
+{{- define "${APP_NAME}.keycloakUrl" -}}
+{{- if .Values.apps.keycloakUrl -}}
+{{- .Values.apps.keycloakUrl -}}
+{{- else -}}
+{{- printf "http://%s:%v%s/realms/%s" (.Values.apps.keycloak.serviceName | default "keycloak") (.Values.apps.keycloak.servicePort | default 80) (.Values.apps.keycloak.relativePath | default "/auth") (.Values.apps.keycloak.realm | default "gdc-app-realm") -}}
+{{- end -}}
+{{- end -}}
 EOF
 
 cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/gdc/resources.yaml
@@ -1841,28 +2057,44 @@ metadata:
   name: ${APP_NAME}-db
   namespace: {{ include "${APP_NAME}.namespace" . }}
 spec:
-  version: POSTGRESQL_15
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: "2"
+  primarySpec:
+    version: "15"
+    adminUser:
+      passwordRef:
+        name: db-pw-${APP_NAME}-db
+    resources:
+      cpu: 2
       memory: 8Gi
-  storage:
-    size: 50G
+      disks:
+      - name: DataDisk
+        size: 50Gi
 ---
 apiVersion: object.gdc.goog/v1
 kind: Bucket
 metadata:
-  name: {{ .Values.apps.bucketName }}
+  name: {{ .Values.apps.bucketName | quote }}
   namespace: {{ include "${APP_NAME}.namespace" . }}
 spec:
   description: "Sovereign Mission Attachment Storage"
+  location: {{ .Values.gdc.location | default "zone1" | quote }}
   storageClass: Standard
 {{- end }}
 EOF
 
 cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/apps/workloads.yaml
 {{- if .Values.apps.enabled }}
+{{- if .Values.apps.createServiceAccount }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.apps.serviceAccountName | default "${APP_NAME}-sa" }}
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+  {{- with .Values.apps.serviceAccountAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1893,17 +2125,63 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: ${APP_NAME}-db-credentials
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
               key: connection_string
+              optional: true
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: host
+              optional: true
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: username
+              optional: true
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: password
+              optional: true
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.dbSecretName | default "${APP_NAME}-db-credentials" }}
+              key: database
+              optional: true
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.s3SecretName | default "${APP_NAME}-s3-credentials" }}
+              key: access-key-id
+              optional: true
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.apps.s3SecretName | default "${APP_NAME}-s3-credentials" }}
+              key: secret-access-key
+              optional: true
         - name: KEYCLOAK_URL
-          value: {{ .Values.apps.keycloakUrl | quote }}
+          value: {{ include "${APP_NAME}.keycloakUrl" . | quote }}
         - name: S3_ENDPOINT
           value: {{ .Values.apps.s3Endpoint | quote }}
+        - name: S3_REGION
+          value: {{ .Values.apps.s3Region | default "zone1" | quote }}
         - name: BUCKET_NAME
           value: {{ .Values.apps.bucketName | quote }}
+        {{- if .Values.apps.caBundle.enabled }}
+        - name: AWS_CA_BUNDLE
+          value: {{ .Values.apps.caBundle.mountPath | default "/etc/ssl/certs/gdc-ca.crt" | quote }}
+        - name: REQUESTS_CA_BUNDLE
+          value: {{ .Values.apps.caBundle.mountPath | default "/etc/ssl/certs/gdc-ca.crt" | quote }}
+        {{- end }}
         envFrom:
         - secretRef:
-            name: ${APP_NAME}-s3-credentials
+            name: {{ .Values.apps.s3SecretName | default "${APP_NAME}-s3-credentials" }}
+            optional: true
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
@@ -1914,6 +2192,12 @@ spec:
         volumeMounts:
         - name: tmp-dir
           mountPath: /tmp
+        {{- if .Values.apps.caBundle.enabled }}
+        - name: gdc-ca-bundle
+          mountPath: {{ .Values.apps.caBundle.mountPath | default "/etc/ssl/certs/gdc-ca.crt" }}
+          subPath: {{ .Values.apps.caBundle.certKey | default "ca.crt" }}
+          readOnly: true
+        {{- end }}
         resources:
           requests:
             cpu: "100m"
@@ -1924,6 +2208,11 @@ spec:
       volumes:
       - name: tmp-dir
         emptyDir: {}
+      {{- if .Values.apps.caBundle.enabled }}
+      - name: gdc-ca-bundle
+        secret:
+          secretName: {{ .Values.apps.caBundle.secretName | default "gdc-sovereign-ca-bundle" }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -2003,6 +2292,21 @@ spec:
   - port: 80
     targetPort: 8080
 ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${APP_NAME}-allow-mesh
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - {}
+  egress:
+  - {}
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -2012,13 +2316,17 @@ spec:
   parentRefs:
   - group: gateway.networking.k8s.io
     kind: Gateway
-    name: gdc-platform-gateway
-    namespace: {{ include "${APP_NAME}.namespace" . }}
+    name: {{ .Values.apps.gateway.name | default "gdc-platform-gateway" }}
+    namespace: {{ .Values.apps.gateway.namespace | default (include "${APP_NAME}.namespace" .) }}
+  {{- with .Values.apps.gateway.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: /auth
+        value: {{ .Values.apps.keycloak.relativePath | default "/auth" }}
     filters:
     - type: RequestHeaderModifier
       requestHeaderModifier:
@@ -2026,8 +2334,8 @@ spec:
         - name: X-Forwarded-Proto
           value: https
     backendRefs:
-    - name: keycloak-svc
-      port: 8080
+    - name: {{ .Values.apps.keycloak.serviceName | default "keycloak" }}
+      port: {{ .Values.apps.keycloak.servicePort | default 80 }}
   - matches:
     - path:
         type: PathPrefix
@@ -2060,7 +2368,7 @@ tests:
   - it: should render User Cluster workloads and skip GDC CRDs by default
     asserts:
       - hasDocuments:
-          count: 5
+          count: 7
         template: templates/apps/workloads.yaml
       - hasDocuments:
           count: 0
@@ -2092,7 +2400,8 @@ docker build -t "${REGISTRY_HOST}/${APP_NAME}-frontend:latest" src/frontend
 docker push "${REGISTRY_HOST}/${APP_NAME}-frontend:latest"
 
 # 2. Deploy your application via the Stage 5 Helm Wrapper Chart
-#    (Passing apps.s3Endpoint="" activates native Google Cloud Storage via GKE Workload Identity)
+#    (Passing apps.createServiceAccount=false preserves the Workload-Identity-annotated ServiceAccount from Step 3.2;
+#     passing apps.s3Endpoint="" activates native Google Cloud Storage via GKE Workload Identity)
 helm upgrade --install "${APP_NAME}" ./chart \
   --namespace "${NAMESPACE}" \
   --set global.projectId="${PROJECT_ID}" \
@@ -2100,7 +2409,10 @@ helm upgrade --install "${APP_NAME}" ./chart \
   --set global.registry="${REGISTRY_HOST}" \
   --set gdc.enabled=false \
   --set apps.enabled=true \
+  --set apps.createServiceAccount=false \
   --set apps.serviceAccountName="${APP_NAME}-sa" \
+  --set apps.dbSecretName="${APP_NAME}-db-credentials" \
+  --set apps.s3SecretName="${APP_NAME}-s3-credentials" \
   --set apps.s3Endpoint="" \
   --set apps.bucketName="${APP_NAME}-files-${PROJECT_ID}"
 
@@ -2115,11 +2427,11 @@ export GATEWAY_VIP=$(kubectl get gateway gdc-platform-gateway -n "${NAMESPACE}" 
 kubectl set env deployment/gdc-gateway-tunnel GATEWAY_VIP="${GATEWAY_VIP}" -n "${NAMESPACE}"
 kubectl rollout status deployment/gdc-gateway-tunnel -n "${NAMESPACE}" --timeout=60s
 
-# 4. Port-forward the Unified Gateway API Tunnel on Port 8081 (scoped to ${NAMESPACE} and port 8081)
+# 4. Port-forward the Unified Gateway API Tunnel on Port 8081 (bound to 127.0.0.1 and scoped to ${NAMESPACE})
 pkill -f "while true.*8081" || true
 pkill -f "port-forward.*8081" || true
 sleep 1
-nohup bash -c "while true; do kubectl port-forward --address 0.0.0.0 -n ${NAMESPACE} svc/gdc-gateway-tunnel 8081:80 >> /tmp/pf-8081.log 2>&1; sleep 1; done" >/dev/null 2>&1 &
+nohup bash -c "while true; do kubectl port-forward --address 127.0.0.1 -n ${NAMESPACE} svc/gdc-gateway-tunnel 8081:80 >> /tmp/pf-8081.log 2>&1; sleep 1; done" >/dev/null 2>&1 &
 
 # 5. Wait for GKE Gateway API (gke-l7-rilb) Envoy URL map & all 3 NEG HealthCheckPolicies (/, /auth, /api) to return HTTP 200
 #    (While NEG health checks warm up, gke-l7-rilb returns 'fault filter abort' or 'no healthy upstream' for ~30-60s)
@@ -2137,54 +2449,41 @@ done
 ```
 
 ### Verify End-to-End (CLI & Browser)
-1. **CLI Zero-Trust & OIDC Verification (No Browser Required):**
+1. **CLI Zero-Trust & OIDC PKCE Verification (No Browser Required):**
+   Run the automated PKCE integration test script in **Section 7.2** below (`~/GitHub/${APP_NAME}/scripts/test-keycloak-integration.py`), or verify unauthenticated rejection directly:
    ```bash
-   # A. Confirm unauthenticated API call is rejected with HTTP 401
+   # Confirm unauthenticated API call is rejected with HTTP 401
    curl -i -s http://127.0.0.1:8081/api/records | head -n 1
    # Expected: HTTP/1.1 401 Unauthorized
-
-   # B. Acquire a signed RS256 JWT from Keycloak via Gateway API (/auth) as 'charlie' (admin)
-   TOKEN=$(curl -s -X POST "http://127.0.0.1:8081/auth/realms/gdc-app-realm/protocol/openid-connect/token" \
-     -d "client_id=mission-frontend" \
-     -d "grant_type=password" \
-     -d "username=charlie" \
-     -d "password=password" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-   # C. Post a SECRET mission record with an uploaded file to Google Cloud Storage via Gateway API (/api)
-   echo "Tactical telemetry log payload" > /tmp/sample-log.txt
-   curl -s -X POST "http://127.0.0.1:8081/api/records" \
-     -H "Authorization: Bearer ${TOKEN}" \
-     -F "classification=SECRET" \
-     -F "summary=Sector 9 perimeter sensor verified" \
-     -F "attachment=@/tmp/sample-log.txt"
-
-   # D. Read back records from PostgreSQL (confirming gs://... URI persisted)
-   curl -s "http://127.0.0.1:8081/api/records" -H "Authorization: Bearer ${TOKEN}" | python3 -m json.tool
    ```
 2. **Interactive Browser Verification:**
    Open your Cloud Workstation Port `8081` Web Preview (`https://8081-w-...cloudworkstations.dev`), click **Sign In with Keycloak OIDC**, and log in as **`alice` / `password`** (`user` role) or **`charlie` / `password`** (`admin` role).
 
-### 7.2. Automated Live Keycloak OIDC & End-to-End Integration Test Suite (`scripts/test-keycloak-integration.py`)
+### 7.2. Automated Live Keycloak OIDC PKCE & End-to-End Integration Test Suite (`scripts/test-keycloak-integration.py`)
 
-Create and run `~/GitHub/${APP_NAME}/scripts/test-keycloak-integration.py` (using only Python 3 standard library modules) to automatically verify all **7 live Keycloak OIDC, RBAC, PostgreSQL, and Cloud/Object Storage integration invariants** against your deployed application on Port `8081`:
+Create and run `~/GitHub/${APP_NAME}/scripts/test-keycloak-integration.py` (using only Python 3 standard library modules and driving a real **OAuth 2.0 Authorization Code + PKCE `S256`** handshake—with `directAccessGrantsEnabled: false` on `mission-frontend`) to automatically verify all **7 live Keycloak OIDC, RBAC, BOLA object-level isolation, PostgreSQL, and Cloud/Object Storage integration invariants** against your deployed application on Port `8081`:
 
 ```bash
 cat << 'EOF' > ~/GitHub/${APP_NAME}/scripts/test-keycloak-integration.py
 #!/usr/bin/env python3
 """
-Automated Live Keycloak OIDC & Application Integration Test Suite (7 Checks).
+Automated Live Keycloak OIDC (Auth Code + PKCE S256) & Application Integration Test Suite (7 Checks).
 Validates:
   [KC-01] Keycloak OIDC Discovery & RS256 JWKS endpoint availability via Gateway API (/auth)
   [KC-02] Application Backend Health endpoint reachability via Gateway API (/api/health)
   [KC-03] Zero-Trust Unauthenticated Rejection (HTTP 401 when Bearer token is missing)
   [KC-04] Zero-Trust Forged/Tampered Token Rejection (HTTP 401 on invalid RS256 JWT)
-  [KC-05] Keycloak OIDC Token Issuance & Role Claim Mapper for 'alice' (role: 'user')
+  [KC-05] Keycloak OIDC Authorization Code + PKCE (S256) Token Issuance & Role Claim Mapper for 'alice'
   [KC-06] Least-Privilege RBAC: 'alice' blocked from SECRET (HTTP 403), allowed on UNCLASSIFIED (HTTP 200)
-  [KC-07] Privileged Admin RBAC + Storage/DB Persistence: 'charlie' (role: 'admin') posts SECRET + attachment (HTTP 200)
+  [KC-07] Privileged Admin RBAC + BOLA Isolation + Storage/DB Persistence ('charlie' SECRET invisible to 'alice')
 """
 import base64
+import hashlib
+import html
+import http.cookiejar
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -2209,21 +2508,59 @@ def decode_jwt_claims(token: str) -> dict:
     return json.loads(base64.urlsafe_b64decode(payload_b64).decode("utf-8"))
 
 def get_keycloak_token(username: str, password: str) -> str:
-    token_url = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/token"
-    body = urllib.parse.urlencode({
+    """Acquires an RS256 JWT via OAuth 2.0 Authorization Code + PKCE (S256) against mission-frontend."""
+    verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode("ascii")
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+    redirect_uri = f"{BASE_URL}/"
+    cookie_jar = http.cookiejar.CookieJar()
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar), _NoRedirect)
+    auth_params = urllib.parse.urlencode({
         "client_id": CLIENT_ID,
-        "grant_type": "password",
-        "username": username,
-        "password": password,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "openid profile",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    })
+    with opener.open(f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/auth?{auth_params}", timeout=15) as resp:
+        login_html = resp.read().decode("utf-8", errors="replace")
+
+    match = re.search(r'action="([^"]+)"', login_html)
+    if not match:
+        raise RuntimeError(f"Could not find Keycloak login form action for {username}")
+    action_url = html.unescape(match.group(1))
+    form_body = urllib.parse.urlencode({"username": username, "password": password}).encode("utf-8")
+    req = urllib.request.Request(action_url, data=form_body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    try:
+        opener.open(req, timeout=15)
+        raise RuntimeError(f"Expected 302 redirect from Keycloak PKCE login for {username}")
+    except urllib.error.HTTPError as err:
+        location = err.headers.get("Location", "")
+        if err.code not in (301, 302, 303) or "code=" not in location:
+            raise RuntimeError(f"Keycloak PKCE login failed for {username} (HTTP {err.code}): {location}")
+        auth_code = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)["code"][0]
+
+    token_url = f"{BASE_URL}/auth/realms/{REALM}/protocol/openid-connect/token"
+    token_body = urllib.parse.urlencode({
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "code": auth_code,
+        "code_verifier": verifier,
     }).encode("utf-8")
     status, text = http_request(
         token_url,
         method="POST",
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        data=body,
+        data=token_body,
     )
     if status != 200:
-        raise RuntimeError(f"Keycloak token grant failed for {username} (HTTP {status}): {text}")
+        raise RuntimeError(f"Keycloak PKCE token exchange failed for {username} (HTTP {status}): {text}")
     return json.loads(text)["access_token"]
 
 def build_multipart(fields: dict[str, str], file_field: tuple[str, str, bytes] | None = None) -> tuple[str, bytes]:
@@ -2279,13 +2616,13 @@ def main() -> int:
     print("[KC-04] Forged / Tampered Bearer Token Rejected (HTTP 401) ............. [PASS]")
     passed += 1
 
-    # [KC-05] Alice token issuance & role claim verification
+    # [KC-05] Alice PKCE token issuance & role claim verification
     alice_token = get_keycloak_token("alice", "password")
     alice_claims = decode_jwt_claims(alice_token)
     alice_roles = alice_claims.get("roles") or alice_claims.get("realm_access", {}).get("roles", [])
     assert alice_claims.get("preferred_username") == "alice" and "user" in alice_roles, \
         f"KC-05 failed: claims={alice_claims}"
-    print("[KC-05] Keycloak RS256 Token Issued & 'user' Role Mapped for 'alice' ... [PASS]")
+    print("[KC-05] Keycloak PKCE S256 Token & 'user' Role Mapped for 'alice' ...... [PASS]")
     passed += 1
 
     # [KC-06] Alice RBAC: blocked from SECRET (403), allowed on UNCLASSIFIED (200)
@@ -2307,7 +2644,7 @@ def main() -> int:
     print("[KC-06] Least-Privilege RBAC ('alice': SECRET->403, UNCLASSIFIED->200) . [PASS]")
     passed += 1
 
-    # [KC-07] Charlie RBAC: allowed on SECRET + file upload + DB readback
+    # [KC-07] Charlie RBAC + BOLA Verification: allowed on SECRET + file upload + hidden from alice
     charlie_token = get_keycloak_token("charlie", "password")
     ctype_c, body_c = build_multipart(
         {"classification": "SECRET", "summary": "Charlie verified sector 9 sensor"},
@@ -2327,8 +2664,16 @@ def main() -> int:
         f"{BASE_URL}/api/records",
         headers={"Authorization": f"Bearer {charlie_token}"},
     )
-    assert r_status == 200 and len(json.loads(r_text).get("records", [])) >= 1, f"KC-07 GET failed: {r_status}"
-    print(f"[KC-07] Admin RBAC + Storage/DB Persistence ('charlie' -> {created['s3_object_key']}) [PASS]")
+    assert r_status == 200 and any(r.get("classification") == "SECRET" for r in json.loads(r_text).get("records", [])), \
+        f"KC-07 Charlie GET failed: {r_status}"
+
+    a_list_status, a_list_text = http_request(
+        f"{BASE_URL}/api/records",
+        headers={"Authorization": f"Bearer {alice_token}"},
+    )
+    assert a_list_status == 200 and all(r.get("classification") == "UNCLASSIFIED" for r in json.loads(a_list_text).get("records", [])), \
+        "KC-07 BOLA check failed: alice saw SECRET records!"
+    print(f"[KC-07] Admin RBAC + BOLA Isolation + Storage ('charlie' -> {created['s3_object_key']}) [PASS]")
     passed += 1
 
     print("================================================================================")
@@ -2421,6 +2766,10 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/scripts/package-airgap-release.sh
 #!/bin/bash
 set -euo pipefail
 
+if [[ -z "${REGISTRY_HOST:-}" && -f "$HOME/GitHub/gdc-dev-env.sh" ]]; then
+  source "$HOME/GitHub/gdc-dev-env.sh"
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="$(basename "${REPO_ROOT}")"
 DIST_DIR="${REPO_ROOT}/dist/${APP_NAME}"
@@ -2440,13 +2789,22 @@ cp "${REPO_ROOT}/external_images.txt" "${DIST_DIR}/external_images.txt"
 # 2. Package the Stage 5 Helm Wrapper Chart into a versioned OCI .tgz archive
 helm package "${REPO_ROOT}/chart" --destination "${DIST_DIR}/charts"
 
-# 3. Export application container images using docker save
+# 3. Export application container images AND external_images.txt using docker save
 for COMPONENT in backend frontend; do
   IMG="${REGISTRY_HOST}/${APP_NAME}-${COMPONENT}:latest"
   TAR_FILE="${DIST_DIR}/images/${APP_NAME}-${COMPONENT}.tar"
   echo "  -> Saving ${IMG} to ${TAR_FILE}..."
   docker save -o "${TAR_FILE}" "${IMG}"
 done
+
+while IFS= read -r EXT_IMG || [[ -n "${EXT_IMG}" ]]; do
+  [[ -z "${EXT_IMG}" || "${EXT_IMG}" =~ ^# ]] && continue
+  SAFE_NAME="$(echo "${EXT_IMG}" | tr '/:' '__')"
+  TAR_FILE="${DIST_DIR}/images/${SAFE_NAME}.tar"
+  docker image inspect "${EXT_IMG}" >/dev/null 2>&1 || docker pull "${EXT_IMG}"
+  echo "  -> Saving external dependency ${EXT_IMG} to ${TAR_FILE}..."
+  docker save -o "${TAR_FILE}" "${EXT_IMG}"
+done < "${REPO_ROOT}/external_images.txt"
 
 # 4. Generate cryptographic SHA-256 Bill of Materials (BOM.txt)
 (
@@ -2470,7 +2828,7 @@ chmod +x ~/GitHub/${APP_NAME}/scripts/package-airgap-release.sh
 
 ### 8.4. Gate 4: Ingest & Deploy Your Customer Bundle on Physical `GDC-ag` (`docker`, `helm`, `kubectl`)
 
-After transferring `${APP_NAME}-gdc-airgap-bundle.tar.gz` across the air gap to the customer's high-side **GDC-ag Operator Workstation**, the Application Operator (**AO**) verifies the SHA-256 checksum, pushes the images and Helm chart into the customer's **GDC Managed Harbor** registry (`harbor.infra.gdc.local/customer-apps`), and deploys the application across the **Zone Admin Context** (Stage 2) and **User Cluster Context** (Stage 5):
+After transferring `${APP_NAME}-gdc-airgap-bundle.tar.gz` across the air gap to the customer's high-side **GDC-ag Operator Workstation**, the Application Operator (**AO**) verifies the SHA-256 checksum, pushes the images (preserving multi-segment repository paths like `keycloak/keycloak:24.0.4`) and Helm chart into the customer's **GDC Managed Harbor** registry (`harbor.infra.gdc.local/customer-apps`), projects the Zonal DB & Object Storage credentials and sovereign PKI root CA into the User Cluster namespace, configures `p12-keycloak` (`Service/keycloak:80`) with `KC_HTTP_RELATIVE_PATH=/auth` and a production realm locked to the exact `GDC-ag` origin (`https://app.<org>.gdc.local/*`), and deploys the application across the **Zone Admin Context** (Stage 2) and **User Cluster Context** (Stage 5):
 
 ```bash
 # ============================================================================
@@ -2479,6 +2837,7 @@ After transferring `${APP_NAME}-gdc-airgap-bundle.tar.gz` across the air gap to 
 export APP_NAME="p15-sovereign-mission-app"
 export HARBOR_REGISTRY="harbor.infra.gdc.local/customer-apps"
 export NAMESPACE="mission-app"
+export PROD_ORIGIN="https://app.org-1.zone1.google.gdch.test"
 
 # 1. Verify cryptographic integrity and extract the customer release bundle
 sha256sum -c "${APP_NAME}-gdc-airgap-bundle.tar.gz.sha256"
@@ -2486,14 +2845,19 @@ tar -xzf "${APP_NAME}-gdc-airgap-bundle.tar.gz"
 cd "${APP_NAME}" && sha256sum -c BOM.txt
 
 # 2. Load container images and push to the customer's GDC Managed Harbor registry
+#    (Strip only the source registry prefix so nested paths like keycloak/keycloak:24.0.4 are preserved)
 docker login harbor.infra.gdc.local
 helm registry login harbor.infra.gdc.local
 
 for TAR_FILE in images/*.tar; do
   LOADED_IMG=$(docker load -i "${TAR_FILE}" | awk '/Loaded image:/ {print $3}')
-  IMG_BASENAME="${LOADED_IMG##*/}"
-  docker tag "${LOADED_IMG}" "${HARBOR_REGISTRY}/${IMG_BASENAME}"
-  docker push "${HARBOR_REGISTRY}/${IMG_BASENAME}"
+  case "${LOADED_IMG}" in
+    *-docker.pkg.dev/*/*/*) REL_PATH="${LOADED_IMG#*/*/*/}" ;;
+    *.*/*)                  REL_PATH="${LOADED_IMG#*/}" ;;
+    *)                      REL_PATH="${LOADED_IMG}" ;;
+  esac
+  docker tag "${LOADED_IMG}" "${HARBOR_REGISTRY}/${REL_PATH}"
+  docker push "${HARBOR_REGISTRY}/${REL_PATH}"
 done
 
 # Push the packaged Helm chart to Harbor OCI
@@ -2503,16 +2867,37 @@ helm push charts/${APP_NAME}-*.tgz "oci://${HARBOR_REGISTRY}/charts"
 #    (Or declare them in your customer's downstream foundations/ tenant YAML)
 kubectl --context="${ZONE_ADMIN_CONTEXT}" apply -f manifests/gdc/resources.yaml -n "${NAMESPACE}"
 
-# 4. Stage 5 (User Cluster Context): Deploy the Application Workloads via Helm
+# 4. Project Zonal DB & Object Storage Secrets + Sovereign PKI CA Bundle to the User Cluster Namespace
+kubectl --context="${USER_CLUSTER_CONTEXT}" create namespace "${NAMESPACE}" --dry-run=client -o yaml | \
+  kubectl --context="${USER_CLUSTER_CONTEXT}" apply -f -
+
+#    4a. Project Object Storage access-key-id & secret-access-key from Zone Admin 'object-storage-access-keys'
+S3_SEC_NAME=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get secrets -n object-storage-access-keys -o jsonpath='{.items[0].metadata.name}')
+ACCESS_KEY_ID=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret "${S3_SEC_NAME}" -n object-storage-access-keys -o jsonpath='{.data.access-key-id}' | base64 -d)
+SECRET_ACCESS_KEY=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret "${S3_SEC_NAME}" -n object-storage-access-keys -o jsonpath='{.data.secret-access-key}' | base64 -d)
+kubectl --context="${USER_CLUSTER_CONTEXT}" create secret generic "${APP_NAME}-s3-credentials" \
+  --from-literal=access-key-id="${ACCESS_KEY_ID}" \
+  --from-literal=secret-access-key="${SECRET_ACCESS_KEY}" \
+  -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl --context="${USER_CLUSTER_CONTEXT}" apply -f -
+
+#    4b. Configure p12-keycloak on User Cluster with KC_HTTP_RELATIVE_PATH=/auth and locked production redirectUris/webOrigins
+#        (Never carry wildcard redirectUris/webOrigins or directAccessGrantsEnabled=true into production AD/LDAP realms!)
+kubectl --context="${USER_CLUSTER_CONTEXT}" set env deployment/keycloak KC_HTTP_RELATIVE_PATH="/auth" -n "${NAMESPACE}"
+
+# 5. Stage 5 (User Cluster Context): Deploy the Application Workloads via Helm
 helm --kube-context="${USER_CLUSTER_CONTEXT}" upgrade --install "${APP_NAME}" \
   "oci://${HARBOR_REGISTRY}/charts/${APP_NAME}" \
-  --namespace "${NAMESPACE}" --create-namespace \
+  --namespace "${NAMESPACE}" \
   --set global.projectId="${NAMESPACE}" \
   --set global.namespace="${NAMESPACE}" \
   --set global.registry="${HARBOR_REGISTRY}" \
   --set gdc.enabled=false \
   --set apps.enabled=true \
-  --set apps.keycloakUrl="http://keycloak-svc:8080/auth/realms/gdc-app-realm" \
+  --set apps.createServiceAccount=true \
+  --set apps.caBundle.enabled=true \
+  --set apps.keycloak.serviceName="keycloak" \
+  --set apps.keycloak.servicePort=80 \
+  --set apps.keycloak.relativePath="/auth" \
   --set apps.s3Endpoint="https://objectstorage.gdc.goog" \
   --set apps.bucketName="${APP_NAME}-bucket"
 ```
@@ -2520,7 +2905,7 @@ helm --kube-context="${USER_CLUSTER_CONTEXT}" upgrade --install "${APP_NAME}" \
 <details>
 <summary><b>Optional: Orchestrating Your Customer Chart via a Downstream Customer <code>foundations/</code> Environment</b></summary>
 
-If your customer uses the `gdc-iac-org/foundations/` Helmfile landing zone in their own downstream environment repository, they reference your chart directly from their Harbor OCI registry (or your customer Git repository) inside their `tenant-1.yaml`—without modifying the upstream `gdc-iac-org` repository:
+If your customer uses the `gdc-iac-org/foundations/` Helmfile landing zone in their own downstream environment repository, they reference your chart directly from their Harbor OCI registry (or your customer Git repository) inside their `tenant-1.yaml`—without modifying the upstream `gdc-iac-org` repository (note that `dbs:` in `foundations/releases/2-resources/dbs.yaml.gotmpl` expects an engine-keyed map matching `charts/gdc-dbs/values.yaml`, with `base64EncodedPassword` supplied at deploy time via secret manager or `--set`, never plaintext in Git):
 
 ```yaml
 # Customer's downstream foundations environment (tenant-1.yaml)
@@ -2537,12 +2922,13 @@ prd:
                 storage_class: "Standard"
                 location: "zone1"
             dbs:
-              - name: "p15-sovereign-mission-app-db"
-                engine: "PostgreSQL"
+              postgresql:
+                enabled: true
+                clusterName: "p15-sovereign-mission-app-db"
                 version: "15"
-                highAvailability: true
-                storageSize: "50Gi"
-                extensions: ["vector"]
+                cpu: 2
+                memory: 8Gi
+                dataDiskSize: 50Gi
             # Stage 5 (5-workload-factory): Deployed on User Cluster Context from Customer Harbor OCI
             patterns:
               - name: "keycloak-sso"
@@ -2560,7 +2946,12 @@ prd:
                 deploy_apps: true
                 values:
                   apps:
-                    keycloakUrl: "http://keycloak-svc:8080/auth/realms/gdc-app-realm"
+                    caBundle:
+                      enabled: true
+                    keycloak:
+                      serviceName: "keycloak"
+                      servicePort: 80
+                      relativePath: "/auth"
                     s3Endpoint: "https://objectstorage.gdc.goog"
                     bucketName: "p15-sovereign-mission-app-bucket"
 ```
@@ -2576,18 +2967,18 @@ This section provides the complete, step-by-step instructions for a **Platform A
 
 Google Cloud Workstations uses a 3-tier resource hierarchy:
 1. **Workstation Cluster (`gcloud workstations clusters`)**: The regional control plane and VPC gateway inside your GCP project.
-2. **Workstation Configuration (`gcloud workstations configs`)**: A template defining the VM machine type (`e2-standard-8`), the container image (`code-oss`), a **Persistent Disk (`100 GB` mounted at `/home`)**, and the **VM Service Account (`gdc-workstation-dev-sa`)**.
+2. **Workstation Configuration (`gcloud workstations configs`)**: A template defining the VM machine type (`e2-standard-8`), the container image (`codeoss`), a **200 GB Boot Disk** + **100 GB Persistent Disk (mounted at `/home`)**, and the **VM Service Account (`gdc-workstation-dev-sa`)**.
 3. **Workstation Instance (`gcloud workstations`)**: The individual developer's dedicated workstation VM.
 
 #### How the Developer's Environment Is Automatically Bootstrapped
 - **Persistent `/home/user` Directory:** Cloud Workstations mounts a dedicated Persistent Disk at `/home` (`/home/user`). Any files written to `/home/user/.kube/config`, `/home/user/.docker/config.json`, `/home/user/.local/bin`, and `/home/user/.bashrc` **persist across workstation restarts**.
 - **Two Supported Bootstrap Methods for Platform Administrators:**
-  - **Method 1 (Stock Predefined Image + One-Time Remote Bootstrap via `gcloud workstations ssh` — Fastest for Single Workstations):** The PA uses Google's predefined `code-oss` image, starts the workstation, and executes a one-time bootstrap script over `gcloud workstations ssh` that populates `/home/user/.kube/config`, `/home/user/.docker/config.json`, `helm`, `helmfile`, `kubeconform`, and `conftest` on the persistent disk.
-  - **Method 2 (Custom Workstation Container Image with `/etc/workstation-startup.d/` — Best for Multi-Developer Teams):** Cloud Workstations automatically executes any script inside `/etc/workstation-startup.d/` whenever a workstation container boots. By building a thin custom image on top of `code-oss` containing `/etc/workstation-startup.d/110_gdc_bootstrap.sh`, every workstation spun up from the Workstation Configuration automatically configures `kubectl`, `docker`, and `helm` on boot with zero manual intervention.
+  - **Method 1 (Stock Predefined Image + One-Time Remote Bootstrap via `gcloud workstations ssh` — Fastest for Single Workstations):** The PA uses Google's predefined `codeoss` image, starts the workstation, and executes a one-time bootstrap script over `gcloud workstations ssh` that populates `/home/user/.kube/config`, `/home/user/.docker/config.json`, `helm`, `helmfile`, `kubeconform`, and `conftest` on the persistent disk.
+  - **Method 2 (Custom Workstation Container Image with `/etc/workstation-startup.d/` — Best for Multi-Developer Teams):** Cloud Workstations automatically executes any script inside `/etc/workstation-startup.d/` whenever a workstation container boots. By building a thin custom image on top of `code-oss` containing `/etc/workstation-startup.d/110_gdc_bootstrap.sh` and passing `--container-env`, every workstation spun up from the Workstation Configuration automatically configures `kubectl`, `docker`, and `helm` on boot with zero manual intervention.
 
 ---
 
-### A.2. Step 1: Enable GCP APIs & Create the Workstation IAM Service Account (`gdc-workstation-dev-sa`)
+### A.2. Step 1: Enable GCP APIs & Create Least-Privilege Service Accounts (`gdc-gke-node-sa` & `gdc-workstation-dev-sa`)
 
 Run these commands from **Google Cloud Shell** or an admin workstation with `Owner` / `Editor` + `Project IAM Admin` permissions:
 
@@ -2600,6 +2991,8 @@ export AR_REPO_NAME="${AR_REPO_NAME:-blueprint-images}"
 export WS_CLUSTER_NAME="${WS_CLUSTER_NAME:-gdc-dev-ws-cluster}"
 export WS_CONFIG_NAME="${WS_CONFIG_NAME:-gdc-dev-ws-config}"
 export WS_INSTANCE_NAME="${WS_INSTANCE_NAME:-gdc-dev-ws-01}"
+export GKE_NODE_SA_NAME="gdc-gke-node-sa"
+export GKE_NODE_SA_EMAIL="${GKE_NODE_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 export WS_SA_NAME="gdc-workstation-dev-sa"
 export WS_SA_EMAIL="${WS_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 export DEVELOPER_EMAIL="${DEVELOPER_EMAIL:-developer@example.com}" # Replace with developer's Google identity
@@ -2614,17 +3007,34 @@ gcloud services enable \
   iamcredentials.googleapis.com \
   --project="${PROJECT_ID}"
 
-# 2. Create the dedicated Service Account attached to the Cloud Workstation VM
+# 2. Create a dedicated least-privilege GKE Node Service Account (avoids using Compute Engine default Editor SA)
+gcloud iam service-accounts describe "${GKE_NODE_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+gcloud iam service-accounts create "${GKE_NODE_SA_NAME}" \
+  --display-name="GDC GKE Node Least-Privilege SA" \
+  --project="${PROJECT_ID}"
+
+for NODE_ROLE in \
+  "roles/artifactregistry.reader" \
+  "roles/logging.logWriter" \
+  "roles/monitoring.metricWriter" \
+  "roles/monitoring.viewer"; do
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GKE_NODE_SA_EMAIL}" \
+    --role="${NODE_ROLE}" \
+    --condition=None --quiet >/dev/null
+done
+
+# 3. Create the dedicated Service Account attached to the single-developer Cloud Workstation VM
+#    (Note: For multi-tenant shared GKE clusters in Appendix A.6, grant only roles/container.clusterViewer
+#     on the VM SA and enforce per-namespace isolation via Kubernetes RBAC + bucket-scoped IAM!)
 gcloud iam service-accounts describe "${WS_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
 gcloud iam service-accounts create "${WS_SA_NAME}" \
   --display-name="GDC Developer Cloud Workstation SA" \
   --project="${PROJECT_ID}"
 
-# 3. Grant least-privilege roles so the workstation can access GKE, push to Artifact Registry, and use GCS
 for ROLE in \
   "roles/container.developer" \
   "roles/artifactregistry.writer" \
-  "roles/storage.objectAdmin" \
   "roles/logging.logWriter" \
   "roles/monitoring.metricWriter"; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
@@ -2653,20 +3063,23 @@ gcloud artifacts repositories create "${AR_REPO_NAME}" \
   --location="${REGION}" \
   --project="${PROJECT_ID}"
 
-# 2. Create the GKE Cluster (with Workload Identity, Dataplane V2, and Standard Gateway API)
+# 2. Create the GKE Cluster (with dedicated GKE_NODE_SA_EMAIL, Workload Identity, Dataplane V2, and Standard Gateway API)
 if ! gcloud container clusters describe "${CLUSTER_NAME}" --zone="${ZONE}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
   if [ "${ENABLE_GPUS}" = "true" ]; then
     gcloud container clusters create "${CLUSTER_NAME}" \
       --project "${PROJECT_ID}" --zone "${ZONE}" --release-channel "regular" \
+      --service-account "${GKE_NODE_SA_EMAIL}" \
       --enable-dataplane-v2 --gateway-api=standard --workload-pool "${PROJECT_ID}.svc.id.goog" \
       --machine-type "g2-standard-24" --accelerator "type=nvidia-l4,count=2,gpu-driver-version=LATEST" \
       --num-nodes 1 --disk-size=300 --node-labels="app=vllm-26b"
     gcloud container node-pools create client-pool \
       --cluster "${CLUSTER_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" \
+      --service-account "${GKE_NODE_SA_EMAIL}" \
       --machine-type "e2-standard-4" --num-nodes 2 --node-labels="app=client" --quiet
   else
     gcloud container clusters create "${CLUSTER_NAME}" \
       --project "${PROJECT_ID}" --zone "${ZONE}" --release-channel "regular" \
+      --service-account "${GKE_NODE_SA_EMAIL}" \
       --enable-dataplane-v2 --gateway-api=standard --workload-pool "${PROJECT_ID}.svc.id.goog" \
       --machine-type "e2-standard-4" --num-nodes 2 --disk-size=100 --node-labels="app=client"
   fi
@@ -2689,6 +3102,9 @@ gcloud compute firewall-rules create allow-gateway-internal \
 gcloud storage buckets describe "gs://${BUCKET_NAME}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
 gcloud storage buckets create "gs://${BUCKET_NAME}" \
   --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
+
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
+  --member="serviceAccount:${WS_SA_EMAIL}" --role="roles/storage.objectUser" --quiet >/dev/null
 
 gcloud iam service-accounts describe "${APP_GSA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
 gcloud iam service-accounts create "${APP_GSA_NAME}" \
@@ -2716,7 +3132,7 @@ if ! gcloud workstations clusters describe "${WS_CLUSTER_NAME}" --region="${REGI
     --project="${PROJECT_ID}"
 fi
 
-# 2. Create the Workstation Configuration (e2-standard-8, 100GB persistent /home disk, attached WS_SA_EMAIL)
+# 2. Create the Workstation Configuration (e2-standard-8, 200GB boot disk, 100GB persistent /home disk, codeoss image)
 if ! gcloud workstations configs describe "${WS_CONFIG_NAME}" \
   --cluster="${WS_CLUSTER_NAME}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
   gcloud workstations configs create "${WS_CONFIG_NAME}" \
@@ -2726,7 +3142,9 @@ if ! gcloud workstations configs describe "${WS_CONFIG_NAME}" \
     --pd-disk-size=100 \
     --pd-disk-type="pd-balanced" \
     --service-account="${WS_SA_EMAIL}" \
-    --container-predefined-image="code-oss" \
+    --boot-disk-size=200 \
+    --container-predefined-image="codeoss" \
+    --container-env="REGION=${REGION},ZONE=${ZONE},CLUSTER_NAME=${CLUSTER_NAME},AR_REPO_NAME=${AR_REPO_NAME}" \
     --project="${PROJECT_ID}"
 fi
 
@@ -2820,23 +3238,31 @@ mkdir -p /tmp/gdc-ws-image && cd /tmp/gdc-ws-image
 cat << 'EOF' > 110_gdc_bootstrap.sh
 #!/bin/bash
 # Executed automatically by Cloud Workstations on container startup.
-# Supports both single-developer and multi-developer shared-GKE-cluster teams:
-# if workstation is named 'ws-alice', DEV_ID resolves to 'alice' and NAMESPACE to 'dev-alice'.
-su - user -c '
-  export PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
-  export REGION="'"${REGION}"'"
-  export ZONE="'"${ZONE}"'"
-  export CLUSTER_NAME="'"${CLUSTER_NAME}"'"
-  export AR_REPO_NAME="'"${AR_REPO_NAME}"'"
-  DEV_ID=$(hostname | sed "s/^ws-//")
-  export NAMESPACE="dev-${DEV_ID}"
+# Reads REGION, ZONE, CLUSTER_NAME, and AR_REPO_NAME from --container-env.
+# Supports both single-developer (gdc-dev-ws-01 -> mission-app) and multi-developer
+# shared-GKE-cluster teams (ws-alice -> dev-alice).
+HOSTNAME_VAL="$(hostname)"
+if [[ "${HOSTNAME_VAL}" == ws-* ]]; then
+  DEV_ID="${HOSTNAME_VAL#ws-}"
+  DEFAULT_NS="dev-${DEV_ID}"
+else
+  DEFAULT_NS="mission-app"
+fi
 
-  if [ -n "${PROJECT_ID}" ]; then
-    gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" 2>/dev/null || true
-    kubectl config set-context --current --namespace="${NAMESPACE}" 2>/dev/null || true
-    gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet 2>/dev/null || true
+su - user -c "
+  export PROJECT_ID=\$(gcloud config get-value project 2>/dev/null)
+  export REGION='${REGION:-us-east4}'
+  export ZONE='${ZONE:-us-east4-a}'
+  export CLUSTER_NAME='${CLUSTER_NAME:-gdc-stepping-stone}'
+  export AR_REPO_NAME='${AR_REPO_NAME:-blueprint-images}'
+  export NAMESPACE='${DEFAULT_NS}'
+
+  if [ -n \"\${PROJECT_ID}\" ]; then
+    gcloud container clusters get-credentials \"\${CLUSTER_NAME}\" --zone \"\${ZONE}\" --project \"\${PROJECT_ID}\" 2>/dev/null || true
+    kubectl config set-context --current --namespace=\"\${NAMESPACE}\" 2>/dev/null || true
+    gcloud auth configure-docker \"\${REGION}-docker.pkg.dev\" --quiet 2>/dev/null || true
   fi
-'
+"
 EOF
 
 cat << 'EOF' > Dockerfile
@@ -2852,11 +3278,12 @@ gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 docker build -t "${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/gdc-workstation-ide:latest" .
 docker push "${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/gdc-workstation-ide:latest"
 
-# Update the Workstation Configuration to use the custom image
+# Update the Workstation Configuration to use the custom image and pass container environment variables
 gcloud workstations configs update "${WS_CONFIG_NAME}" \
   --cluster="${WS_CLUSTER_NAME}" \
   --region="${REGION}" \
   --container-custom-image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/gdc-workstation-ide:latest" \
+  --container-env="REGION=${REGION},ZONE=${ZONE},CLUSTER_NAME=${CLUSTER_NAME},AR_REPO_NAME=${AR_REPO_NAME}" \
   --project="${PROJECT_ID}"
 ```
 </details>
@@ -2875,23 +3302,42 @@ A team of developers (each with their own dedicated Cloud Workstation instance, 
    - **One Shared Artifact Registry (`blueprint-images`):** Developers prefix `APP_NAME` with their developer ID (e.g., `alice-mission-app`, `bob-mission-app`) so pushing `:latest` never overwrites a teammate's container image.
    - **VPC Internal Load Balancer Quota Awareness:** Each per-namespace `Gateway` (`gke-l7-rilb`) consumes one GCP Regional Internal Forwarding Rule; for larger teams ($> 8$ developers), either request an Internal Forwarding Rule quota increase or deploy a single shared `Gateway` with per-developer `HTTPRoute` `hostnames` (**Section 2.5**).
 2. **Per-Developer Tenant Isolation (`dev-<developer_id>`):**
-   - **Dedicated Cloud Workstation (`ws-<dev_id>`):** Gives each developer an isolated persistent `/home` disk, Docker daemon, and local `kubectl port-forward` / Web Preview port space (`8081`).
-   - **Dedicated Kubernetes Namespace (`dev-<dev_id>`) + `ResourceQuota` + Namespace RBAC (`RoleBinding`):** Prevents noisy-neighbor CPU/memory starvation, keeps each developer's `postgres`, `keycloak`, `gdc-gateway-tunnel`, and Helm releases isolated, and optionally restricts developer write permissions strictly to their own `dev-<dev_id>` namespace.
-   - **Dedicated GCS Bucket & Workload Identity Binding:** Scopes `roles/iam.workloadIdentityUser` strictly to `serviceAccount:${PROJECT_ID}.svc.id.goog[dev-<dev_id>/<dev_id>-mission-app-sa]`.
+   - **Dedicated Per-Developer Workstation Service Account (`ws-sa-<dev_id>`):** Never share a single VM Service Account with project-wide `roles/container.developer` and `roles/storage.objectAdmin` across multi-tenant workstations! Instead, each developer's workstation config (`ws-cfg-<dev_id>`) attaches `ws-sa-<dev_id>` granted only `roles/container.clusterViewer` (so Kubernetes RBAC `RoleBinding/dev-<dev_id>-namespace-edit` strictly enforces namespace isolation), `roles/artifactregistry.writer`, and bucket-scoped `roles/storage.objectUser` on `gs://<dev_id>-mission-app-files-${PROJECT_ID}`.
+   - **Aggregated Gateway API Kubernetes RBAC (`ClusterRole/gdc-gateway-api-edit`):** Because Kubernetes' built-in `ClusterRole/edit` does not include `gateway.networking.k8s.io` (`gateways`, `httproutes`) or `networking.gke.io` (`healthcheckpolicies`), we aggregate those permissions into `edit` so developers can manage Gateway API resources inside their own `dev-<dev_id>` namespace.
+   - **Pre-Created Workload Identity `ServiceAccount` & Storage `Secret`:** Pre-creates `ServiceAccount/<dev_id>-mission-app-sa` and `Secret/<dev_id>-mission-app-s3-credentials` in `dev-<dev_id>`.
 
 #### Platform Administrator Team Onboarding Script (One Shared GKE Cluster, Multiple Developers)
 
-After provisioning the single shared GKE cluster (**Step A.3**) and Workstation Configuration (**Step A.4** / **Step A.5 Method 2**), run this loop to onboard each developer onto the shared cluster:
+After provisioning the single shared GKE cluster (**Step A.3**) and Workstation Cluster (**Step A.4**), run this script to scale the CPU pool, aggregate Gateway API permissions into `ClusterRole/edit`, and onboard each developer with strict per-developer GSA/RBAC isolation:
 
 ```bash
-# Scale the shared GKE CPU client-pool with autoscaling for multi-developer concurrency
+# 1. Scale the shared GKE CPU pool (client-pool on GPU clusters, or default-pool on CPU-only clusters)
+CPU_POOL=$(gcloud container node-pools describe client-pool --cluster="${CLUSTER_NAME}" --zone="${ZONE}" --project="${PROJECT_ID}" --format="value(name)" 2>/dev/null || echo "default-pool")
 gcloud container clusters update "${CLUSTER_NAME}" \
-  --zone="${ZONE}" --project="${PROJECT_ID}" \
-  --node-pool="default-pool" --enable-autoscaling --min-nodes=2 --max-nodes=8 2>/dev/null || true
+  --enable-autoscaling --node-pool="${CPU_POOL}" \
+  --min-nodes=2 --max-nodes=8 \
+  --zone="${ZONE}" --project="${PROJECT_ID}"
 
 gcloud container clusters get-credentials "${CLUSTER_NAME}" --zone="${ZONE}" --project="${PROJECT_ID}"
 
-# List of developers to onboard: "<dev_id>:<google_email>"
+# 2. Aggregate Gateway API (gateways, httproutes) & GKE HealthCheckPolicy permissions into ClusterRole/edit
+cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gdc-gateway-api-edit
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["gateways", "httproutes"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.gke.io"]
+  resources: ["healthcheckpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+EOF
+
+# 3. List of developers to onboard: "<dev_id>:<google_email>"
 TEAM_MEMBERS=(
   "alice:alice@example.com"
   "bob:bob@example.com"
@@ -2902,6 +3348,9 @@ for ENTRY in "${TEAM_MEMBERS[@]}"; do
   DEV_ID="${ENTRY%%:*}"
   DEV_EMAIL="${ENTRY#*:}"
   DEV_WS="ws-${DEV_ID}"
+  DEV_WS_CFG="ws-cfg-${DEV_ID}"
+  DEV_WS_SA="ws-sa-${DEV_ID}"
+  DEV_WS_SA_EMAIL="${DEV_WS_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
   DEV_NS="dev-${DEV_ID}"
   DEV_APP="${DEV_ID}-mission-app"
   DEV_BUCKET="${DEV_APP}-files-${PROJECT_ID}"
@@ -2910,7 +3359,36 @@ for ENTRY in "${TEAM_MEMBERS[@]}"; do
 
   echo "=== Onboarding developer '${DEV_ID}' (${DEV_EMAIL}) onto shared cluster ${CLUSTER_NAME} ==="
 
-  # 1. Create isolated Kubernetes Namespace + ResourceQuota + Namespace-Scoped RBAC RoleBinding
+  # A. Create isolated per-developer Workstation VM Service Account (clusterViewer + AR writer only)
+  gcloud iam service-accounts describe "${DEV_WS_SA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+  gcloud iam service-accounts create "${DEV_WS_SA}" \
+    --display-name="GDC Workstation SA (${DEV_ID})" --project="${PROJECT_ID}"
+
+  for ROLE in "roles/container.clusterViewer" "roles/artifactregistry.writer" "roles/logging.logWriter" "roles/monitoring.metricWriter"; do
+    gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${DEV_WS_SA_EMAIL}" --role="${ROLE}" --condition=None --quiet >/dev/null
+  done
+
+  # B. Provision per-developer GCS bucket & GKE Workload Identity binding scoped strictly to ${DEV_NS}
+  gcloud storage buckets describe "gs://${DEV_BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+  gcloud storage buckets create "gs://${DEV_BUCKET}" \
+    --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
+
+  gcloud storage buckets add-iam-policy-binding "gs://${DEV_BUCKET}" \
+    --member="serviceAccount:${DEV_WS_SA_EMAIL}" --role="roles/storage.objectUser" --quiet >/dev/null
+
+  gcloud iam service-accounts describe "${DEV_GSA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
+  gcloud iam service-accounts create "${DEV_GSA}" \
+    --display-name="GDC Dev (${DEV_ID}) GCS Workload Identity SA" --project="${PROJECT_ID}"
+
+  gcloud storage buckets add-iam-policy-binding "gs://${DEV_BUCKET}" \
+    --member="serviceAccount:${DEV_GSA_EMAIL}" --role="roles/storage.objectAdmin" --quiet >/dev/null
+
+  gcloud iam service-accounts add-iam-policy-binding "${DEV_GSA_EMAIL}" \
+    --project="${PROJECT_ID}" --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${DEV_NS}/${DEV_GSA}]" --quiet >/dev/null
+
+  # C. Create isolated Kubernetes Namespace + ResourceQuota + Namespace-Scoped RBAC + Annotated KSA & Storage Secret
   kubectl create namespace "${DEV_NS}" --dry-run=client -o yaml | kubectl apply -f -
   cat <<EOF | kubectl apply -n "${DEV_NS}" -f -
 apiVersion: v1
@@ -2933,37 +3411,56 @@ subjects:
 - kind: User
   name: "${DEV_EMAIL}"
   apiGroup: rbac.authorization.k8s.io
+- kind: User
+  name: "${DEV_WS_SA_EMAIL}"
+  apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
   name: edit
   apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${DEV_GSA}
+  annotations:
+    iam.gke.io/gcp-service-account: "${DEV_GSA_EMAIL}"
 EOF
 
-  # 2. Provision per-developer GCS bucket & GKE Workload Identity binding scoped to ${DEV_NS}
-  gcloud storage buckets describe "gs://${DEV_BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
-  gcloud storage buckets create "gs://${DEV_BUCKET}" \
-    --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
+  kubectl create secret generic "${DEV_APP}-s3-credentials" \
+    --from-literal=access-key-id="" \
+    --from-literal=secret-access-key="" \
+    --from-literal=AWS_ACCESS_KEY_ID="" \
+    --from-literal=AWS_SECRET_ACCESS_KEY="" \
+    --from-literal=S3_ENDPOINT="" \
+    --from-literal=S3_REGION="${REGION}" \
+    --from-literal=BUCKET_NAME="gs://${DEV_BUCKET}" \
+    -n "${DEV_NS}" --dry-run=client -o yaml | kubectl apply -f -
 
-  gcloud iam service-accounts describe "${DEV_GSA_EMAIL}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
-  gcloud iam service-accounts create "${DEV_GSA}" \
-    --display-name="GDC Dev (${DEV_ID}) GCS Workload Identity SA" --project="${PROJECT_ID}"
+  # D. Create the developer's dedicated Workstation Config & Instance (ws-<dev_id>) and grant access
+  if ! gcloud workstations configs describe "${DEV_WS_CFG}" \
+    --cluster="${WS_CLUSTER_NAME}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    gcloud workstations configs create "${DEV_WS_CFG}" \
+      --cluster="${WS_CLUSTER_NAME}" \
+      --region="${REGION}" \
+      --machine-type="e2-standard-8" \
+      --pd-disk-size=100 \
+      --pd-disk-type="pd-balanced" \
+      --service-account="${DEV_WS_SA_EMAIL}" \
+      --boot-disk-size=200 \
+      --container-predefined-image="codeoss" \
+      --container-env="REGION=${REGION},ZONE=${ZONE},CLUSTER_NAME=${CLUSTER_NAME},AR_REPO_NAME=${AR_REPO_NAME}" \
+      --project="${PROJECT_ID}"
+  fi
 
-  gcloud storage buckets add-iam-policy-binding "gs://${DEV_BUCKET}" \
-    --member="serviceAccount:${DEV_GSA_EMAIL}" --role="roles/storage.objectAdmin" --quiet >/dev/null
-
-  gcloud iam service-accounts add-iam-policy-binding "${DEV_GSA_EMAIL}" \
-    --project="${PROJECT_ID}" --role="roles/iam.workloadIdentityUser" \
-    --member="serviceAccount:${PROJECT_ID}.svc.id.goog[${DEV_NS}/${DEV_GSA}]" --quiet >/dev/null
-
-  # 3. Create the developer's dedicated Cloud Workstation instance (ws-<dev_id>) and grant access
   if ! gcloud workstations describe "${DEV_WS}" \
-    --cluster="${WS_CLUSTER_NAME}" --config="${WS_CONFIG_NAME}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+    --cluster="${WS_CLUSTER_NAME}" --config="${DEV_WS_CFG}" --region="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
     gcloud workstations create "${DEV_WS}" \
-      --cluster="${WS_CLUSTER_NAME}" --config="${WS_CONFIG_NAME}" --region="${REGION}" --project="${PROJECT_ID}"
+      --cluster="${WS_CLUSTER_NAME}" --config="${DEV_WS_CFG}" --region="${REGION}" --project="${PROJECT_ID}"
   fi
 
   gcloud workstations add-iam-policy-binding "${DEV_WS}" \
-    --cluster="${WS_CLUSTER_NAME}" --config="${WS_CONFIG_NAME}" --region="${REGION}" \
+    --cluster="${WS_CLUSTER_NAME}" --config="${DEV_WS_CFG}" --region="${REGION}" \
     --member="user:${DEV_EMAIL}" --role="roles/workstations.user" --project="${PROJECT_ID}" --quiet >/dev/null
 
   echo "✅ Ready: Workstation '${DEV_WS}' -> Shared Cluster '${CLUSTER_NAME}' (Namespace: '${DEV_NS}', Bucket: 'gs://${DEV_BUCKET}')"
