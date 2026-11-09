@@ -227,6 +227,8 @@ mkdir -p ~/GitHub/${APP_NAME}/{src/backend,src/frontend,manifests/gdc,manifests/
 cd ~/GitHub/${APP_NAME}
 
 echo "=== 1. Checking Staging Services in Namespace: ${NAMESPACE} ==="
+kubectl get svc keycloak -n "${NAMESPACE}" >/dev/null 2>&1 || \
+  kubectl expose deployment keycloak --name=keycloak --port=80 --target-port=8080 -n "${NAMESPACE}" 2>/dev/null || true
 kubectl get pods,svc,gateway -n "${NAMESPACE}"
 
 echo "=== 2. Checking Shared GPU Gemma 4 Inference Gateway (gemma-inference) ==="

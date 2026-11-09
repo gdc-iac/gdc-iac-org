@@ -943,12 +943,16 @@ spec:
     targetPort: 8080
 EOF
 
-# Optional: If testing in a browser via Cloud Workstation Web Preview (e.g. export WS_PREVIEW_ORIGIN="https://8081-w-....cloudworkstations.dev"),
-# inject the exact Workstation preview origin into redirectUris and webOrigins before applying:
+# Auto-detect the Cloud Workstation Port-8081 Web Preview origin (or use $WS_PREVIEW_ORIGIN if set)
+# and inject the exact Workstation preview origin into redirectUris and webOrigins before applying:
+if [ -z "${WS_PREVIEW_ORIGIN:-}" ]; then
+  WS_HOST=$(gcloud workstations list --project="${PROJECT_ID}" --regions="${REGION}" --filter="name~${HOSTNAME}" --format="value(host)" 2>/dev/null | head -n 1 || true)
+  [ -n "${WS_HOST}" ] && export WS_PREVIEW_ORIGIN="https://8081-${WS_HOST}"
+fi
 if [ -n "${WS_PREVIEW_ORIGIN:-}" ]; then
-  sed -i "s|\"redirectUris\": \[\"http://127.0.0.1:8081/\*\"\]|\"redirectUris\": [\"http://127.0.0.1:8081/*\", \"${WS_PREVIEW_ORIGIN%/}/*\"]|" \
+  sed -i "s|\"redirectUris\": \[\"http://127.0.0.1:8081/\*\"\]|\"redirectUris\": [\"http://127.0.0.1:8081/*\", \"http://localhost:8081/*\", \"${WS_PREVIEW_ORIGIN%/}/*\"]|" \
     ~/GitHub/${APP_NAME}/manifests/gcp/keycloak-emulation.yaml
-  sed -i "s|\"webOrigins\": \[\"http://127.0.0.1:8081\"\]|\"webOrigins\": [\"http://127.0.0.1:8081\", \"${WS_PREVIEW_ORIGIN%/}\"]|" \
+  sed -i "s|\"webOrigins\": \[\"http://127.0.0.1:8081\"\]|\"webOrigins\": [\"http://127.0.0.1:8081\", \"http://localhost:8081\", \"${WS_PREVIEW_ORIGIN%/}\"]|" \
     ~/GitHub/${APP_NAME}/manifests/gcp/keycloak-emulation.yaml
 fi
 
@@ -2534,6 +2538,8 @@ def get_keycloak_token(username: str, password: str) -> str:
     if not match:
         raise RuntimeError(f"Could not find Keycloak login form action for {username}")
     action_url = html.unescape(match.group(1))
+    if action_url.startswith("/"):
+        action_url = f"{BASE_URL}{action_url}"
     form_body = urllib.parse.urlencode({"username": username, "password": password}).encode("utf-8")
     req = urllib.request.Request(action_url, data=form_body, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
     try:
