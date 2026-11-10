@@ -11,17 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 bases:
   - ../../bases/environments.yaml.gotmpl
   - ../../bases/helmDefaults.yaml.gotmpl
 ---
 {{- $vals := .Values }}
 {{- $envData := .Values | get .Environment.Name dict }}
+# --- PRE-FLIGHT SECURITY VALIDATION: Enforce strict context isolation per tenant ---
+{{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
+  {{- $globalConfig := $tenantConfig | get "global" dict }}
+  {{- $tenantGlobalContext := $globalConfig | get "kube_context_global" ($vals | get "gdc_context_global" "") }}
+  {{- if not $tenantGlobalContext }}
+    {{- fail (printf "\n\n❌ SECURITY BREACH PREVENTED: Tenant '%s' does not have an explicitly defined 'kube_context_global' context!\n" $tenantName) }}
+  {{- end }}
+{{- end }}
 
 templates:
   iam-template:
-    kubeContext: {{ $vals | get "gdc_context_global" "global-api-context" }}
     namespace: {{ $vals | get "gdc_release_namespace" "iac-root" }}
     createNamespace: false
     installed: true
@@ -29,17 +35,20 @@ templates:
 
 releases:
   {{- range $tenantName, $tenantConfig := $envData.gdc_tenants }}
-    {{- $tenantAdmin := $tenantConfig.global | get "admin_subject_name" "" }}
-    {{- range $project := $tenantConfig.global.projects }}
+    {{- $globalConfig := $tenantConfig | get "global" dict }}
+    {{- $tenantGlobalContext := $globalConfig | get "kube_context_global" ($vals | get "gdc_context_global") }}
+    {{- $tenantAdmin := $globalConfig | get "admin_subject_name" "" }}
+    {{- range $project := $globalConfig | get "projects" list }}
       {{- $iamrolebindings := list }}
       {{- range $binding := $project.iamrolebindings }}
-        {{- $iamrolebindings = append $iamrolebindings (dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User")) }}
+        {{- $iamrolebindings = append $iamrolebindings (dict "role" $binding.role "subject_name" ($binding | get "subject_name" $tenantAdmin) "subject_kind" ($binding | get "subject_kind" "User") "subject_namespace" ($binding | get "subject_namespace" $project.name)) }}
       {{- end }}
     - name: {{ $project.name }}-iam-rolebindings
       chart: {{ $vals | get "gdc_iam_rolebindings_chart_path" "../../../charts/gdc-iam-role-bindings" }}
       {{- if ($vals | get "gdc_iam_rolebindings_chart_version" "") }}
       version: {{ $vals | get "gdc_iam_rolebindings_chart_version" | quote }}
       {{- end }}
+      kubeContext: {{ $tenantGlobalContext | quote }}
       labels:
         stage: 1-project-factory
         tenant: {{ $tenantName | quote }}
@@ -52,4 +61,3 @@ releases:
           namespace: {{ $project.name }}
     {{- end }}
   {{- end }}
-
