@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.web.name }}
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    app: {{ .Values.web.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.web.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.web.name }}
+    spec:
+      containers:
+      - name: python-web
+        image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag }}"
+        imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "Installing pg8000 driver..."
+          pip install --no-cache-dir pg8000
+          echo "Starting web server..."
+          python /app/server.py
+        ports:
+        - containerPort: {{ .Values.web.port }}
+          name: webport
+        resources:
+          {{- toYaml .Values.web.resources | nindent 10 }}
+        volumeMounts:
+        - name: script-vol
+          mountPath: /app
+      volumes:
+      - name: script-vol
+        configMap:
+          name: {{ .Values.web.name }}-script

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: gdc-apache-postgres
+description: A Helm chart for running a containerized Apache/Web + PostgreSQL benchmarking test on GDC
+version: 0.1.0
+keywords:
+  - gdc
+  - apache
+  - postgresql
+  - benchmark
+maintainers:
+  - name: gdc-iac

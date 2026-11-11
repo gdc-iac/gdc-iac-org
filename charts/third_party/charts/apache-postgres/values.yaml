@@ -1,0 +1,49 @@
+# Default values for gdc-apache-postgres.
+# This is a YAML-formatted file.
+
+namespace: ""
+
+# Database settings
+postgres:
+  name: postgres-db
+  image:
+    repository: postgres
+    tag: 15-alpine
+    pullPolicy: IfNotPresent
+  port: 5432
+  dbName: testdb
+  user: postgres
+  password: dbpassword123
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Web Server settings
+web:
+  name: web-server
+  image:
+    repository: python
+    tag: 3.11-alpine
+    pullPolicy: IfNotPresent
+  port: 8080
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Benchmark Job settings
+benchmark:
+  name: benchmark-client
+  image:
+    repository: alpine
+    tag: latest
+    pullPolicy: IfNotPresent
+  requestsCount: 2000
+  concurrency: 20
