@@ -8,6 +8,9 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 This document provides step-by-step instructions for deploying and configuring **HashiCorp Vault** as a centralized, highly available, and secure enclave for secrets management on Google Distributed Cloud (GDC) air-gapped environments. This pattern features a 3-node HA Vault cluster backed by GDC persistent storage using Raft consensus, integrated with GDC Key Management Service (KMS) for automatic cryptographic unsealing.
 
+Please also refer to [gitlab_vault_kms_installation_guide.md](../../../docs/operations/gitlab_vault_kms_installation_guide.md) for a comprehensive Vault and Gitlab installation and integration guide.
+
+
 ## **Architecture**
 
 Vault is deployed as a GKE `StatefulSet` within the GDC project boundary, securing cryptographic keys by talking internally to the platform's KMS endpoints.
