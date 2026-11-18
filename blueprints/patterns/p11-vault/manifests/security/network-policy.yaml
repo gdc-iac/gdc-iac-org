@@ -21,16 +21,67 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: vault
+  policyTypes:
+    - Ingress
+    - Egress
   ingress:
-    - from: # Raft and Client traffic
-      - podSelector: {}
+    # 1. Cross-namespace Vault HTTP API access for workload clients & Vault Agent sidecars (8200/TCP only)
+    - from:
+        - namespaceSelector: {}
       ports:
-      - port: 8200
-      - port: 8201
+        - protocol: TCP
+          port: 8200
+    # 2. Intra-cluster Raft replication strictly restricted to Vault server pods (8200/TCP & 8201/TCP)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    # 3. Kubelet startup/health probes to gdc-kms-bridge health port (18080/TCP)
+    - ports:
+        - protocol: TCP
+          port: 18080
   egress:
-    - to: # DNS
-      - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
-      ports: [{ port: 53, protocol: UDP }]
-    - to: # GDC Control Plane (KMS endpoint)
-      - ipBlock: { cidr: 0.0.0.0/0 }
-      ports: [{ port: 443 }]
+    # 1. Cluster DNS resolution (UDP + TCP 53) in kube-system
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 2. Vault-to-Vault Raft HA peer replication (`vault-0`, `vault-1`, `vault-2`)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    # 3. In-cluster OIDC / JWKS discovery endpoints (e.g., GitLab `/oauth/discovery/keys` or Keycloak `p12-keycloak`)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+    # 4. GDCag KMS Data Plane (443/TCP), GDCag STS Endpoint (443/TCP), and Kubernetes API Server (443/TCP & post-DNAT 6443/TCP for TokenReview)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443

@@ -23,7 +23,7 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 ## 1. Introduction & Dashboard Purpose
 
-The **Gemma 4 Gateway Control Plane** is a lightweight, zero-dependency administrative web interface served natively by the [FastAPI Gateway Proxy](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py) on the root route `/`. 
+The **Gemma 4 Gateway Control Plane** is a lightweight, zero-dependency administrative web interface served natively by the [FastAPI Gateway Proxy](../../gateway/proxy/main.py) on the root route `/`. 
 
 It is designed specifically for **Google Distributed Cloud air-gapped (GDC-ag)** environments to give Platform Administrators complete runtime control over model hyperparameters, image/video resolution budgets, running completions threads, and security blocklists inside the disconnected security boundary.
 

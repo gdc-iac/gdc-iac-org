@@ -119,28 +119,32 @@ Deploying the full **Gemma 4 Dedicated Inference Gateway** stack in production G
 * **Prerequisites**:
   - **GDC IAM Permission Bindings**: GDC air-gapped environments do **not** support GCP Workload Identity. Instead, all service accounts are native GKE/GDC accounts. Access control to platform resources is authorized by binding local GDC IAM roles to the application `ServiceAccount` (`gemma-client-sa` or `gemini-gui-sa`).
     
-    **CLI Method:**
+    **CLI Method (`gdcloud`):**
     ```bash
-    gdcloud iam service-accounts add-iam-policy-binding gemma-client-sa \
-      --project=<your-project-id> \
-      --role=roles/storage.objectAdmin
+    gdcloud iam service-accounts create gemma-client-sa --project=<your-project-id> || true
+    gdcloud projects add-iam-policy-binding <your-project-id> \
+      --role=roles/project-bucket-object-admin \
+      --member="serviceAccount:<your-project-id>:gemma-client-sa"
     ```
-    
-    **GitOps Method (`iam-policy-binding.yaml`):**
+
+    **GitOps Method (`iam-policy-binding.yaml`, applied on `GLOBAL_API_KUBECONFIG`):**
     ```yaml
-    apiVersion: iam.gdc.goog/v1
-    kind: IAMPolicyBinding
+    apiVersion: iam.global.gdc.goog/v1
+    kind: IAMRoleBinding
     metadata:
-      name: gemma-client-storage-admin
+      name: gemma-client-sa--project-bucket-object-admin
       namespace: <your-project-id>
+      labels:
+        iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
     spec:
       subjects:
       - kind: ServiceAccount
         name: gemma-client-sa
         namespace: <your-project-id>
       roleRef:
+        apiGroup: iam.global.gdc.goog/v1
         kind: IAMRole
-        name: roles/storage.objectAdmin
+        name: project-bucket-object-admin
     ```
   - **Ingress Connectivity**: A dynamic Ingress controller and GDC LoadBalancer IP must expose the client interface to GDC internal user networks.
 

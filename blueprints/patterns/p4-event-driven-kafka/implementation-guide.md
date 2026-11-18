@@ -51,7 +51,7 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy application and StatefulSet manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy application and StatefulSet manifests).
 
 ---
 
@@ -503,3 +503,11 @@ spec:
 | `Broker Leader Not Available` | Storage permissions issue on persistent volumes. | Check if the init container successfully ran `chown` on the mount path. |
 | `Offset commit failed` | Database connectivity is broken or database is unresponsive. | Verify connection parameters in `event-db-credentials` secret and database metrics. |
 | `Kafka connection refused` | Service name `kafka-svc` routing mismatch. | Ensure KubeDNS lookup for `kafka-svc.my-gdc-project.svc.cluster.local` resolves correctly. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

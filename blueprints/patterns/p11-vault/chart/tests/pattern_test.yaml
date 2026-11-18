@@ -16,19 +16,60 @@ templates:
   - templates/apps/workloads.yaml
   - templates/gdc/resources.yaml
 tests:
-  - it: should render User Cluster workloads by default with custom namespace and labels
+  - it: should render User Cluster Vault HA StatefulSet, gdc-kms-bridge sidecar, and NetworkPolicy by default
     set:
       global:
-        namespace: custom-tenant-ns
-        projectId: custom-tenant-proj
-        registry: harbor.corp.local/blueprints
+        namespace: vault
+        projectId: iac-root
+        registry: harbor001-iac-root.org-12345.zone1.google.gdch.test/iac
     template: templates/apps/workloads.yaml
     asserts:
       - hasDocuments:
-          count: 1
+          count: 9
+      - isKind:
+          of: ServiceAccount
+        documentIndex: 0
+      - isKind:
+          of: ConfigMap
+        documentIndex: 4
+      - matchRegex:
+          path: data["extraconfig-from-values.hcl"]
+          pattern: 'key_ring\s*=\s*"iac-root"'
+        documentIndex: 4
+      - matchRegex:
+          path: data["extraconfig-from-values.hcl"]
+          pattern: 'service_registration "kubernetes"'
+        documentIndex: 4
+      - isKind:
+          of: StatefulSet
+        documentIndex: 7
+      - equal:
+          path: spec.replicas
+          value: 3
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: gdc-kms-bridge
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.initContainers[0].restartPolicy
+          value: Always
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: "/v1/sys/health?standbyok=true&uninitok=true&sealedcode=204"
+        documentIndex: 7
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: standard-rwo
+        documentIndex: 7
       - isKind:
           of: NetworkPolicy
-        documentIndex: 0
+        documentIndex: 8
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector
+          value: {}
+        documentIndex: 8
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:
@@ -37,21 +78,62 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
-  - it: should not render Zonal GDC resources by default (handled by Stage 2 2-resources)
+  - it: should not render Control-Plane KMS & IAM resources by default
     template: templates/gdc/resources.yaml
     asserts:
       - hasDocuments:
           count: 0
-  - it: should render Zonal GDC resources when gdc.enabled is true
+  - it: should render Global ProjectServiceAccount, IAMRoleBindings, and Zonal AEADKey when gdc.enabled is true
     set:
       gdc:
         enabled: true
       global:
-        namespace: custom-tenant-ns
+        projectId: iac-root
+        namespace: vault
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 4
+      - isKind:
+          of: ProjectServiceAccount
+        documentIndex: 0
+      - equal:
+          path: metadata.namespace
+          value: iac-root
+        documentIndex: 0
+      - isKind:
+          of: IAMRoleBinding
+        documentIndex: 1
+      - equal:
+          path: spec.roleRef.name
+          value: kms-developer
+        documentIndex: 1
+      - isKind:
+          of: IAMRoleBinding
+        documentIndex: 2
+      - equal:
+          path: spec.roleRef.name
+          value: kms-viewer
+        documentIndex: 2
+      - isKind:
+          of: AEADKey
+        documentIndex: 3
+      - equal:
+          path: spec.algorithm
+          value: AES_256_GCM
+        documentIndex: 3
+  - it: should allow rendering only Zonal AEADKey when gdc.globalIam.enabled is false
+    set:
+      gdc:
+        enabled: true
+        globalIam:
+          enabled: false
+      global:
+        projectId: iac-root
     template: templates/gdc/resources.yaml
     asserts:
       - hasDocuments:
           count: 1
       - isKind:
-          of: ProjectPolicy
+          of: AEADKey
         documentIndex: 0

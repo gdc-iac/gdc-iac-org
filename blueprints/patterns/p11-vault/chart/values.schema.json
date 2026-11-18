@@ -31,6 +31,22 @@
         "enabled": {
           "type": "boolean"
         },
+        "globalIam": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "zonalKms": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
         "failover": {
           "type": "object",
           "properties": {
@@ -46,6 +62,95 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        }
+      }
+    },
+    "vault": {
+      "type": "object",
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "serviceAccountName": {
+          "type": "string"
+        },
+        "k8sServiceAccountName": {
+          "type": "string"
+        },
+        "storageClass": {
+          "type": "string"
+        },
+        "storageSize": {
+          "type": "string"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "kms": {
+          "type": "object",
+          "properties": {
+            "region": {
+              "type": "string"
+            },
+            "keyName": {
+              "type": "string"
+            },
+            "algorithm": {
+              "type": "string"
+            }
+          }
+        },
+        "bridge": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "kmsEndpoint": {
+              "type": "string"
+            },
+            "secretName": {
+              "type": "string"
+            },
+            "secretKey": {
+              "type": "string"
+            },
+            "listenAddr": {
+              "type": "string"
+            },
+            "healthPort": {
+              "type": "integer"
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "properties": {
+            "controlPlaneCidrs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

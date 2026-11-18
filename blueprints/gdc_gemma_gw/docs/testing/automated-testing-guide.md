@@ -331,7 +331,7 @@ Modern web browsers aggressively cache static Vite/React JavaScript bundles loca
 This section provides a deep-dive walkthrough of the gateway proxy's intelligent, server-side **Prompt Routing Classifier** logic, explaining how vLLM/Ollama work within this architecture and how operators can easily customize the swap-triggering thresholds.
 
 ### 6.1. Walking Through the Classifier Logic (`main.py`)
-The prompt routing classifier resides natively inside [gateway/proxy/main.py](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py). When a completions request is sent to the generic `gemma4` model ID (or with no model specified), the gateway parses the request payload using the following heuristic logic:
+The prompt routing classifier resides natively inside [gateway/proxy/main.py](../../gateway/proxy/main.py). When a completions request is sent to the generic `gemma4` model ID (or with no model specified), the gateway parses the request payload using the following heuristic logic:
 
 ```python
 def classify_prompt_complexity(payload: dict) -> str:
@@ -402,7 +402,7 @@ Because both serving releases are deployed from the **same underlying Helm bluep
 > [!IMPORTANT]
 > To prevent GKE's internal `kube-proxy` from load-balancing requests round-robin across both pods (which would result in a `404 Not Found` 50% of the time when a MoE query lands on the Dense pod), **we have strictly isolated both GKE deployments and Service selectors using the Helm Release instance parameter!**
 
-Inside [blueprints/vllm-gke/templates/service.yaml](file:///Users/gmollison/GitHub/gdc_gemma_gw/blueprints/vllm-gke/templates/service.yaml) and `deployment.yaml`, selectors are strictly bound to the release instance:
+Inside [blueprints/vllm-gke/templates/service.yaml](../../blueprints/vllm-gke/templates/service.yaml) and `deployment.yaml`, selectors are strictly bound to the release instance:
 ```yaml
   selector:
     app.kubernetes.io/name: {{ include "vllm.name" . }}

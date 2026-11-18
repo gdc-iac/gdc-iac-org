@@ -13,7 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Step 1: Configure IAM
-kubectl create sa rag-sa -n test-project
-gdcloud iam service-accounts add-iam-policy-binding rag-sa --project=${PROJECT_ID} --role=Role/ai-ocr-developer
-gdcloud iam service-accounts add-iam-policy-binding rag-sa --project=${PROJECT_ID} --role=Role/ai-translation-developer
+# Step 1: Configure Global ProjectServiceAccount & GDCag Storage IAMRoleBinding
+PROJECT_ID=${PROJECT_ID:-"my-gdc-project"}
+gdcloud iam service-accounts create rag-sa --project="${PROJECT_ID}" || true
+gdcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --role=roles/project-bucket-object-admin \
+  --member="serviceAccount:${PROJECT_ID}:rag-sa"

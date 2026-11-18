@@ -143,10 +143,10 @@ This pattern requires permissions for both the **user** deploying the applicatio
 To deploy the resources, your user account will need the following GDC IAM roles:
 
 *   **IAM Admin:** To create a new service account (`gemini-gui-sa`) and grant it project-level roles.
-    *   `roles/iam.serviceAccountAdmin`
-    *   `roles/project.iamAdmin`
+    *   `project-iam-admin`
+    *   `project-iam-admin`
 *   **GKE Developer:** To deploy the Deployment and ServiceAccount to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 **2. Service Account Permissions:**
 The `gemini-gui-sa` service account itself will be granted the following roles by the user during setup, which it uses at runtime to call other GDC services:
@@ -168,7 +168,7 @@ export PROJECT_ID=<YOUR_PROJECT_ID>
 
 kubectl create sa gemini-gui-sa -n $PROJECT_ID
 # Example for GDC Storage access (adjust role as needed for your specific GDC version)
-gdcloud iam service-accounts add-iam-policy-binding gemini-gui-sa --project=$PROJECT_ID --role=roles/storage.objectAdmin
+gdcloud projects add-iam-policy-binding "$PROJECT_ID" --role=roles/project-bucket-object-admin --member="serviceAccount:${PROJECT_ID}:gemini-gui-sa"
 ```
 
 **Option B: GitOps**
@@ -386,7 +386,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 3. **Load and Push Global Container Images (If Applicable):** For blueprints bridging global components (e.g. Hashicorp Vault, external pipelines), manually load and tag the artifacts using standard Docker commands:
    ```bash
    docker load -i artifacts/external-dependencies/images/...
-   docker tag ... harbor.gdc.local/library/...
+   docker tag ... harbor.gdc.local/iac/...
    docker push ...
    ```
 

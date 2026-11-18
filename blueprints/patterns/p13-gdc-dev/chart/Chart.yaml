@@ -16,7 +16,7 @@ apiVersion: v2
 name: p13-gdc-dev
 description: "Pattern 13: GDC Air-Gapped Developer IDE & AI Gateway Environment"
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
 maintainers:
   - name: gdc-iac

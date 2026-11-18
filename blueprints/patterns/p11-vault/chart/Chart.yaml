@@ -14,9 +14,9 @@
 
 apiVersion: v2
 name: p11-vault
-description: "Pattern 11: Resilient Secret Management with HashiCorp Vault on GDC air-gapped"
+description: "Pattern 11: Resilient Secret Management with HashiCorp Vault and GDCag KMS Auto-Unseal"
 type: application
-version: 0.1.0
-appVersion: "1.0.0"
+version: 0.2.0
+appVersion: "1.15.0"
 maintainers:
   - name: gdc-iac

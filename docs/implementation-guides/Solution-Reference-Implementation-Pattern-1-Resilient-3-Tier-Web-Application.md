@@ -58,7 +58,7 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy application manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy application manifests).
 
 ---
 
@@ -529,14 +529,15 @@ Execute an ephemeral verification pod directly inside the cluster against the in
 
 ```bash
 kubectl run p1-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=busybox:1.36 --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/busybox:1.36" --command -- sh -ec '
     sleep 2 && \
+    wget -qO- http://web-lb/ | head -n 15 && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 1 Web Tier connectivity verified!" && \
     echo "✅ SUCCESS: Frontend reached via internal ClusterIP" && \
-    echo "===============================================" && \
-    wget -qO- http://web-lb/ | head -n 15 && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**

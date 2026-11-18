@@ -43,9 +43,9 @@ Ensure the following prerequisites are met:
 * A legacy VM boot image (e.g., Ubuntu 20.04 or RHEL 8) imported into GDC's VM images registry.
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
-  * **Network Admin**: `roles/compute.networkAdmin` (to create subnets).
+  * **Network Admin**: `project-networkpolicy-admin` (to create subnets).
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL).
-  * **Compute Admin**: `roles/compute.instanceAdmin.v1` (to create and configure VMs).
+  * **Compute Admin**: `project-vm-admin` (to create and configure VMs).
 
 ---
 
@@ -278,3 +278,11 @@ spec:
 | `VM fails to schedule` | Zonal physical compute resource exhaustion. | Try creating the instance in a different GDC availability zone. |
 | `DB Connection Refused` | Subnetwork route rules are misconfigured or VM is in a different VPC namespace. | Ensure the DB cluster and VM subnetwork reside in the same VPC or that VPC peering is active. |
 | `PostgreSQL HA Failover` | Physical host failure hosting primary DB pod. | Standby replica must be promoted by manually triggering a failover. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

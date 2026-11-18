@@ -104,7 +104,7 @@ To deploy the resources for this pattern, your user account will need the follow
 *   **Database Admin:** To provision the PostgreSQL HA cluster.
     *   `roles/db.cluster.creator`
 *   **GKE Developer:** To deploy applications, services, and load balancers to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 ## Implementation
 
@@ -283,7 +283,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 3. **Load and Push Global Container Images (If Applicable):** For blueprints bridging global components (e.g. Hashicorp Vault, external pipelines), manually load and tag the artifacts using standard Docker commands:
    ```bash
    docker load -i artifacts/external-dependencies/images/...
-   docker tag ... harbor.gdc.local/library/...
+   docker tag ... harbor.gdc.local/iac/...
    docker push ...
    ```
 

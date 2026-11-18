@@ -2,62 +2,83 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 # **Solution Reference Implementation - Gemma 4 Dedicated Inference Gateway on GDC air-gapped**
 
-> **Version:** 1.1
+> **Version:** 1.2
 
 ## **Overview**
 
-This document provides step-by-step instructions for deploying and configuring the **Gemma 4 Dedicated Inference Gateway** on Google Distributed Cloud (GDC) air-gapped environments. The gateway is a high-performance, OpenAI-compatible routing proxy (FastAPI) that dynamically routes incoming client queries to either the latency-optimized **Gemma 4 26B (MoE)** or the reasoning-optimized **Gemma 4 31B (Dense)** backend pools based on prompt complexity heuristics, securing high-efficiency hardware utilization across GDC-ag GPU nodes.
+This document provides step-by-step instructions for deploying and configuring the **Gemma 4 Dedicated Inference Gateway (`GCPS-20`)** on Google Distributed Cloud (GDC) air-gapped environments. The gateway is a high-performance, OpenAI-compatible Layer 7 (L7) routing proxy and control plane (FastAPI) that dynamically routes incoming client and agent queries to either the latency-optimized **Gemma 4 26B A4B (MoE)** or the reasoning-optimized **Gemma 4 31B (Dense)** backend serving pools. By combining context-aware prompt classification, federated Keycloak OIDC authentication, and optional KV-cache-aware pod selection across multi-replica GPU pools via Envoy AI Gateway and the Kubernetes Gateway API Inference Extension, the gateway maximizes hardware utilization across GDC-ag GPU nodes.
 
 ## **Architecture**
 
-The architecture consists of the **Gemma 4 Gateway Proxy** deployment exposed via standard **Kubernetes Gateway API** resources (`Gateway`, `HTTPRoute`) bound to a platform-configured `GatewayClass`. The proxy processes incoming `/v1/chat/completions` API requests and routes them over the internal cluster KubeDNS network to the underlying **vLLM** (production) or **Ollama** (testing) serving engines running on NVIDIA A100/H100 GPU pools.
+The architecture consists of a multi-replica **Gemma 4 Gateway Proxy (`gemma-gateway`)** deployment exposed via standard **Kubernetes Gateway API** resources (`Gateway`, `HTTPRoute`) bound to a platform-configured `GatewayClass` (`gdc-platform-gateway`). The proxy authenticates callers via **Keycloak OIDC (`GCPS-12`)** or API keys, classifies prompt complexity on the isolated user turn, normalizes payloads, and routes `/v1/chat/completions` requests either through the **Envoy AI Gateway & Gateway API Inference Extension (`gemma-envoy-inference-pool`)** for per-user token rate limiting and KV-cache-aware Endpoint Picker (`epp`) pod scoring, or directly over internal KubeDNS to the underlying **vLLM** (production) or **Ollama** (sandbox) serving engines running on NVIDIA H200, H100, or A100 GPU node pools.
 
 ```
-                    [ Downstream Client / AI Agent ]
-                                   │
-                                   ▼
-                      [ GDC PLATFORM HLB / GATEWAY ] (gemma-gateway.shared-services.gdc.local)
-                         HTTPRoute: gemma-gateway-route
-                                   │
-                                   ▼
-                         [Gemma 4 Gateway Proxy]
-                       (FastAPI Routing Classifier)
-                                   │
-                     ┌─────────────┴─────────────┐
-           (Conversational)              (Complex/Math/Code)
-                     ▼                           ▼
-            [vLLM Serving Pod A]        [vLLM Serving Pod B]
-             Gemma 4 26B (MoE)           Gemma 4 31B (Dense)
-             (vllm-26b-service)          (vllm-31b-service)
+         [ Downstream Clients & AI Blueprints: GCPS-20a, GCPS-13, GCPS-06, GCPS-07 ]
+                                              │
+                                              ▼
+                 [ GDC PLATFORM HLB / KUBERNETES GATEWAY API ]
+                   Gateway: gdc-platform-gateway | HTTPRoute: gemma-gateway-route
+                   Host: gemma-gateway.shared-services.gdc.local (TLS: gdc-ca-issuer)
+                                              │
+                                              ▼
+  ┌──────────────────────┐      ┌───────────────────────────┐      ┌──────────────────────┐
+  │ Keycloak OIDC SSO    │◄────►│  Gemma 4 Gateway Proxy    │◄────►│ Shared State &       │
+  │ (GCPS-12, /auth/)    │ OIDC │  (FastAPI Control Plane)  │Sync  │ Telemetry            │
+  │ • PKCE & JWKS RS256  │ JWKS │  • Context-Aware Router   │State │ • Atomic File / Redis│
+  │ • RBAC (admin/user)  │      │  • Payload Normalizer     │      │ • vLLM / DCGM Metrics│
+  └──────────────────────┘      │  • Admin Control Plane (/)│      └──────────────────────┘
+                                └─────────────┬─────────────┘
+                                              │ (X-User-ID & x-ai-eg-model)
+                                              ▼
+                 ┌─────────────────────────────────────────────────────────┐
+                 │ [Optional Scale-Out L7 Data Plane]                      │
+                 │ Envoy AI Gateway & Gateway API Inference Extension      │
+                 │ • AIGatewayRoute & BackendTrafficPolicy (Token Limiter) │
+                 │ • InferencePool + Endpoint Picker (vllm-26b/31b-epp)    │
+                 │   Scorers: Prefix-Cache (3), KV-Cache (2), Queue (2)    │
+                 └──────────────┬───────────────────────────┬──────────────┘
+                                │                           │
+             (Conversational / Priority: 100)    (Complex / Code / Math / SQL / Priority: 50)
+                                ▼                           ▼
+                 ┌────────────────────────────┐ ┌────────────────────────────┐
+                 │ Tier 1: Gemma 4 26B (MoE)  │ │ Tier 2: Gemma 4 31B (Dense)│
+                 │ pool: gpu-moe (H200/H100)  │ │ pool: gpu-dense (H200/H100)│
+                 │ vllm-26b / ollama-26b      │ │ vllm-31b / ollama-31b      │
+                 │ (vllm-26b-vllm-gke-service)│ │ (vllm-31b-vllm-gke-service)│
+                 └──────────────┬─────────────┘ └─────────────┬──────────────┘
+                                └──────────────┬──────────────┘
+                                               ▼
+                 [ GDC SAN Shared Storage (standard-rwx PVCs) & Harbor Registry ]
 ```
 
 ### **Key Solution Capabilities**
 
-* **Intelligent Routing & Prompt Classification**: Dynamically analyzes the structure of incoming prompts to classify their complexity. Standard conversational queries are routed to the low-latency **Gemma 4 26B (MoE)** backend, while complex logical, mathematical, or coding tasks are targeted to the reasoning-optimized **Gemma 4 31B (Dense)** backend.
-* **Drop-in OpenAI Compatibility**: Exposes a standard, rootless `/v1/chat/completions` endpoint, enabling seamless integration with downstream agents, LLM frameworks, and applications without codebase modifications.
-* **Flexible Serving Backends (vLLM & Ollama)**: Configured to support high-throughput, production-grade serving via **vLLM** (leveraging PagedAttention and multi-GPU tensor parallelism) alongside a resource-efficient **Ollama** container framework for developer sandboxes and staging environments.
-* **GDC Air-Gapped Sovereignty**: Adheres to strict GDC-ag isolated constraints—all container images are sideloaded into the local Harbor registry, and large model weights are persisted locally on GDC SAN StorageClasses (`standard-rwx`) with zero external internet dependencies.
-* **Resource Optimization & Isolation**: Implements strict node selectors, labels, and taints/tolerations to isolate and protect GPU-intensive inference workloads from standard stateless application containers.
+* **Context-Aware Prompt Classification & Model Tiering**: Dynamically analyzes the latest user query turn while stripping injected RAG `<context>` blocks, system directives, and benign conversational idioms so retrieved document context does not skew routing. Standard conversational queries route to the low-latency **Gemma 4 26B A4B (MoE)** backend (`pool: gpu-moe`, `priority: 100`), while code generation, SQL synthesis, mathematical proofs, and multi-step reasoning tasks route to the reasoning-optimized **Gemma 4 31B (Dense)** backend (`pool: gpu-dense`, `priority: 50`). Supports explicit model overrides (`gemma4:26b`, `gemma4:31b`, `auto`) and routing headers (`X-Task-Complexity`, `X-Model-Tier`).
+* **Telemetry-Driven GPU Pod Selection & Per-User Token Rate Limiting**: Integrates with **Envoy AI Gateway** (`AIGatewayRoute`, `BackendTrafficPolicy`) and the **Kubernetes Gateway API Inference Extension** (`InferencePool`, `InferenceObjective`, and `epp` Endpoint Picker `v1.3.0`) to score multi-replica vLLM pods using live Prometheus metrics (`prefix-cache-scorer` weight `3`, `kv-cache-utilization-scorer` weight `2`, `queue-scorer` weight `2`) and enforce per-user hourly token budgets (`llm_total_tokens` via `X-User-ID`), with automatic fail-safe fallback to direct KubeDNS service routing.
+* **Federated Keycloak OIDC Authentication & RBAC**: Integrates with centralized **Keycloak (`GCPS-12`)** (`gdc-rag-realm`) for OIDC Authorization Code Flow with PKCE (`S256`), `/auth/` reverse-proxying, RS256 JWKS Bearer JWT verification, and role-based access control (`admin` and `user` roles).
+* **Drop-in OpenAI Compatibility & Payload Normalization**: Exposes a standard, rootless `/v1/chat/completions` endpoint (`runAsNonRoot: true`, UID `1000`), normalizing `<thought>` reasoning blocks in SSE streams, flattening `system`-role messages when required by target backends, and preserving deterministic agent overrides (`temperature=0.0`, `X-Preserve-Client-Params`).
+* **Flexible Serving Backends (vLLM & Ollama)**: Configured to support high-throughput, production-grade serving via **vLLM** (using PagedAttention, prefix caching, chunked prefill, 32K context windows, and multi-GPU tensor parallelism on NVIDIA H200 141GB or H100/A100 80GB GPUs) alongside pre-baked **Ollama** containers for developer sandboxes and staging environments.
+* **GDC Air-Gapped Sovereignty & GPU Isolation**: Adheres to strict GDC-ag isolated constraints (`HF_HUB_OFFLINE=1`)—all container images are sideloaded into the local Harbor registry, model weights are persisted locally on GDC SAN StorageClasses (`standard-rwx`), and node selectors (`pool: cpu`, `pool: gpu-moe`, `pool: gpu-dense`), taints (`nvidia.com/gpu:NoSchedule`), and `ProjectNetworkPolicy` rules isolate GPU inference pools from stateless workloads.
 
 ### **Unified Admin Control Plane**
 
-The Gemma 4 Gateway Proxy serves an interactive, GDC-styled HTML **Admin Control Plane** (served directly at the root `/` URL path of the gateway) alongside its REST administration APIs. This control plane enables platform administrators and operators to monitor gateway health, manage active client traffic, and hot-swap LLM generation configurations at runtime without redeploying proxy pods:
+The Gemma 4 Gateway Proxy serves an interactive, OIDC RBAC-protected HTML **Admin Control Plane** (served directly at the root `/` URL path of the gateway) alongside its REST administration APIs, backed by multi-pod state synchronization (`GATEWAY_STATE_FILE` atomic file locking or Redis):
 
 1. **Dynamic Parameter Configuration (`POST /api/config`)**:
-   - Adjusts default generation parameters globally on-the-fly, including **Temperature**, **Top-P**, and **Frequency Penalty**.
+   - Adjusts default generation parameters globally at runtime, including **Temperature**, **Top-P**, **Frequency Penalty**, and **`enforce_parameter_overrides`** (with one-click reset to auto defaults).
    - Adjusts GDC-ag specific **Vision Token Budgets** for multimodal workloads (supporting variable budget resolution selections: `70`, `140`, `280`, `560`, or `1120` tokens).
-   - Hot-swaps the default model variant routing target for conversational queries (allowing operators to toggle the baseline chat target between 26B and 31B dynamically).
+   - Hot-swaps the default model variant routing target (`26b`, `31b`, or `auto`).
 
 2. **In-Flight Traffic Control & Session Termination (`POST /api/sessions/{session_id}/kill`)**:
-   - Logs and monitors active user chat sessions and real-time generation status.
+   - Logs and monitors active user chat sessions and real-time generation status across gateway replicas.
    - Provides an administrative kill-switch to immediately disconnect and terminate active generation streams in-flight.
 
 3. **User Blocklist Management (`POST /api/users/{user_id}/block`)**:
-   - Allows administrators to block/unblock users by ID.
-   - Automatically drops all active sessions and rejects subsequent API calls from blocked client IDs.
+   - Allows administrators to block or unblock users by ID across all gateway pods.
+   - Automatically drops active sessions and rejects subsequent API calls from blocked client IDs.
 
-4. **Real-time Gateway Telemetry (`GET /api/metrics`)**:
-   - Exposes structured performance data, including FastAPI CPU usage, virtual GPU/VRAM utilization, database connections, active session counts, and throughput metrics.
+4. **Real-Time Upstream GPU & Gateway Telemetry (`GET /api/metrics`)**:
+   - Scrapes live Prometheus metrics from upstream vLLM pods (`/metrics`), NVIDIA DCGM Exporter (`DCGM_METRICS_URL`), or Ollama (`/api/ps`) to report real-time GPU/VRAM utilization, KV-cache saturation, active session counts, and token throughput.
 
 ## **Before you Begin**
 

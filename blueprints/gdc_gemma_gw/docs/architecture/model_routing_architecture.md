@@ -112,11 +112,11 @@ Here is the architectural sequence and pipeline of requests moving through the g
 
 ## 2. Dynamic vs. Explicit Route Selection
 
-The gateway's primary routing layer is located in [gateway/proxy/main.py](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py). It operates two modes: **Explicit Routing** and **Dynamic Classification**.
+The gateway's primary routing layer is located in [gateway/proxy/main.py](../../gateway/proxy/main.py). It operates two modes: **Explicit Routing** and **Dynamic Classification**.
 
 ### 2.1 Explicit Model Tag Routing
 If the client explicitly requests a specific model identifier mapping in `MODEL_ROUTING_CONFIG` (e.g., `model="gemma4:26b"` or `model="gemma4:31b"`), the routing layer bypasses dynamic text analysis and forwards directly to the target serving instance:
-* Reference: [main.py:L305-L311](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py#L305-L311)
+* Reference: [main.py:L305-L311](../../gateway/proxy/main.py#L305-L311)
 
 ```python
 # 1. If client explicitly requests a specific valid variant
@@ -129,7 +129,7 @@ if requested_model in MODEL_ROUTING_CONFIG and requested_model != "*":
 
 ### 2.2 Dynamic Classification (Heuristics-Based)
 If the prompt specifies a generic model name like `"gemma4"` or skips it, the gateway invokes the prompt complexity engine to route requests to the most appropriate variant:
-* Reference: [main.py:L312-L318](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py#L312-L318)
+* Reference: [main.py:L312-L318](../../gateway/proxy/main.py#L312-L318)
 
 ```python
 else:
@@ -147,7 +147,7 @@ else:
 ## 3. Inside the Complexity Classifier
 
 The `classify_prompt_complexity` function analyzes user queries in real-time to match them against specific complexity markers:
-* Reference: [main.py:L231-L271](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py#L231-L271)
+* Reference: [main.py:L231-L271](../../gateway/proxy/main.py#L231-L271)
 
 ```python
 def classify_prompt_complexity(payload: dict) -> str:
@@ -205,12 +205,12 @@ def classify_prompt_complexity(payload: dict) -> str:
 
 ## 4. Serving Infrastructure Configuration (YAML)
 
-Under air-gapped deployment constraints (GDC-ag), the underlying routing endpoints are determined at startup by parsing cluster internal Service endpoints injected via environment variables in [standalone/manifests/01-gateway.yaml](file:///Users/gmollison/GitHub/gdc_gemma_gw/standalone/manifests/01-gateway.yaml).
+Under air-gapped deployment constraints (GDC-ag), the underlying routing endpoints are determined at startup by parsing cluster internal Service endpoints injected via environment variables in [standalone/manifests/01-gateway.yaml](../../standalone/manifests/01-gateway.yaml).
 
 ### Environmental Mapping Example
 
 In production GKE contexts, the `MODEL_ROUTING_CONFIG` maps specific variants directly to kubernetes headless or ClusterIP services exposed by the backend GPU serving pools:
-* Reference: [01-gateway.yaml:L33-L34](file:///Users/gmollison/GitHub/gdc_gemma_gw/standalone/manifests/01-gateway.yaml#L33-L34)
+* Reference: [01-gateway.yaml:L33-L34](../../standalone/manifests/01-gateway.yaml#L33-L34)
 
 ```yaml
 - name: MODEL_ROUTING_CONFIG
@@ -218,7 +218,7 @@ In production GKE contexts, the `MODEL_ROUTING_CONFIG` maps specific variants di
 ```
 
 The gateway parses this configuration to hydrate dynamic route dictionaries:
-* Reference: [main.py:L34-L35](file:///Users/gmollison/GitHub/gdc_gemma_gw/gateway/proxy/main.py#L34-L35)
+* Reference: [main.py:L34-L35](../../gateway/proxy/main.py#L34-L35)
 
 ```python
 DEFAULT_ROUTING = '{"gemma4:26b": "http://ollama-26b-service:11434", "gemma4:31b": "http://ollama-31b-service:11434", "*": "http://ollama-26b-service:11434"}' if ACTIVE_FRAMEWORK == "ollama" else '{"gemma4:26b": "http://vllm-26b-vllm-gke-service:8000", "gemma4:31b": "http://vllm-31b-vllm-gke-service:8000", "*": "http://vllm-26b-vllm-gke-service:8000"}'
@@ -252,17 +252,17 @@ By deploying the optional [`blueprints/envoy-inference-pool`](../README.md) char
 
 A robust set of automated testing patterns maintains zero-regression compliance for routing logic when integrating changes.
 
-The tests are located in [tests/test_gateway.py](file:///Users/gmollison/GitHub/gdc_gemma_gw/tests/test_gateway.py):
+The tests are located in [tests/test_gateway.py](../../tests/test_gateway.py):
 
-1. **Routing and Header Verification Test:** `test_chat_completions_routing` runs mock completions and validates standard headers, routing matching, and backend endpoint targeting ([test_gateway.py:L45-L117](file:///Users/gmollison/GitHub/gdc_gemma_gw/tests/test_gateway.py#L45-L117)).
+1. **Routing and Header Verification Test:** `test_chat_completions_routing` runs mock completions and validates standard headers, routing matching, and backend endpoint targeting ([test_gateway.py:L45-L117](../../tests/test_gateway.py#L45-L117)).
 2. **Complexity Logic Check:** `test_prompt_routing_classifier_complex` ensures that code, programming, and mathematical reasoning prompts are automatically captured and routed to the 31B Dense model variant:
-   * Reference: [test_gateway.py:L312-L346](file:///Users/gmollison/GitHub/gdc_gemma_gw/tests/test_gateway.py#L312-L346)
+   * Reference: [test_gateway.py:L312-L346](../../tests/test_gateway.py#L312-L346)
 3. **Conversational Direct Check:** `test_prompt_routing_classifier_conversational` validates general greeting prompts stay routed to MoE 26B:
-   * Reference: [test_gateway.py:L348-L383](file:///Users/gmollison/GitHub/gdc_gemma_gw/tests/test_gateway.py#L348-L383)
+   * Reference: [test_gateway.py:L348-L383](../../tests/test_gateway.py#L348-L383)
 4. **Explicit Overriding Check:** `test_prompt_routing_classifier_explicit_override` tests that the client's direct request is preserved, bypassing the heuristic classifier entirely:
-   * Reference: [test_gateway.py:L385-L420](file:///Users/gmollison/GitHub/gdc_gemma_gw/tests/test_gateway.py#L385-L420)
+   * Reference: [test_gateway.py:L385-L420](../../tests/test_gateway.py#L385-L420)
 5. **Runtime Fallback & Dashboard Integration Check:** `test_prompt_routing_classifier_dynamic_fallback` verifies that when an administrator hot-swaps the active variant override, general queries immediately route to the new target variant:
-   * Reference: [test_gateway.py:L442-L454](file:///Users/gmollison/GitHub/gdc_gemma_gw/tests/test_gateway.py#L442-L454)
+   * Reference: [test_gateway.py:L442-L454](../../tests/test_gateway.py#L442-L454)
 
 ---
 

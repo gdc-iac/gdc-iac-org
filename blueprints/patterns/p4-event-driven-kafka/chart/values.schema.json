@@ -48,6 +48,9 @@
           "type": "boolean"
         }
       }
+    },
+    "storageClassName": {
+      "type": "string"
     }
   }
 }

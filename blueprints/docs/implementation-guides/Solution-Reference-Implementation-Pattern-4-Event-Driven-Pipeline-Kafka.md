@@ -51,7 +51,7 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy application and StatefulSet manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy application and StatefulSet manifests).
 
 ---
 

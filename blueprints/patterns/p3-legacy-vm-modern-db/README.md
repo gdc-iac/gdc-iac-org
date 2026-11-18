@@ -79,11 +79,11 @@ Before deploying, ensure you have configured the blueprints with your Project ID
 To deploy the resources for this pattern, your user account will need the following GDC IAM roles granted in your target project:
 
 *   **Network Admin:** To create VPC networks and subnets for the VM.
-    *   `roles/compute.networkAdmin`
+    *   `project-networkpolicy-admin`
 *   **Database Admin:** To provision the PostgreSQL HA cluster.
     *   `roles/db.cluster.creator`
 *   **Compute Admin:** To create the virtual machine instance.
-    *   `roles/compute.instanceAdmin.v1`
+    *   `project-vm-admin`
 
 ## Implementation
 
@@ -258,7 +258,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 3. **Load and Push Global Container Images (If Applicable):** For blueprints bridging global components (e.g. Hashicorp Vault, external pipelines), manually load and tag the artifacts using standard Docker commands:
    ```bash
    docker load -i artifacts/external-dependencies/images/...
-   docker tag ... harbor.gdc.local/library/...
+   docker tag ... harbor.gdc.local/iac/...
    docker push ...
    ```
 

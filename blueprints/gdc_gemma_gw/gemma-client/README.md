@@ -154,10 +154,10 @@ This pattern requires permissions for both the **user** deploying the applicatio
 To deploy the resources, your user account will need the following GDC IAM roles:
 
 *   **IAM Admin:** To create a new service account (`gemma-client-sa`) and grant it project-level roles.
-    *   `roles/iam.serviceAccountAdmin`
-    *   `roles/project.iamAdmin`
+    *   `project-iam-admin`
+    *   `secret-admin`
 *   **GKE Developer:** To deploy the Deployment and ServiceAccount to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 **2. Service Account Permissions:**
 The `gemma-client-sa` service account itself will be granted the following roles by the user during setup, which it uses at runtime to call other GDC services:
@@ -177,7 +177,7 @@ export PROJECT_ID=<YOUR_PROJECT_ID>
 
 kubectl create sa gemma-client-sa -n $PROJECT_ID
 # Example for GDC Storage access (adjust role as needed for your specific GDC version)
-gdcloud iam service-accounts add-iam-policy-binding gemma-client-sa --project=$PROJECT_ID --role=roles/storage.objectAdmin
+gdcloud projects add-iam-policy-binding "$PROJECT_ID" --role=roles/project-bucket-object-admin --member="serviceAccount:${PROJECT_ID}:gemma-client-sa"
 ```
 
 **Option B: GitOps**
@@ -383,7 +383,7 @@ Run the external dependencies script first (to fetch necessary Helm charts and g
 
 ```bash
 # 1. Gather global external dependencies into the artifacts/ directory
-./scripts/export-external-dependencies.sh
+python3 ./common-scripts/mirror_images.py --images-file ./bulk_external_images.txt --save-dir ./artifacts/mirrored-images
 
 # 2. Package all localized manifests and containers for this pattern
 ./scripts/package-for-gdc.sh gemma-client

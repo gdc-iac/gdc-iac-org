@@ -58,7 +58,7 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy application manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy application manifests).
 
 ---
 
@@ -529,14 +529,15 @@ Execute an ephemeral verification pod directly inside the cluster against the in
 
 ```bash
 kubectl run p1-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=busybox:1.36 --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/busybox:1.36" --command -- sh -ec '
     sleep 2 && \
+    wget -qO- http://web-lb/ | head -n 15 && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 1 Web Tier connectivity verified!" && \
     echo "✅ SUCCESS: Frontend reached via internal ClusterIP" && \
-    echo "===============================================" && \
-    wget -qO- http://web-lb/ | head -n 15 && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**
@@ -608,3 +609,11 @@ spec:
 | `DB connection timeout` | Network policies block App Tier pods from accessing the Database Service. | Verify the database ingress rules allow connections from the `app: logic` pods. |
 | `503 Service Unavailable` | Gateway cannot reach the Nginx backend (Web Tier) or pods fail health probes. | Check pod logs via `kubectl logs -l app=web -n my-gdc-project` and verify readiness probes. |
 | `ImagePullBackOff` | Secret `p1-pull-secret` missing, or Harbor registry is unreachable. | Confirm the secret is created in the correct namespace and Harbor robot credentials are active. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

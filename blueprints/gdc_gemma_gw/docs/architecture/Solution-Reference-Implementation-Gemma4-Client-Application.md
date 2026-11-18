@@ -293,27 +293,36 @@ To access the console in GDC-ag production:
 
 ## 4.1 GDC IAM Storage Policy Bindings
 
-GDC Object Storage buckets are isolated by default. Create a ServiceAccount and bind the `storage.objectAdmin` IAM role to enable file uploads:
+GDC Object Storage buckets are isolated by default. Create a Global `ProjectServiceAccount` (`gemma-client-sa`) and bind the GDCag `project-bucket-object-admin` `IAMRole` on `GLOBAL_API_KUBECONFIG`:
 
 ```yaml
-apiVersion: iam.gdc.goog/v1
-kind: IAMPolicyBinding
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
-  name: gemma-client-storage-admin
+  name: gemma-client-sa
   namespace: gemma-inference
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: gemma-client-sa--project-bucket-object-admin
+  namespace: gemma-inference
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
 spec:
   subjects:
   - kind: ServiceAccount
-    name: gemini-gui-sa
+    name: gemma-client-sa
     namespace: gemma-inference
   roleRef:
+    apiGroup: iam.global.gdc.goog/v1
     kind: IAMRole
-    name: roles/storage.objectAdmin
+    name: project-bucket-object-admin
 ```
 
-Apply the IAM binding policy:
+Apply the IAM binding against the Global API server:
 ```shell
-kubectl apply -f iam-policy-binding.yaml
+kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" apply -f iam-policy-binding.yaml
 ```
 
 ## 4.2 Client Backend & Frontend Deployment
