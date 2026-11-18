@@ -16,11 +16,13 @@
 # Note: In completely disconnected GDCag environments without a mirrored golang builder,
 # compile statically on a bastion (`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o gdc-kms-bridge .`)
 # and package over `<project-harbor>/iac/vault:1.15.0` or `scratch`.
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-alpine AS builder
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/gdc-kms-bridge .
 
-FROM gcr.io/distroless/static-debian12:latest
+FROM gcr.io/distroless/static-debian12:nonroot
+ENV GODEBUG="tlsmlkem=0"
 COPY --from=builder /out/gdc-kms-bridge /usr/local/bin/gdc-kms-bridge
+USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/gdc-kms-bridge"]
