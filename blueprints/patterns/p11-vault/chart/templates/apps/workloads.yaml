@@ -182,6 +182,13 @@ spec:
         component: server
     spec:
       serviceAccountName: {{ $ksa | quote }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -269,10 +276,18 @@ spec:
               sed -Ei "s/POD_IP/${POD_IP?}/g" /tmp/storageconfig.hcl;
               exec docker-entrypoint.sh vault server -config=/tmp/storageconfig.hcl
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 1000
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop: ["ALL"]
           env:
+            - name: HOME
+              value: "/home/vault"
             - name: HOST_IP
               valueFrom:
                 fieldRef:
@@ -351,6 +366,10 @@ spec:
             - name: kms-bridge
               mountPath: /vault/kms-bridge
               readOnly: true
+            - name: home
+              mountPath: /home/vault
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
@@ -358,6 +377,10 @@ spec:
         - name: kms-bridge
           emptyDir:
             medium: Memory
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
         {{- if .Values.vault.bridge.enabled }}
         - name: userconfig-gdc-kms-sa
           secret:

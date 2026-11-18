@@ -56,6 +56,18 @@ tests:
           value: Always
         documentIndex: 7
       - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 1000
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        documentIndex: 7
+      - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
           value: "/v1/sys/health?standbyok=true&uninitok=true&sealedcode=204"
         documentIndex: 7

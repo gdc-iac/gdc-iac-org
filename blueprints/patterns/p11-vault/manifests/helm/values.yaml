@@ -106,11 +106,35 @@ server:
     - name: kms-bridge
       emptyDir:
         medium: Memory
+    - name: tmp
+      emptyDir: {}
 
   volumeMounts:
     - name: kms-bridge
       mountPath: /vault/kms-bridge
       readOnly: true
+    - name: tmp
+      mountPath: /tmp
+
+  statefulSet:
+    securityContext:
+      pod:
+        runAsNonRoot: true
+        runAsGroup: 1000
+        runAsUser: 100
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      container:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: ["ALL"]
 
   extraInitContainers:
     - name: gdc-kms-bridge
