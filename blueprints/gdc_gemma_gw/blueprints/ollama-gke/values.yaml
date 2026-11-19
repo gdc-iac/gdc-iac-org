@@ -48,7 +48,7 @@ resources:
 
 persistence:
   enabled: true
-  # storageClassName: "standard-rwo" # Commented out to use cluster DEFAULT
+  storageClassName: "standard-rwo" # Default GDCag & GKE block StorageClass
   accessModes:
     - ReadWriteOnce
   size: 50Gi

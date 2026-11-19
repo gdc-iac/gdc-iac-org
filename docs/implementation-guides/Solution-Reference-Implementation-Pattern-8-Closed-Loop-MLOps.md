@@ -63,8 +63,8 @@ Ensure the following prerequisites are met:
 * An internal Git server (e.g. GitLab Enterprise) and runners configured to run inside the cluster or project network.
 * `helm`, `kubectl`, and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
-  * **GKE Cluster Admin**: `roles/gke.clusterAdmin` (required to install cluster-wide MLOps CRDs).
-  * **Storage Reader/Writer**: `roles/storage.objectAdmin` (for training data access).
+  * **GKE Cluster Admin**: `standard-cluster-admin` / `user-cluster-admin` (required to install cluster-wide MLOps CRDs).
+  * **Storage Reader/Writer**: `project-bucket-object-admin` (for training data access).
 
 ---
 

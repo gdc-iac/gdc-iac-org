@@ -16,7 +16,7 @@
 global:
   projectId: "test-project"
   namespace: "test-project"
-  registry: "harbor.gdc.local/blueprint-images"
+  registry: "harbor001-test-project.org-12345.zone1.google.gdch.test/iac"
   imagePullSecrets: []
   commonLabels: {}
   commonAnnotations: {}
@@ -37,3 +37,6 @@ gdc:
 # User Cluster workload execution gate (Stage 5: 5-workload-factory)
 apps:
   enabled: true
+
+# GDCag User Cluster block StorageClass (`standard-rwo` via csi.kubevirt.io)
+storageClassName: "standard-rwo"

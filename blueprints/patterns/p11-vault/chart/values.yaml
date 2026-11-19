@@ -16,8 +16,9 @@
 global:
   projectId: "test-project"
   namespace: "test-project"
-  registry: "harbor.gdc.local/blueprint-images"
-  imagePullSecrets: []
+  registry: "harbor001-test-project.org-12345.zone1.google.gdch.test/iac"
+  imagePullSecrets:
+    - name: "harbor-creds"
   commonLabels: {}
   commonAnnotations: {}
 
@@ -26,11 +27,15 @@ namespace: ""
 registry: ""
 
 # Control-plane execution gates:
-# - Stage 2 (2-resources) provisions Zonal databases/VMs via core charts/gdc-dbs & charts/gdc-vm,
-#   so gdc.enabled defaults to false for Stage 5 (5-workload-factory) User Cluster deployments.
-# - Set gdc.enabled=true only when deploying GDC CRDs directly from this wrapper chart to a Zonal context.
+# - Stage 1 (1-project-factory) provisions Global ProjectServiceAccounts & IAMRoleBindings on `global-api`.
+# - Stage 2 (2-resources) provisions Zonal KMS AEADKeys on `<org>-admin` (`ZONE_KUBECONFIG`).
+# - Stage 5 (5-workload-factory) deploys User Cluster workloads (`gdc.enabled: false`, `apps.enabled: true`).
 gdc:
   enabled: false
+  globalIam:
+    enabled: true
+  zonalKms:
+    enabled: true
   failover:
     enabled: false # Day-2 manual failover trigger; must remain false during normal sync
 
@@ -38,8 +43,41 @@ gdc:
 apps:
   enabled: true
 
-# Pattern 11 Vault configuration overrides (passed when deploying upstream Vault chart)
+# Pattern 11 HashiCorp Vault + GDCag KMS Auto-Unseal configuration
 vault:
   replicas: 3
   serviceAccountName: "vault-kms-sa"
-  storageClass: "standard"
+  k8sServiceAccountName: "vault"
+  storageClass: "standard-rwo"
+  storageSize: "50Gi"
+  nodeSelector:
+    pool: "cpu"
+  image:
+    repository: "vault"
+    tag: "1.15.0"
+    pullPolicy: "IfNotPresent"
+  resources:
+    requests:
+      cpu: "4"
+      memory: "16Gi"
+    limits:
+      cpu: "4"
+      memory: "16Gi"
+  kms:
+    region: "zone1"
+    keyName: "vault-unseal-key"
+    algorithm: "AES_256_GCM"
+  bridge:
+    enabled: true
+    image:
+      repository: "gdc-kms-bridge"
+      tag: "1.0.0"
+      pullPolicy: "IfNotPresent"
+    kmsEndpoint: "https://kms.org-12345.zone1.google.gdch.test"
+    secretName: "gdc-kms-sa"
+    secretKey: "vault-kms-sa.json"
+    listenAddr: "127.0.0.1:443"
+    healthPort: 18080
+  networkPolicy:
+    controlPlaneCidrs:
+      - "0.0.0.0/0"

@@ -220,7 +220,7 @@ Use these exact, pre-validated prompts to force model swaps and test dynamic rou
      ```
   3. **Trace the Root Cause**: The Service selector does not isolate by Helm Release Name (`app.kubernetes.io/instance`). As a result, `kube-proxy` dynamically routes requests sent to `vllm-31b-service` round-robin to **both** the 26B and 31B pods! When a 31B (Dense) request lands on the 26B (MoE) pod, vLLM returns a `404 Not Found` because it is not hosting that model.
 * **Resolution**:
-  1. Edit [blueprints/vllm-gke/templates/service.yaml](file:///Users/gmollison/GitHub/gdc_gemma_gw/blueprints/vllm-gke/templates/service.yaml) and ensure the `selector` block strictly enforces the release instance variable to isolate traffic:
+  1. Edit [blueprints/vllm-gke/templates/service.yaml](../../blueprints/vllm-gke/templates/service.yaml) and ensure the `selector` block strictly enforces the release instance variable to isolate traffic:
      ```yaml
      selector:
        app.kubernetes.io/name: {{ include "vllm.name" . }}

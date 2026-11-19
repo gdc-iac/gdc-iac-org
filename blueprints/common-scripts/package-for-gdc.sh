@@ -92,7 +92,7 @@ package_single_pattern() {
   mkdir -p "$STAGING_DIR"
 
   cp -r "$PATTERN_DIR/manifests" "$STAGING_DIR/"
-  for d in example-app src manual charts; do
+  for d in example-app src manual chart charts diagrams; do
     if [ -d "$PATTERN_DIR/$d" ]; then
       cp -r "$PATTERN_DIR/$d" "$STAGING_DIR/"
     fi

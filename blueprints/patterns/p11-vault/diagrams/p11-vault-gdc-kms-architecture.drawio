@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-07-15T12:00:00.000Z" agent="Dendrite" version="24.0.0" type="device">
+  <diagram id="Dendrite_Diagram" name="Architecture">
+    <mxGraphModel dx="1422" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3000" pageHeight="4000" math="0" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="cell_2" value="GDC Air-Gapped Partition Boundary" style="swimlane;fontStyle=1;horizontal=1;startSize=30;collapsible=1;rounded=1;fillColor=#f8fafd;strokeColor=#c2d7f5;strokeWidth=1.5;fontColor=#3c4043;fontSize=14;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="0" y="0" width="1236" height="417.6" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_3" value="Global, Zonal &amp; KMS Planes" style="swimlane;fontStyle=1;horizontal=1;startSize=30;collapsible=1;rounded=1;fillColor=#ffffff;strokeColor=#9333EA;dashed=1;fontColor=#1E293B;fontSize=14;shadow=1;" vertex="1" parent="cell_2">
+          <mxGeometry x="28" y="78" width="1180" height="137.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_4" value="User Cluster Workload Plane" style="swimlane;fontStyle=1;horizontal=1;startSize=30;collapsible=1;rounded=1;fillColor=#ffffff;strokeColor=#3B82F6;dashed=1;fontColor=#1E293B;fontSize=14;shadow=1;" vertex="1" parent="cell_2">
+          <mxGeometry x="28" y="251.8" width="1180" height="137.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_5" value="&lt;b&gt;[CloudIAM] Global API Plane&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;ProjectServiceAccount · IAMRole&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#fce8e6;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_3">
+          <mxGeometry x="24" y="50" width="293.2" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_6" value="&lt;b&gt;[KMS] Zone Management API&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;kms.gdc.goog/v1 AEADKey&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#fce8e6;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_3">
+          <mxGeometry x="349.2" y="50" width="235.6" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_7" value="&lt;b&gt;[ShieldCheck] GDCag KMS &amp; STS Plane&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;CryptoOperations · ES256 STS&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#fce8e6;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_3">
+          <mxGeometry x="616.8" y="50" width="271.6" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_8" value="&lt;b&gt;[ArtifactRegistry] Harbor Registries&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;Project &amp; System Harbor&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_3">
+          <mxGeometry x="920.4" y="50" width="235.6" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_9" value="&lt;b&gt;[Lock] gdc-kms-bridge Sidecar&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;127.0.0.1:443 gRPC Bridge&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#fce8e6;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_4">
+          <mxGeometry x="24" y="50" width="254.79999999999998" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_10" value="&lt;b&gt;[GKE] HashiCorp Vault HA&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;Raft 3x50Gi standard-rwo&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_4">
+          <mxGeometry x="310.79999999999995" y="50" width="242.79999999999998" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_11" value="&lt;b&gt;[Server] Vault Agent Injector&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;Mutating Webhook v1.7.2&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_4">
+          <mxGeometry x="585.5999999999999" y="50" width="238" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="cell_12" value="&lt;b&gt;[ComputeEngine] Tenant Apps &amp; GitLab CI&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#64748B&#39; size=&#39;1&#39;&gt;K8s TokenReview · OIDC JWT&lt;/font&gt;" style="rounded=1;arcSize=15;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#64748B;fontColor=#1E293B;fontSize=13;shadow=1;" vertex="1" parent="cell_4">
+          <mxGeometry x="855.5999999999999" y="50" width="263.2" height="63.8" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_13" value="Authorizes SA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_5" target="cell_7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_14" value="Reconciles Key" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_6" target="cell_7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_15" value="STS + AEAD gRPC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_9" target="cell_7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_16" value="Auto-Unseal" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_10" target="cell_9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_17" value="Pulls Images" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;dashed=1;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_8" target="cell_10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_18" value="Injects tmpfs" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_11" target="cell_12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_19" value="Reads Secrets" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;fontColor=#334155;fontSize=11;endArrow=block;endFill=1;" edge="1" parent="1" source="cell_12" target="cell_10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -14,11 +14,13 @@
 # limitations under the License.
 */ -}}
 {{- if .Values.gdc.enabled }}
+{{- $ns := include "gemma-gemma-client.namespace" . -}}
+{{- $projectId := .Values.global.projectId | default $ns -}}
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: gemini-db
-  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "gemma-gemma-client.labels" . | nindent 4 }}
 spec:
@@ -31,19 +33,21 @@ spec:
   storage:
     size: 50G
 ---
-apiVersion: iam.gdc.goog/v1
-kind: IAMPolicyBinding
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
 metadata:
-  name: gemma-client-storage-admin
-  namespace: {{ include "gemma-gemma-client.namespace" . }}
+  name: gemma-client-sa--project-bucket-object-admin
+  namespace: {{ $projectId }}
   labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
     {{- include "gemma-gemma-client.labels" . | nindent 4 }}
 spec:
-  subjects:
-  - kind: ServiceAccount
-    name: gemma-client-sa
-    namespace: {{ include "gemma-gemma-client.namespace" . }}
   roleRef:
+    apiGroup: iam.global.gdc.goog/v1
     kind: IAMRole
-    name: roles/storage.objectAdmin
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: gemma-client-sa
+      namespace: {{ $projectId }}
 {{- end }}

@@ -147,62 +147,73 @@ Transfer the generated `packages/` archives across the air gap into your secure 
 ./packages/p7-agentic-data-analyst/helper-scripts/unpack-for-gdc.sh packages/p7-agentic-data-analyst
 ./packages/gemma-client/helper-scripts/unpack-for-gdc.sh packages/gemma-client
 
-# Push application images to internal Harbor registry
-docker push harbor.gdc.local/library/p4-consumer:latest
-docker push harbor.gdc.local/library/rag-query:v7
-docker push harbor.gdc.local/library/rag-ingest:v7
-docker push harbor.gdc.local/library/p7-agent:v1
-docker push harbor.gdc.local/library/gemma-client-backend:latest
-docker push harbor.gdc.local/library/gemma-client-frontend:latest
+# Push application images to Project Managed Harbor (`harbor001-<project>.../iac/...`)
+# Note: Do NOT push unsigned custom images to System Harbor `library/` (enforces Cosign 412 verification)
+export PROJECT_HARBOR="harbor001-intel-operations.org-12345.zone1.google.gdch.test/iac"
+docker push "${PROJECT_HARBOR}/p4-consumer:latest"
+docker push "${PROJECT_HARBOR}/rag-query:v7"
+docker push "${PROJECT_HARBOR}/rag-ingest:v7"
+docker push "${PROJECT_HARBOR}/p7-agent:v1"
+docker push "${PROJECT_HARBOR}/gemma-client-backend:latest"
+docker push "${PROJECT_HARBOR}/gemma-client-frontend:latest"
 
 # Push Model Serving Images:
 # For Option A (Ollama Demo):
-# docker push harbor.gdc.local/library/ollama-gemma-26b:latest
-# docker push harbor.gdc.local/library/ollama-gemma-31b:latest
+# docker push "${PROJECT_HARBOR}/ollama-gemma-26b:latest"
+# docker push "${PROJECT_HARBOR}/ollama-gemma-31b:latest"
 
 # For Option B (vLLM Production):
-docker push harbor.gdc.local/library/vllm-gemma-26b:latest
-docker push harbor.gdc.local/library/vllm-gemma-31b:latest
-docker push harbor.gdc.local/library/gemma-proxy:latest
+docker push "${PROJECT_HARBOR}/vllm-gemma-26b:latest"
+docker push "${PROJECT_HARBOR}/vllm-gemma-31b:latest"
+docker push "${PROJECT_HARBOR}/gemma-proxy:latest"
 ```
 
 ---
 
-### **Phase 3: Provision GDC Managed Platform Services**
+### **Phase 3: Provision GDC Managed Platform Services (`ZONE_KUBECONFIG`)**
 
-#### 1. Provision GDC Managed PostgreSQL Cluster
-Deploy a managed high-availability database cluster supporting both standard relational tables and the `pgvector` extension:
+#### 1. Provision GDC Managed PostgreSQL `DBCluster`
+Deploy a Zonal High-Availability PostgreSQL cluster (`postgresql.dbadmin.gdc.goog/v1` on `ZONE_KUBECONFIG`):
 
 ```yaml
-apiVersion: database.gdc.goog/v1alpha1
-kind: DatabaseInstance
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
 metadata:
   name: operational-readiness-db
   namespace: intel-operations
 spec:
-  databaseVersion: POSTGRES_16
-  tier: db-custom-8-32768
+  version: POSTGRESQL_15
+  availabilityType: ZONAL_HA
+  resources:
+    requests:
+      cpu: "8"
+      memory: 32Gi
   storage:
-    sizeGb: 200
-  highAvailability:
-    enabled: true
-    faultDomains: ["zone-a", "zone-b"]
-  extensions:
-    - name: vector
-    - name: "uuid-ossp"
+    size: 200G
+  dbFlags:
+    shared_preload_libraries: "vector"
 ```
 
-#### 2. Provision GDC Native Object Storage Bucket
+#### 2. Provision GDC KMS `AEADKey` & Native Object Storage `Bucket`
 ```yaml
-apiVersion: storage.gdc.goog/v1alpha1
+apiVersion: kms.gdc.goog/v1
+kind: AEADKey
+metadata:
+  name: intel-key
+  namespace: intel-operations
+spec:
+  algorithm: AES_256_GCM
+---
+apiVersion: object.gdc.goog/v1
 kind: Bucket
 metadata:
   name: intelligence-debriefs-bucket
   namespace: intel-operations
 spec:
+  location: zone1
   storageClass: Standard
-  encryption:
-    kmsKeyRef: "projects/mission-intelligence-prod/locations/global/keyRings/intel-ring/cryptoKeys/intel-key"
+  # KMS key resource URI on GDCag data plane uses camelCase `aeadKeys`:
+  # namespaces/intel-operations/aeadKeys/intel-key
 ```
 
 #### 3. Provision GDC Dedicated GPU NodePools (Required for Option B: vLLM)

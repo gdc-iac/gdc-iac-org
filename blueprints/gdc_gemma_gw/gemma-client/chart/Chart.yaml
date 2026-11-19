@@ -16,7 +16,7 @@ apiVersion: v2
 name: gemma-gemma-client
 description: "Gemma 4 Client Web Application & Managed PostgreSQL on GDC air-gapped"
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
 maintainers:
   - name: gdc-iac

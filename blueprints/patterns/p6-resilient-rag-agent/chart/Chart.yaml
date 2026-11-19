@@ -16,7 +16,7 @@ apiVersion: v2
 name: p6-resilient-rag-agent
 description: "Pattern 6: Resilient RAG Agent Pipeline on GDC air-gapped"
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
 maintainers:
   - name: gdc-iac

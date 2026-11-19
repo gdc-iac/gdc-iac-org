@@ -47,7 +47,7 @@ Ensure the following prerequisites are met:
 * `kubectl`, `helm`, and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 
@@ -341,14 +341,15 @@ Execute an ephemeral verification check directly inside the cluster against the 
 
 ```bash
 kubectl run p12-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=curlimages/curl --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
+    curl -s -I http://keycloak/health/ready | head -n 5 && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 12 Keycloak IAM verified!" && \
     echo "✅ SUCCESS: Keycloak readiness endpoint reachable" && \
-    echo "===============================================" && \
-    curl -s -I http://keycloak/health/ready | head -n 5 && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**
@@ -408,3 +409,11 @@ spec:
 | `Keycloak crashes during DB migrations` | JDBC database URL contains invalid address, or database credentials are incorrect. | Verify hostname/IP coordinates inside `KC_DB_URL` env variable. |
 | `Infinite redirect loop in browser` | Keycloak hostname settings require SSL validation but upstream TLS termination is active. | Verify `KC_PROXY_HEADERS` is configured to `xforwarded` and `KC_HOSTNAME_STRICT` is `false`. |
 | `OOMKilled during startup` | Container memory limits are set too low. Keycloak requires at least 1Gi memory on GDC nodes. | Increase memory limits inside the container configuration to `2Gi`. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

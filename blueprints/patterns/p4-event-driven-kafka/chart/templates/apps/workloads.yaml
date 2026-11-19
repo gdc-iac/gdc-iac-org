@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,12 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
+{{- $ns := include "p4-event-driven-kafka.namespace" . -}}
+{{- $registry := include "p4-event-driven-kafka.registry" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka-consumer
-  namespace: {{ include "p4-event-driven-kafka.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "p4-event-driven-kafka.labels" . | nindent 4 }}
 spec:
@@ -29,13 +33,17 @@ spec:
       labels:
         app: consumer
     spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
       containers:
       - name: worker
-        image: {{ include "p4-event-driven-kafka.registry" . }}/p4-consumer:v1
+        image: {{ $registry }}/p4-consumer:v1
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -50,7 +58,7 @@ spec:
             memory: 512Mi
         env:
         - name: KAFKA_BROKERS
-          value: kafka-svc.test-project.svc.cluster.local:9092
+          value: {{ printf "kafka-svc.%s.svc.cluster.local:9092" $ns | quote }}
         - name: DB_CONN
           valueFrom:
             secretKeyRef:
@@ -75,7 +83,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: kafka
-  namespace: {{ include "p4-event-driven-kafka.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "p4-event-driven-kafka.labels" . | nindent 4 }}
 spec:
@@ -89,9 +97,13 @@ spec:
       labels:
         app: kafka
     spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       initContainers:
       - name: volume-permissions
-        image: {{ include "p4-event-driven-kafka.registry" . }}/library/busybox:latest
+        image: {{ $registry }}/busybox:1.36
         command:
         - sh
         - -c
@@ -101,7 +113,7 @@ spec:
           mountPath: /mnt/kafka
       containers:
       - name: kafka
-        image: {{ include "p4-event-driven-kafka.registry" . }}/library/apache/kafka:3.9.0
+        image: {{ $registry }}/kafka:3.9.0
         ports:
         - containerPort: 9092
           name: client
@@ -115,13 +127,13 @@ spec:
         - name: KAFKA_LISTENERS
           value: PLAINTEXT://:9092,CONTROLLER://:9093
         - name: KAFKA_ADVERTISED_LISTENERS
-          value: PLAINTEXT://kafka-svc.test-project.svc.cluster.local:9092
+          value: {{ printf "PLAINTEXT://kafka-svc.%s.svc.cluster.local:9092" $ns | quote }}
         - name: KAFKA_CONTROLLER_LISTENER_NAMES
           value: CONTROLLER
         - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
           value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
         - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-          value: 0@kafka-svc.test-project.svc.cluster.local:9093
+          value: {{ printf "0@kafka-svc.%s.svc.cluster.local:9093" $ns | quote }}
         - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
           value: '1'
         - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
@@ -143,6 +155,7 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
+      storageClassName: {{ .Values.storageClassName | default "standard-rwo" | quote }}
       resources:
         requests:
           storage: 1Gi
@@ -151,7 +164,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kafka-svc
-  namespace: {{ include "p4-event-driven-kafka.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "p4-event-driven-kafka.labels" . | nindent 4 }}
 spec:

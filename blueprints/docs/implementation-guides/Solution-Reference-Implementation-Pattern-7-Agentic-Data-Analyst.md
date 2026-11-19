@@ -80,7 +80,7 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 
@@ -400,14 +400,15 @@ Execute an ephemeral verification query directly against the internal `sql-agent
 
 ```bash
 kubectl run p7-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=curlimages/curl --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
+    curl -s -X POST http://sql-agent/query -d "{\"question\": \"How many total units of Standard License were sold?\"}" -H "Content-Type: application/json" && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 7 Agentic Data Analyst verified!" && \
     echo "✅ SUCCESS: Natural language SQL query agent reachable" && \
-    echo "===============================================" && \
-    curl -s -X POST http://sql-agent/query -d "{\"question\": \"How many total units of Standard License were sold?\"}" -H "Content-Type: application/json" && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**

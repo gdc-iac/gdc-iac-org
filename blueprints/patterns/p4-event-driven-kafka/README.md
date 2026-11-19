@@ -41,8 +41,8 @@ To deploy the resources for this pattern, your user account will need the follow
 
 *   **Database Admin:** To provision the PostgreSQL HA cluster for results.
     *   `roles/db.cluster.creator`
-*   **GKE Admin/Developer:** To deploy the Kafka Helm chart (which includes StatefulSets and PersistentVolumeClaims) and the consumer application. A more privileged role like `roles/gke.admin` may be required for the initial Helm installation of stateful services.
-    *   `roles/gke.admin` or `roles/gke.developer`
+*   **GKE Admin/Developer:** To deploy the Kafka Helm chart (which includes StatefulSets and PersistentVolumeClaims) and the consumer application. A more privileged role like `standard-cluster-admin` may be required for the initial Helm installation of stateful services.
+    *   `standard-cluster-admin` or `namespace-admin` / `cluster-developer`
 
 ## Day 0 Prerequisites (Air-Gap Transfer)
 
@@ -85,8 +85,8 @@ To deploy the resources for this pattern, your user account will need the follow
 
 *   **Database Admin:** To provision the PostgreSQL HA cluster for results.
     *   `roles/db.cluster.creator`
-*   **GKE Admin/Developer:** To deploy the Kafka Helm chart (which includes StatefulSets and PersistentVolumeClaims) and the consumer application. A more privileged role like `roles/gke.admin` may be required for the initial Helm installation of stateful services.
-    *   `roles/gke.admin` or `roles/gke.developer`
+*   **GKE Admin/Developer:** To deploy the Kafka Helm chart (which includes StatefulSets and PersistentVolumeClaims) and the consumer application. A more privileged role like `standard-cluster-admin` may be required for the initial Helm installation of stateful services.
+    *   `standard-cluster-admin` or `namespace-admin` / `cluster-developer`
 
 ## Implementation
 
@@ -257,11 +257,11 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
    docker load -i artifacts/external-dependencies/images/docker.io_apache_kafka_3.7.0.tar
    docker load -i artifacts/external-dependencies/images/busybox_latest.tar
    
-   docker tag apache/kafka:3.7.0 harbor.gdc.local/library/apache/kafka:3.7.0
-   docker tag busybox:latest harbor.gdc.local/library/busybox:latest
+   docker tag apache/kafka:3.7.0 harbor.gdc.local/iac/kafka:3.9.0
+   docker tag busybox:latest harbor.gdc.local/iac/busybox:latest
    
-   docker push harbor.gdc.local/library/apache/kafka:3.7.0
-   docker push harbor.gdc.local/library/busybox:latest
+   docker push harbor.gdc.local/iac/kafka:3.9.0
+   docker push harbor.gdc.local/iac/busybox:latest
    ```
 
 4. **Extract Kubernetes Manifests:** Extract the tailored blueprints:

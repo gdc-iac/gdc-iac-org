@@ -43,9 +43,9 @@ Ensure the following prerequisites are met:
 * A legacy VM boot image (e.g., Ubuntu 20.04 or RHEL 8) imported into GDC's VM images registry.
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
-  * **Network Admin**: `roles/compute.networkAdmin` (to create subnets).
+  * **Network Admin**: `project-networkpolicy-admin` (to create subnets).
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL).
-  * **Compute Admin**: `roles/compute.instanceAdmin.v1` (to create and configure VMs).
+  * **Compute Admin**: `project-vm-admin` (to create and configure VMs).
 
 ---
 

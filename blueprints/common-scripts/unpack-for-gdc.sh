@@ -46,7 +46,7 @@ if [ -f "$IMAGES_TAR" ]; then
     echo "✅ Successfully extracted and loaded all images into local Docker daemon."
     echo ""
     echo "⚠️  REMINDER: You must now manually push these loaded images to your GDC registry."
-    echo "   Example: docker push harbor.gdc.local/library/my-image:latest"
+    echo "   Example: docker push harbor001-my-project.org-12345.zone1.google.gdch.test/iac/my-image:v1.0.0"
   else
     echo "❌ FAILED: Error occurred while loading images from $IMAGES_TAR."
   fi

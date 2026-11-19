@@ -47,7 +47,7 @@ Ensure the following prerequisites are met:
 * `kubectl`, `helm`, and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 
@@ -341,14 +341,15 @@ Execute an ephemeral verification check directly inside the cluster against the 
 
 ```bash
 kubectl run p12-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=curlimages/curl --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
+    curl -s -I http://keycloak/health/ready | head -n 5 && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 12 Keycloak IAM verified!" && \
     echo "✅ SUCCESS: Keycloak readiness endpoint reachable" && \
-    echo "===============================================" && \
-    curl -s -I http://keycloak/health/ready | head -n 5 && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**

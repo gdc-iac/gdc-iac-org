@@ -68,7 +68,7 @@ To deploy the resources, your user account must hold the following GDC IAM roles
 *   **Database Admin:** To provision the PostgreSQL HA cluster.
     *   `roles/db.cluster.creator`
 *   **GKE Developer:** To deploy the pure Kubernetes manifests and Application Pods to the target GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 ## Implementation
 
@@ -144,7 +144,7 @@ To validate the integration on your target GDC environment, you can verify conne
 > In GDC physical rack production, components sit securely unified behind platform Hardware Load Balancers and Ingress Gateway HTTPRoutes FQDNs, completely resolving all cookie disjoints!
 
 2. **Manual Verification (Physical GDC-ag Only):** Hit the `/auth/admin` path organically in your browser and enter the default system credentials provisioned in your manifest (e.g., `admin` / `admin`).  
-3. **Advanced Integration Testing:** Once confirmed healthy, you can systematically overlay this Identity Provider atop other architectures (like Pattern 6). For step-by-step instructions on converting a Mock Auth application into a verified Keycloak OIDC citizen, proceed deeply into the **[P12 Keycloak Integration Guide](../docs/keycloak_integration_guide.md)**.
+3. **Advanced Integration Testing:** Once confirmed healthy, you can systematically overlay this Identity Provider atop other architectures (like Pattern 6). For step-by-step instructions on converting a Mock Auth application into a verified Keycloak OIDC citizen, proceed deeply into the **[P12 Keycloak Integration Guide](../docs/operations/keycloak_integration_guide.md)**.
 
 ## Packaging for GDC Air-Gapped Environments
 
@@ -204,7 +204,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 2. **Load and Push Keycloak Image:** Keycloak relies strictly on its native open-source container image. Load and push the artifact to your local registry:
    ```bash
    docker load -i packages/p12-keycloak/external-dependencies/images/quay_io_keycloak_keycloak_24_0_4.tar
-   docker push harbor.gdc.local/library/keycloak/keycloak:24.0.4
+   docker push harbor.gdc.local/iac/keycloak/keycloak:24.0.4
    ```
 
 3. **Extract API Manifests:** Extract the packaged blueprint configurations:

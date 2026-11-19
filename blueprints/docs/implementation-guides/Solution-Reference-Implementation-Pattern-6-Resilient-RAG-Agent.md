@@ -200,9 +200,9 @@ Ensure the following prerequisites are met:
 * The LLM Gateway (Pattern 5) deployed and active.
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
-  * **IAM Admin**: `roles/iam.serviceAccountAdmin` (to configure ServiceAccounts).
+  * **IAM Admin**: `project-iam-admin` (to configure ServiceAccounts).
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 
@@ -381,22 +381,29 @@ gdcloud iam service-accounts add-iam-policy-binding rag-sa \
 
 #### Option B: GitOps / IaC (`manifests/iam/rag-permissions.yaml`)
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
+# Apply on Global API (`GLOBAL_API_KUBECONFIG`):
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
   name: rag-sa
   namespace: my-gdc-project
 ---
-apiVersion: iam.gdc.goog/v1
-kind: ProjectPolicy
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
 metadata:
-  name: rag-bindings
+  name: rag-sa--project-bucket-object-admin
   namespace: my-gdc-project
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
 spec:
-  bindings:
-  - role: Role/ai-inference-developer
-    members:
-    - serviceAccount:rag-sa
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: rag-sa
+      namespace: my-gdc-project
 ```
 
 ---
@@ -590,14 +597,15 @@ Send a prompt against the internal `query-service` querying the ingested documen
 
 ```bash
 kubectl run p6-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=curlimages/curl --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
+    curl -s -X POST http://query-service/ask -d "{\"question\": \"Summarize the contents of the test document.\"}" -H "Content-Type: application/json" && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 6 Resilient RAG Agent verified!" && \
     echo "✅ SUCCESS: Query service and vector database reached" && \
-    echo "===============================================" && \
-    curl -s -X POST http://query-service/ask -d "{\"question\": \"Summarize the contents of the test document.\"}" -H "Content-Type: application/json" && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**

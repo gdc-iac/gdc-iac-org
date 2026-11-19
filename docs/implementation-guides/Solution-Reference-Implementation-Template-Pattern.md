@@ -66,8 +66,8 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * A target GDC project and namespace configured.
 * Necessary project-level IAM roles:
-  * **IAM Admin**: `roles/iam.serviceAccountAdmin` (to manage service accounts).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **IAM Admin**: `project-iam-admin` (to manage service accounts).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 

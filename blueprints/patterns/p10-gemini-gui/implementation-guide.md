@@ -67,8 +67,8 @@ Ensure the following prerequisites are met:
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
-  * **Storage Admin**: `roles/storage.objectAdmin` (to assign bucket permissions).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **Storage Admin**: `project-bucket-object-admin` (to assign bucket permissions).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 
@@ -304,25 +304,29 @@ kubectl create secret generic gemini-gui-db-credentials \
 Create a `ServiceAccount` and bind GDC storage roles to enable the backend to access uploaded documents:
 
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
+# Apply on Global API (`GLOBAL_API_KUBECONFIG`):
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
   name: gemini-gui-sa
   namespace: my-gdc-project
 ---
-apiVersion: iam.gdc.goog/v1
-kind: IAMPolicyBinding
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
 metadata:
-  name: gemini-gui-storage-binding
+  name: gemini-gui-sa--project-bucket-object-admin
   namespace: my-gdc-project
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
 spec:
   subjects:
-  - kind: ServiceAccount
-    name: gemini-gui-sa
-    namespace: my-gdc-project
+    - kind: ServiceAccount
+      name: gemini-gui-sa
+      namespace: my-gdc-project
   roleRef:
+    apiGroup: iam.global.gdc.goog/v1
     kind: IAMRole
-    name: roles/storage.objectAdmin
+    name: project-bucket-object-admin
 ```
 Save as `iam-binding.yaml` and apply:
 ```shell
@@ -487,14 +491,15 @@ Execute verification check directly inside the cluster against the internal `bac
 
 ```bash
 kubectl run p10-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=curlimages/curl --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
+    curl -s http://backend-svc:8000/health && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 10 Gemini GUI API verified!" && \
     echo "✅ SUCCESS: Backend health check returned 200 OK" && \
-    echo "===============================================" && \
-    curl -s http://backend-svc:8000/health && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**
@@ -553,6 +558,14 @@ spec:
 
 | Symptom | Root Cause | Resolution |
 | :--- | :--- | :--- |
-| `File Upload fails` | ServiceAccount lacks permissions to write objects to the GCS Bucket. | Verify that the `IAMPolicyBinding` binds `roles/storage.objectAdmin` to `gemini-gui-sa`. |
+| `File Upload fails` | ServiceAccount lacks permissions to write objects to the GCS Bucket. | Verify that the `IAMRoleBinding` (`iam.global.gdc.goog/v1`) binds `project-bucket-object-admin` to `gemini-gui-sa`. |
 | `Chat history fails to save` | Database connection string in `gemini-gui-db-credentials` is misconfigured. | Verify database host address and secret string formatting. |
 | `CORS errors in browser` | Browser tries to reach the API directly on port 8000 instead of route paths. | Verify HTTPRoute path rewrite rules are active and that frontend configuration uses `/api` base path. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

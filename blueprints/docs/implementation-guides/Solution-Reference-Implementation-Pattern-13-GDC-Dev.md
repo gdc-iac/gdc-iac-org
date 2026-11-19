@@ -82,7 +82,7 @@ Ensure the following prerequisites are met in your target GDC air-gapped environ
 * Centralized Keycloak (`p12-keycloak`) deployed or an accessible enterprise Keycloak instance with administration permissions to create realms and register OIDC clients.
 * Pre-installed GDC Platform PKI (`cert-manager` and `ClusterIssuer/gdc-ca-issuer`).
 * Necessary project-level IAM roles:
-  * **GKE Developer**: `roles/gke.developer` (to deploy application and Gateway API manifests to the GKE cluster).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy application and Gateway API manifests to the GKE cluster).
 
 ---
 

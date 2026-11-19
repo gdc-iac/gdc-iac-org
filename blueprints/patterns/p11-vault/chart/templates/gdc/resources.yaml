@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,20 +12,69 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.gdc.enabled }}
-apiVersion: iam.gdc.goog/v1
-kind: ProjectPolicy
+{{- $projectId := include "p11-vault.projectId" . -}}
+{{- $saName := .Values.vault.serviceAccountName | default "vault-kms-sa" -}}
+{{- $keyName := .Values.vault.kms.keyName | default "vault-unseal-key" -}}
+{{- $algorithm := .Values.vault.kms.algorithm | default "AES_256_GCM" -}}
+{{- if .Values.gdc.globalIam.enabled }}
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
-  name: vault-kms-bindings
-  namespace: {{ include "p11-vault.namespace" . }}
+  name: {{ $saName | quote }}
+  namespace: {{ $projectId | quote }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ printf "%s--kms-developer" $saName | quote }}
+  namespace: {{ $projectId | quote }}
+  labels:
+    iam.global.gdc.goog/iam-role-name: kms-developer
+    {{- include "p11-vault.labels" . | nindent 4 }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: kms-developer
+  subjects:
+    - kind: ServiceAccount
+      name: {{ $saName | quote }}
+      namespace: {{ $projectId | quote }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: {{ printf "%s--kms-viewer" $saName | quote }}
+  namespace: {{ $projectId | quote }}
+  labels:
+    iam.global.gdc.goog/iam-role-name: kms-viewer
+    {{- include "p11-vault.labels" . | nindent 4 }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: kms-viewer
+  subjects:
+    - kind: ServiceAccount
+      name: {{ $saName | quote }}
+      namespace: {{ $projectId | quote }}
+{{- end }}
+{{- if and .Values.gdc.globalIam.enabled .Values.gdc.zonalKms.enabled }}
+---
+{{- end }}
+{{- if .Values.gdc.zonalKms.enabled }}
+apiVersion: kms.gdc.goog/v1
+kind: AEADKey
+metadata:
+  name: {{ $keyName | quote }}
+  namespace: {{ $projectId | quote }}
   labels:
     {{- include "p11-vault.labels" . | nindent 4 }}
 spec:
-  bindings:
-  - role: Role/cloudkms.encrypterDecrypter
-    members:
-    - serviceAccount:{{ .Values.vault.serviceAccountName | default "vault-kms-sa" }}
-  - role: Role/cloudkms.viewer
-    members:
-    - serviceAccount:{{ .Values.vault.serviceAccountName | default "vault-kms-sa" }}
+  algorithm: {{ $algorithm | quote }}
+{{- end }}
 {{- end }}
