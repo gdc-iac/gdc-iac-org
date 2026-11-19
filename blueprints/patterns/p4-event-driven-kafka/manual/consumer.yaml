@@ -23,12 +23,29 @@ spec:
   template:
     metadata: { labels: { app: consumer } }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: worker
         image: test-registry.local/my-org/consumer-app:v1.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         env:
         # Assumes Helm created a service named 'kafka'
         - name: KAFKA_BROKERS
           value: "kafka.test-project.svc.cluster.local:9092"
         - name: DB_CONN
           valueFrom: { secretKeyRef: { name: event-db-credentials, key: connection_string } }
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

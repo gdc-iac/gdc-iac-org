@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.gdc.enabled }}
 apiVersion: networking.gdc.goog/v1
 kind: Network
@@ -20,6 +22,17 @@ metadata:
   labels:
     {{- include "p3-legacy-vm-modern-db.labels" . | nindent 4 }}
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-legacy-db
+  namespace: {{ include "p3-legacy-vm-modern-db.namespace" . }}
+  labels:
+    {{- include "p3-legacy-vm-modern-db.labels" . | nindent 4 }}
+type: Opaque
+data:
+  legacy-db: {{ (.Values.gdc.db.base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE") | quote }}
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
@@ -28,14 +41,20 @@ metadata:
   labels:
     {{- include "p3-legacy-vm-modern-db.labels" . | nindent 4 }}
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: '4'
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-legacy-db
+    version: "15"
+    resources:
+      cpu: 4
       memory: 16Gi
-  storage:
-    size: 100G
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ---
 apiVersion: virtualmachine.compute.gdc.goog/v1
 kind: VirtualMachine

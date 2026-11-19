@@ -29,7 +29,7 @@ The architecture features a virtual machine running on GDC VM Runtime, backed by
 
 * **Infrastructure Lift-and-Shift**: Supports monolithic legacy binaries (Linux/Windows) that require a full OS environment.
 * **Modern Database Integration**: Connects to the high-performance PostgreSQL database service.
-* **Zonal Resilience**: PostgreSQL is configured for `ZONAL_HA`, guaranteeing database survival with manual failover if a zone goes down.
+* **Zonal Resilience**: PostgreSQL 15 is configured for `zonal_ha` (`spec.availability.enableHighAvailability: true`), providing hot standby replication with automatic failover (`enableAutoFailover: true`) by default in GDCag `v1.15.1+` plus operator-controlled switchovers.
 * **Unified VPC Networking**: Connects the VM Runtime and database clusters securely through private VPC subnetting.
 
 ---
@@ -84,18 +84,22 @@ gdcloud compute networks subnets create vm-subnet \
 
 ### 2.1 Provision PostgreSQL Cluster
 
-Create the managed PostgreSQL cluster.
+Create the managed PostgreSQL 15 cluster (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`).
 
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create legacy-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=4 --memory=16Gi --storage-size=100Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/infra/legacy-infra.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/infra/legacy-infra.yaml` on `ZONE_KUBECONFIG`)
+Apply the network, the `dbsadmin` password `Secret` (`db-pw-legacy-db`, key `legacy-db`), and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
 apiVersion: networking.gdc.goog/v1
 kind: Network
@@ -103,30 +107,86 @@ metadata:
   name: vm-net
   namespace: my-gdc-project
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-legacy-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  legacy-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: legacy-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "4", memory: "16Gi" }
-  storage: { size: "100G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-legacy-db
+    version: "15"
+    resources:
+      cpu: 4
+      memory: 16Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ```
 
-### 2.2 Initialize Database Schema
+### 2.2 Endpoint Discovery, TLS Root CA, `dbsadmin` Initialization & Secret Creation
 
-Once the database status is `READY`, connect via `psql` to create the schema:
+GDCag Managed PostgreSQL does **not** automatically create a `<cluster-name>-credentials` Secret on the User Cluster. Once `DBCluster/legacy-db` reports `READY` on `ZONE_KUBECONFIG`, discover the primary endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, initialize the schema and application role as `dbsadmin` (`cloudsqlsuperuser`), and create the User Cluster secrets (as well as distributing `ca.crt` and `DB_HOST` to the VM):
 
-```sql
+```shell
+# 1. Query primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog legacy-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-legacy-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin over verified TLS to initialize the application role and schema
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export APP_DB_PASSWORD="<strong-app-db-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'legacy_app') THEN
+    CREATE ROLE legacy_app WITH LOGIN PASSWORD '${APP_DB_PASSWORD}';
+  END IF;
+END
+\$\$;
+
 CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
     product_id INT NOT NULL,
     quantity INT NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE orders TO legacy_app;
+GRANT USAGE, SELECT ON SEQUENCE orders_id_seq TO legacy_app;
+SQL
+
+# 3. Create workload connection and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic legacy-db-credentials \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="legacy_app" \
+  --from-literal=password="${APP_DB_PASSWORD}" \
+  --from-literal=database="postgres" \
+  -n my-gdc-project
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic legacy-db-ca \
+  --from-file=ca.crt=./ca.crt \
+  -n my-gdc-project
 ```
 
 ---
@@ -249,18 +309,18 @@ monolithic VMs must be stopped to resize compute parameters:
    gdcloud compute instances start app-vm-01 --project=my-gdc-project --zone=zone-1
    ```
 
-### 6.2 Database High Availability & Manual Failover
+### 6.2 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover legacy-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover
@@ -277,7 +337,7 @@ spec:
 | :--- | :--- | :--- |
 | `VM fails to schedule` | Zonal physical compute resource exhaustion. | Try creating the instance in a different GDC availability zone. |
 | `DB Connection Refused` | Subnetwork route rules are misconfigured or VM is in a different VPC namespace. | Ensure the DB cluster and VM subnetwork reside in the same VPC or that VPC peering is active. |
-| `PostgreSQL HA Failover` | Physical host failure hosting primary DB pod. | Standby replica must be promoted by manually triggering a failover. |
+| `PostgreSQL HA Planned Maintenance` | Planned host maintenance or primary switchover validation. | Automatic failover (`enableAutoFailover: true`) handles unplanned primary failures; trigger a planned switchover via `gdcloud database clusters failover` or `Failover` CR. |
 
 ---
 

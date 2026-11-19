@@ -114,11 +114,11 @@ kubectl apply -f manifests/iam/permissions.yaml -n ${NAMESPACE}
 
 ### 2.2 Database / Storage Infrastructure
 
-Deploy the database secret and managed infrastructure components:
+Deploy the managed `DBCluster` (including `Secret/db-pw-<cluster-name>`) on `ZONE_KUBECONFIG`, initialize schemas/roles as `dbsadmin` using the server CA from `Secret/dbs-certificates`, and apply the workload connection secret on `USER_CLUSTER_KUBECONFIG`:
 
 ```bash
-kubectl apply -f manifests/security/db-secret.yaml -n ${NAMESPACE}
-kubectl apply -f manifests/gdc/db/postgres.yaml -n ${NAMESPACE}
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f manifests/gdc/db/postgres.yaml -n ${NAMESPACE}
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f manifests/security/db-secret.yaml -n ${NAMESPACE}
 ```
 
 ---

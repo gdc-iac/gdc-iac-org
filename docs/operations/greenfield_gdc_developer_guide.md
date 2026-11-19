@@ -100,7 +100,7 @@ By adhering to the contracts below, your application code (`src/`) runs **unchan
 | **OCI Container Registry (Push & Pull)** | **Google Artifact Registry** (`${AR_REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}`) — Workstation pushes via `docker push`; GKE nodes pull via `roles/artifactregistry.reader` | **GDC Managed Harbor OCI Registry** (`harbor.infra.gdc.local/gdc-iac`) — Populated via `ingest-airgap-bundle.sh` & `mirror_images.py` | Parameterized `{{ .Values.global.registry }}` in Helm `values.yaml` (or `./configure-blueprints.sh -r ${REGISTRY_HOST}`). |
 | **Compute (CPU & GPU)** | GKE CPU nodes (`app=client`) + optional GPU nodes (`nvidia.com/gpu`) | GDC User Cluster CPU nodes + `gpu-moe` / `gpu-dense` H100 pools | Standard K8s `resources.limits["nvidia.com/gpu"]` and parameterized `nodeSelector`. |
 | **Authentication (Mandatory)** | In-cluster **Keycloak OIDC** (`quay.io/keycloak/keycloak:24.0.4`) with `ConfigMap` Realm Import | **HA Keycloak OIDC (`p12-keycloak`)** federated with Enterprise AD/LDAP & PKI | Frontend uses OIDC Auth Code + PKCE (`S256`); Backend verifies RS256 JWTs via internal KubeDNS (`http://keycloak:80/auth/.../certs`). |
-| **PostgreSQL + `pgvector`** | In-cluster **`pgvector/pgvector:pg16` `StatefulSet`** | Zonal Managed **`DBCluster` CRD** (`postgresql.dbadmin.gdc.goog/v1`, `primarySpec`) | Exposes `Secret/<app>-db-credentials` (`host`, `username`, `password`, `database`, `connection_string`) projected to the User Cluster. |
+| **PostgreSQL + `pgvector`** | In-cluster **`pgvector/pgvector:pg16` `StatefulSet`** | Zonal Managed **`DBCluster` CRD** (`postgresql.dbadmin.gdc.goog/v1`, `availability` + `primarySpec` PG `"15"`) | After `dbsadmin` initialization (`CREATE EXTENSION vector;`) via `.status.primary.url` + `Secret/dbs-certificates`, workloads consume `Secret/<app>-db-credentials` (`host`, `username`, `password`, `database`, `connection_string`) on the User Cluster. |
 | **Object Storage (RAG / Files)** | **Actual Google Cloud Storage (`gs://<app>-files-${PROJECT_ID}`)** via **GKE Workload Identity** (`iam.gke.io/gcp-service-account`) | Zonal Managed **`Bucket` CRD** (`object.gdc.goog/v1` at `https://objectstorage.gdc.goog`) | **Dual-Mode Storage Adapter (`google-cloud-storage` + `boto3`):** Uses native GCS via Workload Identity when `S3_ENDPOINT` is empty on GKE, and automatically uses `boto3` S3 v4 (with `AWS_CA_BUNDLE` sovereign PKI verification) when `S3_ENDPOINT="https://objectstorage.gdc.goog"` is set on `GDC-ag`. |
 | **Load Balancing & Routing** | **Kubernetes Gateway API** (`Gateway/gdc-platform-gateway`, `HTTPRoute`) + `gdc-gateway-tunnel` (`socat` L4 bridge) | **Kubernetes Gateway API** (`gateway.networking.k8s.io/v1` on GDC Hardware Load Balancers) | Single-origin `HTTPRoute` mapping `/auth` $\rightarrow$ Keycloak, `/api` $\rightarrow$ Backend, and `/` $\rightarrow$ Frontend. |
 
@@ -388,7 +388,7 @@ Because `manifests/gcp/` is only used on your GKE Stepping-Stone cluster (and is
 
 ### 3.1. Emulate GDC Managed PostgreSQL + `pgvector` (`manifests/gcp/postgres-emulation.yaml`)
 
-On `GDC-ag`, the Zonal `DBCluster` CRD (`postgresql.dbadmin.gdc.goog/v1`) provisions HA PostgreSQL and exposes a Kubernetes `Secret` with keys `host`, `username`, `password`, `database` (and `db_name`/`connection_string` when projected to the User Cluster). Create the identical `Secret` and a `pgvector/pgvector:pg16` `StatefulSet`:
+On `GDC-ag`, the Zonal `DBCluster` CRD (`postgresql.dbadmin.gdc.goog/v1`, paired with `Secret/db-pw-<cluster-name>`) provisions HA PostgreSQL 15 (`enableHighAvailability: true`, `enableAutoFailover: true`) on `ZONE_KUBECONFIG`; operators query `.status.primary.url` and `Secret/dbs-certificates` (`dbs-pg-cert-<cluster-name>`), initialize schemas/roles/`pgvector` as `dbsadmin`, and create `Secret/${APP_NAME}-db-credentials` on the User Cluster (`host`, `username`, `password`, `database`, `db_name`, `connection_string`). Create the identical `Secret` contract and a `pgvector/pgvector:pg16` `StatefulSet` on GKE:
 
 ```bash
 # 1. Create the Database Credentials Secret Contract (supporting both discrete keys and connection_string)
@@ -1634,19 +1634,31 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/external_images.txt
 quay.io/keycloak/keycloak:24.0.4
 EOF
 
-# 2. Production Zonal GDC Custom Resources (manifests/gdc/resources.yaml)
+# 2. Production Zonal GDC Custom Resources (manifests/gdc/resources.yaml on ZONE_KUBECONFIG)
 cat <<EOF > ~/GitHub/${APP_NAME}/manifests/gdc/resources.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-${APP_NAME}-db
+  namespace: ${NAMESPACE}
+type: Opaque
+data:
+  ${APP_NAME}-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: ${APP_NAME}-db
   namespace: ${NAMESPACE}
 spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
   primarySpec:
-    version: "15"
     adminUser:
       passwordRef:
         name: db-pw-${APP_NAME}-db
+    version: "15"
     resources:
       cpu: 2
       memory: 8Gi
@@ -1940,6 +1952,11 @@ registry: ""
 gdc:
   enabled: false
   location: "zone1"
+  dbAdminPasswordB64: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+  dbVersion: "15"
+  dbCpu: 2
+  dbMemory: "8Gi"
+  dbDiskSize: "50Gi"
 
 apps:
   enabled: true
@@ -1987,7 +2004,12 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "location": { "type": "string" }
+        "location": { "type": "string" },
+        "dbAdminPasswordB64": { "type": "string" },
+        "dbVersion": { "type": "string" },
+        "dbCpu": { "type": "integer" },
+        "dbMemory": { "type": "string" },
+        "dbDiskSize": { "type": "string" }
       }
     },
     "apps": {
@@ -2055,23 +2077,35 @@ EOF
 
 cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/gdc/resources.yaml
 {{- if .Values.gdc.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-${APP_NAME}-db
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+type: Opaque
+data:
+  ${APP_NAME}-db: {{ .Values.gdc.dbAdminPasswordB64 | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: ${APP_NAME}-db
   namespace: {{ include "${APP_NAME}.namespace" . }}
 spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
   primarySpec:
-    version: "15"
     adminUser:
       passwordRef:
         name: db-pw-${APP_NAME}-db
+    version: {{ .Values.gdc.dbVersion | default "15" | quote }}
     resources:
-      cpu: 2
-      memory: 8Gi
+      cpu: {{ .Values.gdc.dbCpu | default 2 }}
+      memory: {{ .Values.gdc.dbMemory | default "8Gi" }}
       disks:
       - name: DataDisk
-        size: 50Gi
+        size: {{ .Values.gdc.dbDiskSize | default "50Gi" }}
 ---
 apiVersion: object.gdc.goog/v1
 kind: Bucket
@@ -2377,12 +2411,24 @@ tests:
       - hasDocuments:
           count: 0
         template: templates/gdc/resources.yaml
-  - it: should render GDC DBCluster and Bucket CRDs when gdc.enabled is true
+  - it: should render GDC Secret, DBCluster, and Bucket CRDs when gdc.enabled is true
     set:
       gdc.enabled: true
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
+        template: templates/gdc/resources.yaml
+      - isKind:
+          of: Secret
+        documentIndex: 0
+        template: templates/gdc/resources.yaml
+      - isKind:
+          of: DBCluster
+        documentIndex: 1
+        template: templates/gdc/resources.yaml
+      - isKind:
+          of: Bucket
+        documentIndex: 2
         template: templates/gdc/resources.yaml
 EOF
 ```
@@ -2877,7 +2923,20 @@ kubectl --context="${ZONE_ADMIN_CONTEXT}" apply -f manifests/gdc/resources.yaml 
 kubectl --context="${USER_CLUSTER_CONTEXT}" create namespace "${NAMESPACE}" --dry-run=client -o yaml | \
   kubectl --context="${USER_CLUSTER_CONTEXT}" apply -f -
 
-#    4a. Project Object Storage access-key-id & secret-access-key from Zone Admin 'object-storage-access-keys'
+#    4a. Discover DBCluster primary endpoint & TLS CA on Zone Admin, initialize as dbsadmin, and create User Cluster DB Secret
+DB_ENDPOINT=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get dbcluster.postgresql.dbadmin.gdc.goog "${APP_NAME}-db" -n "${NAMESPACE}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret dbs-certificates -n "${NAMESPACE}" -o jsonpath="{.data.dbs-pg-cert-${APP_NAME}-db}" | base64 -d > ca.crt
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
+kubectl --context="${USER_CLUSTER_CONTEXT}" create secret generic "${APP_NAME}-db-credentials" \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="${APP_DB_USER}" \
+  --from-literal=password="${APP_DB_PASSWORD}" \
+  --from-literal=database="postgres" \
+  --from-literal=connection_string="postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@${DB_HOST}:5432/postgres" \
+  -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl --context="${USER_CLUSTER_CONTEXT}" apply -f -
+
+#    4b. Project Object Storage access-key-id & secret-access-key from Zone Admin 'object-storage-access-keys'
 S3_SEC_NAME=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get secrets -n object-storage-access-keys -o jsonpath='{.items[0].metadata.name}')
 ACCESS_KEY_ID=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret "${S3_SEC_NAME}" -n object-storage-access-keys -o jsonpath='{.data.access-key-id}' | base64 -d)
 SECRET_ACCESS_KEY=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret "${S3_SEC_NAME}" -n object-storage-access-keys -o jsonpath='{.data.secret-access-key}' | base64 -d)
@@ -2886,7 +2945,7 @@ kubectl --context="${USER_CLUSTER_CONTEXT}" create secret generic "${APP_NAME}-s
   --from-literal=secret-access-key="${SECRET_ACCESS_KEY}" \
   -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl --context="${USER_CLUSTER_CONTEXT}" apply -f -
 
-#    4b. Configure p12-keycloak on User Cluster with KC_HTTP_RELATIVE_PATH=/auth and locked production redirectUris/webOrigins
+#    4c. Configure p12-keycloak on User Cluster with KC_HTTP_RELATIVE_PATH=/auth and locked production redirectUris/webOrigins
 #        (Never carry wildcard redirectUris/webOrigins or directAccessGrantsEnabled=true into production AD/LDAP realms!)
 kubectl --context="${USER_CLUSTER_CONTEXT}" set env deployment/keycloak KC_HTTP_RELATIVE_PATH="/auth" -n "${NAMESPACE}"
 

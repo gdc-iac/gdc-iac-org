@@ -1301,6 +1301,7 @@ registry: ""
 gdc:
   enabled: false
   location: "zone1"
+  dbAdminPasswordB64: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
   dbVersion: "15"
   dbCpu: 2
   dbMemory: "8Gi"
@@ -1352,6 +1353,7 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
       "properties": {
         "enabled": { "type": "boolean" },
         "location": { "type": "string" },
+        "dbAdminPasswordB64": { "type": "string" },
         "dbVersion": { "type": "string" },
         "dbCpu": { "type": "integer" },
         "dbMemory": { "type": "string" },
@@ -1654,6 +1656,92 @@ spec:
 {{- end }}
 EOF
 
+cat <<EOF > ~/GitHub/${APP_NAME}/manifests/gdc/resources.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-${APP_NAME}-db
+  namespace: ${NAMESPACE}
+type: Opaque
+data:
+  ${APP_NAME}-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: ${APP_NAME}-db
+  namespace: ${NAMESPACE}
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-${APP_NAME}-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+      - name: DataDisk
+        size: 50Gi
+---
+apiVersion: object.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: ${APP_NAME}-bucket
+  namespace: ${NAMESPACE}
+spec:
+  description: "Sovereign Mission Attachment Storage"
+  location: "zone1"
+  storageClass: Standard
+EOF
+
+cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/gdc/resources.yaml
+{{- if .Values.gdc.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-${APP_NAME}-db
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+type: Opaque
+data:
+  ${APP_NAME}-db: {{ .Values.gdc.dbAdminPasswordB64 | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: ${APP_NAME}-db
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-${APP_NAME}-db
+    version: {{ .Values.gdc.dbVersion | default "15" | quote }}
+    resources:
+      cpu: {{ .Values.gdc.dbCpu | default 2 }}
+      memory: {{ .Values.gdc.dbMemory | default "8Gi" }}
+      disks:
+      - name: DataDisk
+        size: {{ .Values.gdc.dbDiskSize | default "50Gi" }}
+---
+apiVersion: object.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: {{ .Values.apps.bucketName | quote }}
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+spec:
+  description: "Sovereign Mission Attachment Storage"
+  location: {{ .Values.gdc.location | default "zone1" | quote }}
+  storageClass: Standard
+{{- end }}
+EOF
+
 cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/tests/pattern_test.yaml
 suite: test Sovereign Application Pattern
 templates:
@@ -1667,13 +1755,16 @@ tests:
     template: gdc/resources.yaml
     asserts:
       - hasDocuments:
-          count: 2
+          count: 3
       - isKind:
-          of: DBCluster
+          of: Secret
         documentIndex: 0
       - isKind:
-          of: Bucket
+          of: DBCluster
         documentIndex: 1
+      - isKind:
+          of: Bucket
+        documentIndex: 2
 
   - it: should render User Cluster apps ONLY when apps.enabled is true
     set:

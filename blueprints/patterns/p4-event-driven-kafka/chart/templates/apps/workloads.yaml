@@ -41,11 +41,14 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: worker
         image: {{ $registry }}/p4-consumer:v1
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop:
             - ALL
@@ -78,6 +81,12 @@ spec:
             - /tmp/ready
           initialDelaySeconds: 5
           periodSeconds: 5
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -101,9 +110,16 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: volume-permissions
         image: {{ $registry }}/busybox:1.36
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
         command:
         - sh
         - -c
@@ -114,6 +130,9 @@ spec:
       containers:
       - name: kafka
         image: {{ $registry }}/kafka:3.9.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
         ports:
         - containerPort: 9092
           name: client
@@ -149,6 +168,15 @@ spec:
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+        - name: tmp
+          mountPath: /tmp
+        - name: kafka-logs
+          mountPath: /opt/kafka/logs
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: kafka-logs
+        emptyDir: {}
   volumeClaimTemplates:
   - metadata:
       name: kafka-data

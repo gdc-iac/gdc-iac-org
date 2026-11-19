@@ -16,7 +16,11 @@
 # Step 1: Deploy Kafka & Persistence
 # 1. Durable storage for final results
 gdcloud database clusters create event-db \
-  --project=test-project --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
+  --project=test-project \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD:?Set DB_ADMIN_PASSWORD}" \
+  --cpu=2 --memory=8Gi --storage-size=50Gi
 
 # 2. Kafka Cluster (Helm)
 # Ensure you point to your INTERNAL registry for the chart and images

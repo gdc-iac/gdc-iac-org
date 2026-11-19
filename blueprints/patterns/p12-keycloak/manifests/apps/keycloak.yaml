@@ -28,9 +28,21 @@ spec:
       labels:
         app: keycloak
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: keycloak
         image: REGISTRY_HOST_PLACEHOLDER/keycloak/keycloak:24.0.4
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         args: ["start-dev"]
         env:
         - name: KC_DB
@@ -70,6 +82,16 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 5
           failureThreshold: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: keycloak-data
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

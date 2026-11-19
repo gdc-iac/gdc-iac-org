@@ -23,6 +23,12 @@ spec:
   template:
     metadata: { labels: { app: logic } }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -35,11 +41,22 @@ spec:
       containers:
       - name: api-server
         image: test-registry.local/my-org/api-server:v1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         env:
         - name: DB_HOST
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

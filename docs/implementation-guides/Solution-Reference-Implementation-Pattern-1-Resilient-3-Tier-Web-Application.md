@@ -13,7 +13,7 @@ This document provides step-by-step instructions for deploying and configuring t
 The architecture splits responsibilities into three distinct tiers:
 1. **Web Tier (Presentation)**: Replicated Nginx containers serving frontend assets and proxying API traffic.
 2. **App Tier (Logic)**: Stateless API servers executing core business logic, decoupled and scaled horizontally.
-3. **Data Tier (Persistence)**: A managed high-availability PostgreSQL database service with zonal replication and manual failover.
+3. **Data Tier (Persistence)**: A managed high-availability PostgreSQL 15 database service (`DBCluster`) with synchronous standby replication, automatic failover (`enableAutoFailover: true`), and operator-controlled switchover/failover support.
 
 ```
                     [ Downstream Client / User ]
@@ -41,7 +41,7 @@ The architecture splits responsibilities into three distinct tiers:
 ### **Key Solution Capabilities**
 
 * **Tiered Decoupling**: Separation of presentation, logic, and data limits blast radiuses and lets developers optimize and scale each layer independently.
-* **Zonal High Availability**: The data tier uses GDC's native `ZONAL_HA` availability configuration, offering hot standby replication and manual failover.
+* **Zonal High Availability**: The data tier uses GDC's native `zonal_ha` availability configuration (`spec.availability.enableHighAvailability: true`), providing hot standby replication with automatic failover (`enableAutoFailover: true`) by default in GDCag `v1.15.1+` alongside operator-triggered switchovers.
 * **Anti-Affinity Co-location rules**: Stateless application pods implement strict pod anti-affinity to ensure replicas run on separate physical hypervisors.
 * **Gateway API exposure**: External routing is managed via standard Kubernetes Gateway API (`Gateway` and `HTTPRoute` resources) bound to a platform-configured `GatewayClass`.
 
@@ -224,42 +224,102 @@ spec:
 
 ### 2.1 Provision PostgreSQL DBCluster
 
-Deploy the GDC managed database cluster configuration.
+Deploy the GDC managed PostgreSQL 15 cluster (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`).
 
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create tier3-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/tier3-db.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/db/tier3-db.yaml` on `ZONE_KUBECONFIG`)
+Apply both the `dbsadmin` password `Secret` (`db-pw-tier3-db`, key `tier3-db`) and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-tier3-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  tier3-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: tier3-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "2", memory: "8Gi" }
-  storage: { size: "50G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-tier3-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
 ```
 
-### 2.2 Initialize Database Schema
+### 2.2 Endpoint Discovery, TLS Root CA, `dbsadmin` Initialization & User Cluster Secret Creation
 
-Once the database cluster reports a status of `READY`, GDC automatically creates a secret named `tier3-db-credentials` containing access information. Initialize the schema using `psql`:
+GDCag Managed PostgreSQL does **not** automatically project a `<cluster-name>-credentials` Secret into the User Cluster. Once `DBCluster/tier3-db` reaches `READY` on `ZONE_KUBECONFIG`, discover its primary DNS endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, initialize the schema and least-privilege role as `dbsadmin` (`cloudsqlsuperuser`), and create the workload connection secrets on `USER_CLUSTER_KUBECONFIG`:
 
-```sql
+```shell
+# 1. Discover primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog tier3-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-tier3-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin over verified TLS to initialize the application role and schema
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export APP_DB_PASSWORD="<strong-app-db-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'tier3_app') THEN
+    CREATE ROLE tier3_app WITH LOGIN PASSWORD '${APP_DB_PASSWORD}';
+  END IF;
+END
+\$\$;
+
 CREATE TABLE IF NOT EXISTS todos (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     completed BOOLEAN NOT NULL
 );
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE todos TO tier3_app;
+GRANT USAGE, SELECT ON SEQUENCE todos_id_seq TO tier3_app;
+SQL
+
+# 3. Create workload credentials and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic tier3-db-credentials \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="tier3_app" \
+  --from-literal=password="${APP_DB_PASSWORD}" \
+  --from-literal=database="postgres" \
+  -n my-gdc-project
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic tier3-db-ca \
+  --from-file=ca.crt=./ca.crt \
+  -n my-gdc-project
 ```
 
 ---
@@ -580,18 +640,18 @@ kubectl scale deployment/web-tier --replicas=5 -n my-gdc-project
 kubectl scale deployment/logic-tier --replicas=3 -n my-gdc-project
 ```
 
-### 8.2 Database High Availability & Manual Failover
+### 8.2 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers on demand via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover tier3-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover

@@ -27,6 +27,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -41,6 +43,7 @@ spec:
         image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p1-backend:latest # kpt-set: ${registry-host}/p1-backend:latest
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -67,6 +70,12 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

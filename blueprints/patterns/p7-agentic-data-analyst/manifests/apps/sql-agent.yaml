@@ -27,6 +27,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: adk-agent
         image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p7-agent:v1
@@ -34,6 +36,7 @@ spec:
         command: ["python", "app.py"]
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -74,6 +77,12 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

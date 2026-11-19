@@ -85,3 +85,10 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    # 5. GDCag Managed PostgreSQL (DBCluster) endpoints (5432/TCP) for Vault Dynamic Database Secrets Engine (database/) or PostgreSQL storage backend (scope cidr to your Zonal DB subnet in production)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 5432

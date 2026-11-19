@@ -467,4 +467,14 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    {{- if .Values.vault.networkPolicy.allowPostgresEgress }}
+    - to:
+        {{- range $cidr := (.Values.vault.networkPolicy.postgresCidrs | default (list "0.0.0.0/0")) }}
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
 {{- end }}

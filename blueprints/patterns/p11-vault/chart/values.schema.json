@@ -163,6 +163,15 @@
               "items": {
                 "type": "string"
               }
+            },
+            "allowPostgresEgress": {
+              "type": "boolean"
+            },
+            "postgresCidrs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         }

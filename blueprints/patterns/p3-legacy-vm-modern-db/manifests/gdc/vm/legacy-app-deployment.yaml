@@ -27,9 +27,21 @@ spec:
       labels:
         app: legacy-app
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: legacy-app
         image: python:3.11-slim
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         command: ["/bin/sh", "-c", "while true; do echo 'Simulating legacy app...'; sleep 10; done"]
         env:
         - name: DB_HOST
@@ -40,3 +52,9 @@ spec:
           value: "postgres"
         - name: DB_PASS
           value: "password"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

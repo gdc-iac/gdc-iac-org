@@ -28,10 +28,22 @@ spec:
         app: backend
     spec:
       serviceAccountName: gemini-gui-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
         image: us-central1-docker.pkg.dev/test-project/blueprint-images/p10-backend:latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8000
         env:
@@ -50,6 +62,12 @@ spec:
         #   value: "us-central1-aiplatform.googleapis.com" # Uncomment to override
         - name: GEMINI_MODEL
           value: "gemini-2.5-flash"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

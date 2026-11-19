@@ -16,6 +16,17 @@
 {{- if .Values.gdc.enabled }}
 {{- $ns := include "p6-resilient-rag-agent.namespace" . -}}
 {{- $projectId := include "p6-resilient-rag-agent.projectId" . -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-rag-db
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
+type: Opaque
+data:
+  rag-db: {{ (.Values.gdc.db.base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE") | quote }}
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
@@ -24,14 +35,20 @@ metadata:
   labels:
     {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: '4'
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-rag-db
+    version: "15"
+    resources:
+      cpu: 4
       memory: 16Gi
-  storage:
-    size: 100G
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ---
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding

@@ -24,10 +24,27 @@ spec:
       template:
         spec:
           serviceAccountName: rag-sa  # Must match Step 1
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
           - name: ingest
             image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/my-org/rag-ingest:v1
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
             env:
             - name: INPUT_BUCKET
               value: "gs://raw-docs"
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: tmp
+            emptyDir: {}
           restartPolicy: OnFailure

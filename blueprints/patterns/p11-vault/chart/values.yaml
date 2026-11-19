@@ -81,3 +81,6 @@ vault:
   networkPolicy:
     controlPlaneCidrs:
       - "0.0.0.0/0"
+    allowPostgresEgress: false
+    postgresCidrs:
+      - "0.0.0.0/0"

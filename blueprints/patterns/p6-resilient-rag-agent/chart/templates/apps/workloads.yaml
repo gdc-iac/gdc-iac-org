@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -29,12 +31,35 @@ spec:
       labels:
         app: frontend
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: frontend
         image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-frontend:v7
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 80
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -73,12 +98,15 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
             fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
           - name: ingest
             image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-ingest:v7
             imagePullPolicy: Always
             securityContext:
               allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
               capabilities:
                 drop:
                 - ALL
@@ -129,6 +157,12 @@ spec:
                 secretKeyRef:
                   name: rag-db-credentials
                   key: password
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          volumes:
+          - name: tmp
+            emptyDir: {}
           restartPolicy: OnFailure
 ---
 apiVersion: apps/v1
@@ -149,10 +183,22 @@ spec:
         app: query-service
     spec:
       serviceAccountName: rag-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: query-service
         image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-query:v7
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8080
         env:
@@ -189,6 +235,12 @@ spec:
           value: projects/{{ include "p6-resilient-rag-agent.projectId" . }}
         - name: INPUT_BUCKET
           value: gs://raw-docs-{{ include "p6-resilient-rag-agent.projectId" . }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

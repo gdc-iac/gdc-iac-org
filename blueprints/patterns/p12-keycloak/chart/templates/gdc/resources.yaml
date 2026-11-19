@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,7 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.gdc.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-keycloak-db
+  namespace: {{ include "p12-keycloak.namespace" . }}
+  labels:
+    {{- include "p12-keycloak.labels" . | nindent 4 }}
+type: Opaque
+data:
+  keycloak-db: {{ (.Values.gdc.db.base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE") | quote }}
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
@@ -20,12 +33,18 @@ metadata:
   labels:
     {{- include "p12-keycloak.labels" . | nindent 4 }}
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: '2'
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-keycloak-db
+    version: "15"
+    resources:
+      cpu: 2
       memory: 8Gi
-  storage:
-    size: 100Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
 {{- end }}

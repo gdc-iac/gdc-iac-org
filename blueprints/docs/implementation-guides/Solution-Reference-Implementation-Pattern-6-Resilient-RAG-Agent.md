@@ -412,49 +412,110 @@ spec:
 
 ### 3.1 Provision PostgreSQL Cluster
 
-Create the database instance to support document vector persistence.
+Create the managed PostgreSQL 15 database instance (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`) to support document vector persistence.
 
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create rag-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=4 --memory=16Gi --storage-size=100Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/postgres.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/db/postgres.yaml` on `ZONE_KUBECONFIG`)
+Apply both the `dbsadmin` password `Secret` (`db-pw-rag-db`, key `rag-db`) and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-rag-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  rag-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: rag-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "4", memory: "16Gi" }
-  storage: { size: "100G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-rag-db
+    version: "15"
+    resources:
+      cpu: 4
+      memory: 16Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ```
 
-### 3.2 Initialize DB extensions for Vector Storage
+### 3.2 Endpoint Discovery, TLS Root CA, `dbsadmin` `pgvector` Initialization & User Cluster Secret Creation
 
-Wait for database status `READY`, connect via `psql`, and enable the pgvector extension:
+GDCag Managed PostgreSQL does **not** automatically create a `rag-db-credentials` Secret on the User Cluster, and standard application users cannot install privileged extensions. Once `DBCluster/rag-db` reaches `READY` on `ZONE_KUBECONFIG`, discover its DNS endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, connect **as `dbsadmin` (`cloudsqlsuperuser`)** to run `CREATE EXTENSION IF NOT EXISTS vector;` and initialize the schema/role, and then create `rag-db-credentials` and `rag-db-ca` on `USER_CLUSTER_KUBECONFIG`:
 
-```sql
+```shell
+# 1. Discover primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog rag-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-rag-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin (cloudsqlsuperuser) over verified TLS to enable pgvector and create the app role
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export APP_DB_PASSWORD="<strong-rag-db-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
+-- Must be executed as dbsadmin (cloudsqlsuperuser)
 CREATE EXTENSION IF NOT EXISTS vector;
+
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rag_app') THEN
+    CREATE ROLE rag_app WITH LOGIN PASSWORD '${APP_DB_PASSWORD}';
+  END IF;
+END
+\$\$;
 
 CREATE TABLE IF NOT EXISTS document_embeddings (
     id SERIAL PRIMARY KEY,
     document_name VARCHAR(255),
     chunk_index INT,
     text_content TEXT,
-    embedding vector(768)  --Sized for standard text-embedding-004
+    embedding vector(768)  -- Sized for standard text-embedding-004
 );
 
 CREATE INDEX IF NOT EXISTS document_embedding_cosine_idx 
 ON document_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_embeddings TO rag_app;
+GRANT USAGE, SELECT ON SEQUENCE document_embeddings_id_seq TO rag_app;
+SQL
+
+# 3. Create rag-db-credentials and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-credentials \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="rag_app" \
+  --from-literal=password="${APP_DB_PASSWORD}" \
+  --from-literal=database="postgres" \
+  -n my-gdc-project
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-ca \
+  --from-file=ca.crt=./ca.crt \
+  -n my-gdc-project
 ```
 
 ---
@@ -650,18 +711,18 @@ kubectl logs postgres-0 -n my-gdc-project --tail=50 -f
 
 ## **Section 6: Operations & Troubleshooting**
 
-### 6.1 Database High Availability & Manual Failover
+### 6.1 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover rag-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover
@@ -677,7 +738,7 @@ spec:
 | Symptom | Root Cause | Resolution |
 | :--- | :--- | :--- |
 | `LLM Gateway Call Failed` | The `rag-sa` lacks required credentials or the Gateway endpoint is unreachable. | Verify `LLM_GATEWAY_URL` endpoint and ensure `ProjectPolicy` includes `Role/ai-inference-developer`. |
-| `DB extension missing` | `pgvector` was not loaded or DB initialization script failed. | Connect to PostgreSQL as admin and re-run `CREATE EXTENSION vector;`. |
+| `DB extension missing` | `pgvector` was not loaded or DB initialization ran as a non-superuser role. | Connect to PostgreSQL as `dbsadmin` (`cloudsqlsuperuser`) over TLS (`PGSSLMODE=verify-ca`) and run `CREATE EXTENSION IF NOT EXISTS vector;`. |
 | `Out of memory (OOM)` | Large document sizes cause processing memory limits to break. | Scale container resource limits or split large PDFs into smaller text parts before uploading. |
 
 ---

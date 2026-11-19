@@ -27,11 +27,14 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: worker
         image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p4-consumer:v1 # kpt-set: ${registry-host}/my-org/consumer-app:v1.0
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -61,3 +64,9 @@ spec:
             - /tmp/ready
           initialDelaySeconds: 5
           periodSeconds: 5
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

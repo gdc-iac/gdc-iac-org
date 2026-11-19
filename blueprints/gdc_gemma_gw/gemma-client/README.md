@@ -190,22 +190,34 @@ Sync the `manifests/gdc/iam/` files (if available) to your cluster.
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD=<YOUR_STRONG_DBSADMIN_PASSWORD>
 
-# 1. Create Managed Database Cluster
+# 1. Create Zonal HA Managed PostgreSQL 15 Cluster (provisions default admin user 'dbsadmin')
 gdcloud database clusters create gemma-client-db \
-  --project=$PROJECT_ID --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=2 \
+  --memory=8Gi \
+  --storage-size=50Gi
 
-# 2. Create Connection Secret
-# Retrieve the IP address of your new DB instance and create the secret
-# DB_HOST=$(gdcloud database clusters describe gemma-client-db --project=$PROJECT_ID --format="value(primaryInstance.ipAddress)")
-# kubectl create secret generic gemma-client-db-credentials \
-#   --namespace=$PROJECT_ID \
-#   --from-literal=connection_string="postgresql://postgres:password@$DB_HOST:5432/postgres"
+# 2. Retrieve Primary Endpoint & Server TLS Certificate on ZONE_KUBECONFIG
+DB_HOST=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbclusters.postgresql.dbadmin.gdc.goog gemma-client-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath="{.data['dbs-pg-cert-gemma-client-db']}" | base64 -d > gemma-client-db-ca.crt
+
+# 3. Create Connection Secret on the User Cluster
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemma-client-db-credentials \
+  --namespace="${PROJECT_ID}" \
+  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/ssl/certs/db-ca.crt"
 ```
 
-**Option B: GitOps**
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Sync the `manifests/gdc/db/postgres.yaml` file to your cluster.
+Replace the placeholder base64 password in `Secret/db-pw-gemini-db` (`data.gemini-db`) and sync `manifests/gdc/db/postgres.yaml` (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) to your Zonal API server (`ZONE_KUBECONFIG`).
 
 ### Step 3: Initialize Database Schema
 
@@ -215,9 +227,13 @@ The application requires a specific database schema to store chat history and fi
 The schema includes three tables: `chats`, `messages`, and `files`. It also requires the `uuid-ossp` extension. You can find the reference SQL definition in `manifests/gcp/postgres-configmap.yaml`.
 
 **For GDC Production (PostgreSQL):**
-You must manually apply the schema to your GDC Database Service instance.
+You must manually apply the schema to your GDC Database Service instance as the `dbsadmin` user.
 
-1.  Connect to your PostgreSQL instance using `psql`.
+1.  Connect to your PostgreSQL instance using `psql` with the extracted TLS CA certificate:
+    ```bash
+    PGPASSWORD="${DB_ADMIN_PASSWORD}" PGSSLMODE=verify-ca PGSSLROOTCERT=./gemma-client-db-ca.crt \
+      psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres
+    ```
 2.  Run the following SQL commands:
 
     ```sql

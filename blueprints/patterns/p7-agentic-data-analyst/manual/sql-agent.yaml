@@ -23,11 +23,28 @@ spec:
   template:
     metadata: { labels: { app: agent } }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: langchain
         image: test-registry.local/my-org/sql-agent:v1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         env:
         - name: DB_USER
           valueFrom: { secretKeyRef: { name: db-ro-creds, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: db-ro-creds, key: password } }
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

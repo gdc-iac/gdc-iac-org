@@ -105,59 +105,76 @@ The service account used by the `sql-agent` pods will need permissions to access
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
 
-# 1. Create Managed Database Cluster
+# 1. Create Managed Database Cluster (PostgreSQL 15 HA)
 gdcloud database clusters create postgres-db \
-  --project=$PROJECT_ID --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=2 --memory=8Gi --storage-size=50Gi
 ```
 
-**Option B: GitOps**
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Sync the `manifests/gdc/db/postgres.yaml` file to your cluster.
+Replace the base64 placeholder in `Secret/db-pw-postgres-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/postgres.yaml` (`Secret/db-pw-postgres-db` + `DBCluster/postgres-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`).
 
-### Step 2: Create Read-Only Credentials
+### Step 2: Retrieve Database Endpoint & Create Read-Only Credentials
 
-*Security Note: Never give an LLM agent admin DB credentials.*
+*Security Note: Never give an LLM agent `dbsadmin` credentials—create a least-privilege read-only role (`analyst_ro`).*
 
 **Option A: Manual (CLI)**
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
+export RO_PASSWORD='<SECURE_READONLY_PASSWORD>'
 
-kubectl create secret generic db-ro-creds \
-  --namespace=$PROJECT_ID \
+# 1. Retrieve primary endpoint and server TLS CA from ZONE_KUBECONFIG
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog postgres-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-postgres-db}' | base64 -d > /tmp/postgres-db-ca.crt
+
+# 2. Create read-only credentials Secret on the User Cluster
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic db-ro-creds \
+  --namespace="${PROJECT_ID}" \
   --from-literal=username=analyst_ro \
-  --from-literal=password='<SECURE_PASSWORD>' \
-  --from-literal=host='postgres-db'
+  --from-literal=password="${RO_PASSWORD}" \
+  --from-literal=host="${DB_HOST}" \
+  --from-file=ca.crt=/tmp/postgres-db-ca.crt \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
 ```
 
 **Option B: GitOps**
 
-Sync the `manifests/gdc/security/db-secret.yaml` file to your cluster.
+Update `host` (set to `DBCluster` `.status.primary.url` stripped of `:5432`) and `password` in `manifests/gdc/security/db-secret.yaml` and sync it to your User Cluster.
 
-### Step 3: Initialize Database Schema
+### Step 3: Initialize Database Schema & Read-Only Role
 
-The agent requires a specific database schema and sample data to analyze.
+Connect to your GDC Database Service instance as `dbsadmin` (`PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/postgres-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run:
 
-**For GDC Production (PostgreSQL HA):**
-You must manually apply the schema and seed data to your GDC Database Service instance.
+```sql
+-- 1. Create Table
+CREATE TABLE IF NOT EXISTS sales (
+    id SERIAL PRIMARY KEY,
+    date DATE,
+    amount DECIMAL
+);
 
-1.  Connect to your database instance using `psql`.
-2.  Run the following SQL commands:
+-- 2. Seed Data (if empty)
+INSERT INTO sales (date, amount) VALUES 
+('2023-01-01', 100), ('2023-01-02', 150), ('2023-01-03', 200),
+('2023-01-04', 130), ('2023-01-05', 170);
 
-    ```sql
-    -- 1. Create Table
-    CREATE TABLE IF NOT EXISTS sales (
-        id SERIAL PRIMARY KEY,
-        date DATE,
-        amount DECIMAL
-    );
-
-    -- 2. Seed Data (if empty)
-    INSERT INTO sales (date, amount) VALUES 
-    ('2023-01-01', 100), ('2023-01-02', 150), ('2023-01-03', 200),
-    ('2023-01-04', 130), ('2023-01-05', 170);
-    ```
+-- 3. Create Read-Only Role for SQL Agent
+CREATE ROLE analyst_ro WITH LOGIN PASSWORD '<SECURE_READONLY_PASSWORD>';
+GRANT CONNECT ON DATABASE postgres TO analyst_ro;
+GRANT USAGE ON SCHEMA public TO analyst_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst_ro;
+```
 
 ### Step 4: Deploy Agent
 

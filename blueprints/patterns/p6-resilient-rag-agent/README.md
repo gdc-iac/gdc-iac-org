@@ -185,71 +185,81 @@ gdcloud iam service-accounts add-iam-policy-binding rag-sa --project=$PROJECT_ID
 Sync the `manifests/gdc/iam/rag-permissions.yaml` file to your cluster.
 
 ### Step 2: Deploy Database
- 
- **Option A: Manual (CLI)**
- 
- ```bash
- export PROJECT_ID=<YOUR_PROJECT_ID>
- 
- # 1. Create Managed Database Cluster (PostgreSQL HA)
- gdcloud database clusters create rag-db \
-   --project=$PROJECT_ID --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
- 
- # 2. Create Connection Secret
- # Retrieve the IP address of your new DB instance and create the secret
- # DB_HOST=$(gdcloud database clusters describe rag-db --project=$PROJECT_ID --format="value(primaryInstance.ipAddress)")
- # kubectl create secret generic rag-db-credentials \
- #   --namespace=$PROJECT_ID \
- #   --from-literal=username=postgres \
- #   --from-literal=password=<YOUR_PASSWORD> \
- #   --from-literal=host=$DB_HOST \
- #   --from-literal=db_name=postgres
- ```
- 
- **Option B: GitOps**
- 
- Sync the `manifests/gdc/db/postgres.yaml` file to your cluster.
- 
- ### Step 3: Initialize Database Schema
 
-The application requires a specific database schema with the `pgvector` extension enabled.
+**Option A: Manual (CLI)**
 
-**For GDC Production (PostgreSQL):**
-You must manually apply the schema to your GDC Database Service instance, as the application user may not have permissions to install extensions.
+```bash
+export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
 
-1.  Connect to your PostgreSQL instance using `psql`.
-2.  Run the following SQL commands:
+# 1. Create Managed Database Cluster (PostgreSQL 15 HA)
+gdcloud database clusters create rag-db \
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=4 --memory=16Gi --storage-size=100Gi
 
-    ```sql
-    -- 1. Enable pgvector extension (Requires Superuser)
-    CREATE EXTENSION IF NOT EXISTS vector;
+# 2. Retrieve Primary Endpoint & Server TLS CA from ZONE_KUBECONFIG
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog rag-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
 
-    -- 2. Create Documents Table
-    CREATE TABLE IF NOT EXISTS documents (
-        id SERIAL PRIMARY KEY,
-        filename TEXT UNIQUE,
-        content TEXT,
-        embedding vector(768), -- Matches text-embedding-004 dimensions
-        owner_id TEXT DEFAULT NULL,
-        source_path TEXT
-    );
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-rag-db}' | base64 -d > /tmp/rag-db-ca.crt
 
-    -- 3. Create Chat History Tables
-    CREATE TABLE IF NOT EXISTS chats (
-        id SERIAL PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        title TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
+# 3. Create Connection Secret on the User Cluster
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-credentials \
+  --namespace="${PROJECT_ID}" \
+  --from-literal=username=dbsadmin \
+  --from-literal=password="${DB_ADMIN_PASSWORD}" \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=db_name=postgres \
+  --from-file=ca.crt=/tmp/rag-db-ca.crt \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+```
 
-    CREATE TABLE IF NOT EXISTS messages (
-        id SERIAL PRIMARY KEY,
-        chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ```
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
+
+Replace the base64 placeholder in `Secret/db-pw-rag-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/postgres.yaml` (`Secret/db-pw-rag-db` + `DBCluster/rag-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`), then create `rag-db-credentials` on the User Cluster as shown above.
+
+### Step 3: Initialize Database Schema (`pgvector`)
+
+The application requires a specific database schema with the `pgvector` extension enabled (`pgvector` `0.8.0` is pre-installed on GDCag `POSTGRESQL_15`).
+
+**For GDC Production (PostgreSQL HA):**
+Connect to your GDC Database Service instance as `dbsadmin` using the extracted CA (`PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/rag-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run the following SQL commands:
+
+```sql
+-- 1. Enable pgvector extension (Run as dbsadmin)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2. Create Documents Table
+CREATE TABLE IF NOT EXISTS documents (
+    id SERIAL PRIMARY KEY,
+    filename TEXT UNIQUE,
+    content TEXT,
+    embedding vector(768), -- Matches text-embedding-004 dimensions
+    owner_id TEXT DEFAULT NULL,
+    source_path TEXT
+);
+
+-- 3. Create Chat History Tables
+CREATE TABLE IF NOT EXISTS chats (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 ### Step 4: Deploy Ingestion Job
 

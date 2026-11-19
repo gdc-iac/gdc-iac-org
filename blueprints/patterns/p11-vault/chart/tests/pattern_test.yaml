@@ -149,3 +149,27 @@ tests:
       - isKind:
           of: AEADKey
         documentIndex: 0
+  - it: should render 5432/TCP PostgreSQL egress rule in NetworkPolicy when vault.networkPolicy.allowPostgresEgress is true
+    set:
+      vault:
+        networkPolicy:
+          allowPostgresEgress: true
+          postgresCidrs:
+            - "10.200.16.0/24"
+    template: templates/apps/workloads.yaml
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+        documentIndex: 8
+      - equal:
+          path: spec.egress[4].to[0].ipBlock.cidr
+          value: "10.200.16.0/24"
+        documentIndex: 8
+      - equal:
+          path: spec.egress[4].ports[0].port
+          value: 5432
+        documentIndex: 8
+      - equal:
+          path: spec.egress[4].ports[0].protocol
+          value: TCP
+        documentIndex: 8

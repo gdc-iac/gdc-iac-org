@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,9 +32,21 @@ spec:
       labels:
         app: keycloak
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: keycloak
         image: {{ include "p12-keycloak.registry" . }}/keycloak/keycloak:24.0.4
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         args:
         - start-dev
         env:
@@ -73,6 +87,16 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 5
           failureThreshold: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: keycloak-data
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

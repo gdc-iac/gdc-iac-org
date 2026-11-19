@@ -114,35 +114,52 @@ To deploy the resources for this pattern, your user account will need the follow
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
 
 gdcloud database clusters create tier3-db \
-  --project=$PROJECT_ID \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi
 ```
 
-**Option B: GitOps**
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Sync the `manifests/gdc/db/tier3-db.yaml` file (already configured by the script) to your cluster.
+Replace the base64 placeholder in `Secret/db-pw-tier3-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/tier3-db.yaml` (`Secret/db-pw-tier3-db` + `DBCluster/tier3-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`).
 
-### Step 2: Initialize Database Schema
+### Step 2: Retrieve Database Endpoint, Create User Cluster Credentials & Initialize Schema
 
-The application requires a specific database schema to store todo items.
+GDC Database Service provisions `DBCluster` resources on the Zonal Management API plane (`ZONE_KUBECONFIG`) and exposes the primary endpoint in `.status.primary.url` (alongside the server TLS CA in `Secret/dbs-certificates` under key `dbs-pg-cert-tier3-db`). It does not auto-create an application credentials `Secret` in the User Cluster—retrieve the endpoint from `ZONE_KUBECONFIG` and create `tier3-db-credentials` on `USER_CLUSTER_KUBECONFIG`:
 
-**For GDC Production (PostgreSQL HA):**
-You must manually apply the schema to your GDC Database Service instance.
+```bash
+# 1. Retrieve primary endpoint and server TLS CA from ZONE_KUBECONFIG
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog tier3-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
 
-1.  Connect to your database instance using `psql`.
-2.  Run the following SQL commands:
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-tier3-db}' | base64 -d > /tmp/tier3-db-ca.crt
 
-    ```sql
-    CREATE TABLE IF NOT EXISTS todos (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        completed BOOLEAN NOT NULL
-    );
-    ```
+# 2. Create tier3-db-credentials on the User Cluster
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic tier3-db-credentials \
+  -n "${PROJECT_ID}" \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="dbsadmin" \
+  --from-literal=password="${DB_ADMIN_PASSWORD}" \
+  --from-file=ca.crt=/tmp/tier3-db-ca.crt \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+```
+
+Next, connect to your PostgreSQL instance as `dbsadmin` (with `PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/tier3-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and initialize the `todos` table:
+
+```sql
+CREATE TABLE IF NOT EXISTS todos (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    completed BOOLEAN NOT NULL
+);
+```
 
 ### Step 3: Deploy Application Tier (Business Logic)
 

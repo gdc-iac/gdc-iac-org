@@ -45,28 +45,53 @@ Deploying the full **Gemma 4 Dedicated Inference Gateway** stack in production G
 * **Usage**:
   - **Session Caching**: Stores multi-user chat history, token analytics, and active session states.
   - **Governance Auditing**: Logs proxy metrics, classification triggers, and admin blocklist registers.
-* **API Configuration**: Create the managed database instance via the `postgresql.dbadmin.gdc.goog/v1` `DBCluster` API in your project namespace.
+* **API Configuration**: Create the prerequisite admin password `Secret` (`db-pw-gemma-client-db`) and the managed database instance via the `postgresql.dbadmin.gdc.goog/v1` `DBCluster` API in your project namespace on `ZONE_KUBECONFIG`.
   
   **Example: DBCluster Resource (`gemma-db-cluster.yaml`)**
   ```yaml
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: db-pw-gemma-client-db
+    namespace: <your-project-id>
+  type: Opaque
+  data:
+    # Key must match DBCluster metadata.name; replace with base64-encoded dbsadmin password before applying on ZONE_KUBECONFIG
+    gemma-client-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+  ---
   apiVersion: postgresql.dbadmin.gdc.goog/v1
   kind: DBCluster
   metadata:
     name: gemma-client-db
     namespace: <your-project-id>
   spec:
-    version: POSTGRESQL_14
-    availabilityType: ZONAL_HA
-    resources:
-      requests:
-        cpu: "4"
-        memory: "16Gi"
-    storage:
-      size: "250Gi"
+    availability:
+      enableHighAvailability: true
+      enableAutoFailover: true
+    primarySpec:
+      adminUser:
+        passwordRef:
+          name: db-pw-gemma-client-db
+      version: "15"
+      resources:
+        cpu: 4
+        memory: 16Gi
+        disks:
+          - name: DataDisk
+            size: 250Gi
   ```
-* **Database Schema Application (Manual)**: Because standard application workloads lack extension installation privileges inside GDC, the database operator must manually initialize the schema before deploying the client application.
+* **Database Schema Application (Manual)**: Because standard application workloads lack extension installation privileges inside GDC, the database operator must manually initialize the schema as `dbsadmin` before deploying the client application.
   
-  1. Connect to your DBCluster instance via a `psql` prompt or a temporary staging client.
+  1. Retrieve the primary endpoint (`.status.primary.url`) and TLS CA certificate (`Secret/dbs-certificates`) from `ZONE_KUBECONFIG`, then connect to your `DBCluster` instance as `dbsadmin` via `psql`:
+     ```bash
+     DB_HOST=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbclusters.postgresql.dbadmin.gdc.goog gemma-client-db \
+       -n <your-project-id> -o jsonpath='{.status.primary.url}')
+     kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+       -n <your-project-id> -o jsonpath="{.data['dbs-pg-cert-gemma-client-db']}" | base64 -d > gemma-client-db-ca.crt
+
+     PGPASSWORD="<DBSADMIN_PASSWORD>" PGSSLMODE=verify-ca PGSSLROOTCERT=./gemma-client-db-ca.crt \
+       psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres
+     ```
   2. Apply the following SQL schema definitions:
      ```sql
      CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
