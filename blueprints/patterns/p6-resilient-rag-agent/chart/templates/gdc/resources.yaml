@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,12 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.gdc.enabled }}
+{{- $ns := include "p6-resilient-rag-agent.namespace" . -}}
+{{- $projectId := include "p6-resilient-rag-agent.projectId" . -}}
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: rag-db
-  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  namespace: {{ $ns }}
   labels:
     {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
 spec:
@@ -29,19 +33,21 @@ spec:
   storage:
     size: 100G
 ---
-apiVersion: iam.gdc.goog/v1
-kind: ProjectPolicy
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
 metadata:
-  name: rag-bindings
-  namespace: {{ include "p6-resilient-rag-agent.namespace" . }}
+  name: rag-sa--project-bucket-object-admin
+  namespace: {{ $projectId }}
   labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
     {{- include "p6-resilient-rag-agent.labels" . | nindent 4 }}
 spec:
-  bindings:
-  - role: Role/ai-ocr-developer
-    members:
-    - serviceAccount:rag-sa
-  - role: Role/ai-translation-developer
-    members:
-    - serviceAccount:rag-sa
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: rag-sa
+      namespace: {{ $projectId }}
 {{- end }}

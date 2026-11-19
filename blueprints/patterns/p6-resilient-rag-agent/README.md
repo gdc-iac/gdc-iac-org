@@ -120,7 +120,7 @@ For GDC production compliance, apply NetworkPolicies to restrict ingress/egress:
 For production single sign-on (SSO) and RBAC multi-tenancy:
 * **OIDC Provider**: Deploy Keycloak using the [P12 Keycloak Blueprint](../p12-keycloak/README.md).
 * **Identity Header Extraction**: Configure the GDC Gateway API / NGINX Ingress to validate JWT tokens and forward `X-User-ID` and `X-User-Role` headers to `query-service`.
-* **Document Access Filtering**: PostgreSQL vector queries automatically enforce user document isolation (`owner_id = user_id OR scope = 'shared'`). Refer to [`docs/keycloak_integration_guide.md`](../docs/keycloak_integration_guide.md) for full OIDC details.
+* **Document Access Filtering**: PostgreSQL vector queries automatically enforce user document isolation (`owner_id = user_id OR scope = 'shared'`). Refer to [`docs/keycloak_integration_guide.md`](../docs/operations/keycloak_integration_guide.md) for full OIDC details.
 
 ## Configuration
 
@@ -153,10 +153,10 @@ This pattern requires permissions for both the **user** deploying the applicatio
 To deploy the resources, your user account will need the following GDC IAM roles:
 
 *   **IAM Admin:** To create a new service account (`rag-sa`) and grant it project-level roles.
-    *   `roles/iam.serviceAccountAdmin`
-    *   `roles/project.iamAdmin`
+    *   `project-iam-admin`
+    *   `project-iam-admin`
 *   **GKE Developer:** To deploy the CronJob and ServiceAccount to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 **2. Service Account Permissions:**
 The `rag-sa` service account itself will be granted the following roles by the user during setup, which it uses at runtime to call other GDC services:
@@ -410,7 +410,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 3. **Load and Push Global Container Images (If Applicable):** For blueprints bridging global components (e.g. Hashicorp Vault, external pipelines), manually load and tag the artifacts using standard Docker commands:
    ```bash
    docker load -i artifacts/external-dependencies/images/...
-   docker tag ... harbor.gdc.local/library/...
+   docker tag ... harbor.gdc.local/iac/...
    docker push ...
    ```
 
@@ -431,7 +431,7 @@ By default, Pattern 6 utilizes a lightweight "Mock Auth" system intended strictl
 
 If you wish to advance this architecture to a state of production-readiness or require multi-tenant access control for "multiple users", you can seamlessly overlay Keycloak via standard OIDC.
 
-For step-by-step instructions on integrating this pattern with the **P12-Keycloak** blueprint, please refer to the dedicated [Keycloak Integration Guide](../docs/keycloak_integration_guide.md).
+For step-by-step instructions on integrating this pattern with the **P12-Keycloak** blueprint, please refer to the dedicated [Keycloak Integration Guide](../docs/operations/keycloak_integration_guide.md).
 
 ---
 

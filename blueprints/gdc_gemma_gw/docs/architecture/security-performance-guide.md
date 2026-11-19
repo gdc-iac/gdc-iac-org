@@ -49,19 +49,19 @@ We have successfully resolved this critical P0 security audit vulnerability by i
 
 The security posture has been hardened under a strictly modular, feature-flagged (`ENABLE_OIDC`) dual-path architecture:
 
-1.  **Zero-Dependency PKCE Browser Engine ([oidc.js](file:///Users/gmollison/GitHub/gdc_gemma_gw/gemma-client/src/frontend/src/oidc.js))**:
+1.  **Zero-Dependency PKCE Browser Engine ([oidc.js](../../gemma-client/src/frontend/src/oidc.js))**:
     To bypass GDC's strict air-gap package download bounds, we engineered a native, lightweight PKCE (Proof Key for Code Exchange) client wrapper. It utilizes the browser's native **WebCrypto Subtle API** to perform SHA-256 code challenge generation and base64url encodings, executing secure OIDC authorization handshakes without introducing a single external node package.
-2.  **Symmetrical Cryptographic Validation ([auth.py](file:///Users/gmollison/GitHub/gdc_gemma_gw/gemma-client/src/backend/auth.py))**:
+2.  **Symmetrical Cryptographic Validation ([auth.py](../../gemma-client/src/backend/auth.py))**:
     The FastAPI backend auth dependency intercepts the standard HTTP `Authorization: Bearer <JWT>` header. If OIDC is active, it rapidly fetches the dynamic public signature verification certificates (**JSON Web Key Sets (JWKS)**) from the internal Keycloak endpoints using standard Python libraries, validates the cryptographic RSA signature, parses username claims, and assigns roles (`user`/`admin`) based on verified JWT realm roles scopes.
-3.  **Unified Single-Origin Proxy Routing ([nginx-ingress-staging.yaml](file:///Users/gmollison/GitHub/gdc_gemma_gw/gemma-client/manifests/gcp/nginx-ingress-staging.yaml))**:
+3.  **Unified Single-Origin Proxy Routing ([nginx-ingress-staging.yaml](../../gemma-client/manifests/gcp/nginx-ingress-staging.yaml))**:
     Google Cloud Workstations isolates ports to dynamic subdomains and drops cookie handovers inside sandboxed iframe session checks (yielding `403 Forbidden` console locks). We resolved this in staging by exposing the client UI, API backends, and Keycloak under a unified, single-port NGINX reverse-proxy gateway, satisfying browser CORS.
-4.  **Automated Realm Auto-Imports ([keycloak-realm-import.yaml](file:///Users/gmollison/GitHub/gdc_gemma_gw/gemma-client/manifests/gcp/keycloak-realm-import.yaml))**:
+4.  **Automated Realm Auto-Imports ([keycloak-realm-import.yaml](../../gemma-client/manifests/gcp/keycloak-realm-import.yaml))**:
     To avoid manual operator interactions and align with GDC physical rack GitOps standards, Keycloak's target realm boundary, dynamic client whitelists, and user accounts (`alice`/`charlie`) are preloaded inside a GKE ConfigMap volume. Keycloak imports this config dynamically in 6 seconds on startup, **completely bypassing the locked admin console Spinner loops!**
 
 Refer to the staged strategy guides and playbooks to review this dynamic perimeter:
 *   🔑 **[gcp-sandbox-keycloak-testing-strategy.md](../testing/gcp-sandbox-keycloak-testing-strategy.md)**: Staging topologies, Nginx single-port mappings, and physical rack Gateway API routes.
 *   🔑 **[keycloak_integration_guide.md](../operations/keycloak_integration_guide.md)**: Master standard OIDC integration blueprint detailing GDC-ag standard Gateway API HTTPRoute manifests.
-*   🔧 **[configure-keycloak.sh](file:///Users/gmollison/GitHub/gdc_gemma_gw/gemma-client/scripts/configure-keycloak.sh)**: Dynamic configuration script to automatically hydrate GKE manifests and write Vite frontend environments without hardcoded settings.
+*   🔧 **[configure-keycloak.sh](../../gemma-client/scripts/configure-keycloak.sh)**: Dynamic configuration script to automatically hydrate GKE manifests and write Vite frontend environments without hardcoded settings.
 
 ---
 

@@ -7,7 +7,5 @@ harbor.gdc.local/gemma-repo/ollama-gemma-26b:latest
 harbor.gdc.local/gemma-repo/ollama-gemma-31b:latest
 harbor.gdc.local/gemma-repo/vllm-gemma-26b:latest
 harbor.gdc.local/gemma-repo/vllm-gemma-31b:latest
-harbor.gdc.local/gemma-repo/epp:v1.3.0
 ollama/ollama:latest
 vllm/vllm-openai:latest
-registry.k8s.io/gateway-api-inference-extension/epp:v1.3.0

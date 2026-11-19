@@ -97,17 +97,17 @@ This pattern involves cluster-wide tooling and a CI/CD pipeline, requiring disti
 To deploy cluster-wide tools like Prometheus and Argo Rollouts, your user account will need administrative permissions on the GKE cluster:
 
 *   **GKE Cluster Admin:** To install Helm charts that create Custom Resource Definitions (CRDs) and manage resources across all namespaces.
-    *   `roles/gke.clusterAdmin`
+    *   `standard-cluster-admin` / `user-cluster-admin`
 
 **2. CI/CD Pipeline Permissions:**
 The service principal or service account used by your CI/CD system (e.g., GitLab) will need the following roles to execute the retraining pipeline:
 
 *   **Storage Reader:** To pull the latest training data.
-    *   `roles/storage.objectViewer`
+    *   `project-bucket-object-viewer`
 *   **Storage Writer:** To push newly trained model artifacts.
-    *   `roles/storage.objectCreator`
+    *   `project-bucket-object-admin`
 *   **GKE Developer:** To trigger the Argo Rollouts canary deployment by updating the image.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 ## Implementation
 
@@ -258,7 +258,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 3. **Load and Push Global Container Images (If Applicable):** For blueprints bridging global components (e.g. Hashicorp Vault, external pipelines), manually load and tag the artifacts using standard Docker commands:
    ```bash
    docker load -i artifacts/external-dependencies/images/...
-   docker tag ... harbor.gdc.local/library/...
+   docker tag ... harbor.gdc.local/iac/...
    docker push ...
    ```
 

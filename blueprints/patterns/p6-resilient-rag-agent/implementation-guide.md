@@ -165,7 +165,7 @@ spec:
 ### **2. Keycloak OIDC Authentication & Multi-Tenant Access Control**
 By default, Pattern 6 includes lightweight mock headers (`X-User-ID`, `X-User-Role`) for rapid testing. For production deployments requiring multi-tenant access control and single sign-on (SSO):
 
-1. **Overlay Keycloak (P12 Blueprint)**: Deploy Keycloak as the OIDC Identity Provider (IdP) using the [P12 Keycloak Blueprint](../p12-keycloak/README.md).
+1. **Overlay Keycloak (P12 Blueprint)**: Deploy Keycloak as the OIDC Identity Provider (IdP) using the [P12 Keycloak Blueprint](../../p12-keycloak/README.md).
 2. **API Gateway JWT Validation**: Configure GDC Gateway API (`HTTPRoute`) or NGINX ingress to validate Keycloak OIDC Bearer tokens (`Authorization: Bearer <jwt_token>`).
 3. **Identity Header Extraction**: Pass extracted claims (`sub` as `X-User-ID` and `realm_access.roles` as `X-User-Role`) to `query-service`.
 4. **Document Access Isolation**: `query-service` filters PostgreSQL vector queries using the authenticated user identity:
@@ -174,7 +174,7 @@ By default, Pattern 6 includes lightweight mock headers (`X-User-ID`, `X-User-Ro
    WHERE (owner_id = %s OR source_path LIKE 'shared/%%') 
    ORDER BY embedding <=> %s::vector LIMIT 5;
    ```
-5. **Full Integration Guide**: Refer to [`docs/keycloak_integration_guide.md`](../docs/keycloak_integration_guide.md) for detailed OIDC proxy configuration.
+5. **Full Integration Guide**: Refer to [`docs/keycloak_integration_guide.md`](../operations/keycloak_integration_guide.md) for detailed OIDC proxy configuration.
 
 ---
 
@@ -200,9 +200,9 @@ Ensure the following prerequisites are met:
 * The LLM Gateway (Pattern 5) deployed and active.
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
-  * **IAM Admin**: `roles/iam.serviceAccountAdmin` (to configure ServiceAccounts).
+  * **IAM Admin**: `project-iam-admin` (to configure ServiceAccounts).
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL).
-  * **GKE Developer**: `roles/gke.developer` (to deploy manifests).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy manifests).
 
 ---
 
@@ -381,22 +381,29 @@ gdcloud iam service-accounts add-iam-policy-binding rag-sa \
 
 #### Option B: GitOps / IaC (`manifests/iam/rag-permissions.yaml`)
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
+# Apply on Global API (`GLOBAL_API_KUBECONFIG`):
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
   name: rag-sa
   namespace: my-gdc-project
 ---
-apiVersion: iam.gdc.goog/v1
-kind: ProjectPolicy
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
 metadata:
-  name: rag-bindings
+  name: rag-sa--project-bucket-object-admin
   namespace: my-gdc-project
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
 spec:
-  bindings:
-  - role: Role/ai-inference-developer
-    members:
-    - serviceAccount:rag-sa
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: rag-sa
+      namespace: my-gdc-project
 ```
 
 ---
@@ -590,14 +597,15 @@ Send a prompt against the internal `query-service` querying the ingested documen
 
 ```bash
 kubectl run p6-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=curlimages/curl --command -- sh -c '
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
+    curl -s -X POST http://query-service/ask -d "{\"question\": \"Summarize the contents of the test document.\"}" -H "Content-Type: application/json" && \
+    echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 6 Resilient RAG Agent verified!" && \
     echo "✅ SUCCESS: Query service and vector database reached" && \
-    echo "===============================================" && \
-    curl -s -X POST http://query-service/ask -d "{\"question\": \"Summarize the contents of the test document.\"}" -H "Content-Type: application/json" && \
-    echo ""
+    echo "===============================================" 
   '
 ```
 **Expected Production Output:**
@@ -671,3 +679,11 @@ spec:
 | `LLM Gateway Call Failed` | The `rag-sa` lacks required credentials or the Gateway endpoint is unreachable. | Verify `LLM_GATEWAY_URL` endpoint and ensure `ProjectPolicy` includes `Role/ai-inference-developer`. |
 | `DB extension missing` | `pgvector` was not loaded or DB initialization script failed. | Connect to PostgreSQL as admin and re-run `CREATE EXTENSION vector;`. |
 | `Out of memory (OOM)` | Large document sizes cause processing memory limits to break. | Scale container resource limits or split large PDFs into smaller text parts before uploading. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

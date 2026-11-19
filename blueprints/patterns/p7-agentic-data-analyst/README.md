@@ -89,7 +89,7 @@ Before deploying, ensure you have configured the blueprints with your Project ID
 To deploy the resources for this pattern, your user account will need the following GDC IAM roles granted in your target project:
 
 *   **GKE Developer:** To deploy the agent's Deployment and Secret to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 **2. Agent Runtime Permissions:**
 The service account used by the `sql-agent` pods will need permissions to access the resources it queries. This includes:
@@ -280,7 +280,7 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 3. **Load and Push Global Container Images (If Applicable):** For blueprints bridging global components (e.g. Hashicorp Vault, external pipelines), manually load and tag the artifacts using standard Docker commands:
    ```bash
    docker load -i artifacts/external-dependencies/images/...
-   docker tag ... harbor.gdc.local/library/...
+   docker tag ... harbor.gdc.local/iac/...
    docker push ...
    ```
 
@@ -301,7 +301,7 @@ By default, Pattern 7 utilizes a lightweight "Mock Auth" system intended strictl
 
 If you wish to advance this architecture to a state of production-readiness or require multi-tenant access control for "multiple users", you can seamlessly overlay Keycloak via standard OIDC.
 
-For step-by-step instructions on integrating this pattern with the **P12-Keycloak** blueprint, please refer to the dedicated [Keycloak Integration Guide](../docs/keycloak_integration_guide.md).
+For step-by-step instructions on integrating this pattern with the **P12-Keycloak** blueprint, please refer to the dedicated [Keycloak Integration Guide](../docs/operations/keycloak_integration_guide.md).
 
 ---
 

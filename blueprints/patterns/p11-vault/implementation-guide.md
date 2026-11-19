@@ -2,37 +2,57 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 # **Solution Reference Implementation - Pattern 11: Resilient Secret Management with HashiCorp Vault on GDC air-gapped**
 
-> **Version:** 1.1
+> **Version:** 1.3  
+> **Validated Platform:** Google Distributed Cloud air-gapped (`GDCag v1.15+` / `v1.16.2`)  
+> **Companion Operational Runbook:** For full GitLab 17.11 + HashiCorp Vault + GDCag KMS live-verified installation and OIDC CI integration, see `docs/operations/gitlab_vault_kms_installation_guide.md`.
 
 ## **Overview**
 
-This document provides step-by-step instructions for deploying and configuring **HashiCorp Vault** as a centralized, highly available, and secure enclave for secrets management on Google Distributed Cloud (GDC) air-gapped environments. This pattern features a 3-node HA Vault cluster backed by GDC persistent storage using Raft consensus, integrated with GDC Key Management Service (KMS) for automatic cryptographic unsealing.
+This document provides step-by-step production instructions for deploying and configuring **HashiCorp Vault OSS (`1.15.0`, chart `0.32.0`)** as a centralized, highly available enclave for secrets management on **Google Distributed Cloud air-gapped (`GDCag`)** environments. This pattern deploys a 3-node High-Availability (HA) Vault `StatefulSet` backed by GDCag block storage (`standard-rwo`) using Integrated Raft consensus, automatically unsealed via a hardware-backed Zonal **GDCag Key Management Service (`kms.gdc.goog/v1` `AEADKey`)** and the zero-dependency **`gdc-kms-bridge`** native sidecar.
+
+---
 
 Please also refer to [gitlab_vault_kms_installation_guide.md](../../../docs/operations/gitlab_vault_kms_installation_guide.md) for a comprehensive Vault and Gitlab installation and integration guide.
 
 
 ## **Architecture**
 
-Vault is deployed as a GKE `StatefulSet` within the GDC project boundary, securing cryptographic keys by talking internally to the platform's KMS endpoints.
+On GDCag, control-plane and data-plane operations span **three distinct Kubernetes API planes** plus the **GDCag KMS & STS data-plane endpoints**:
 
-```
-                    [ GDC control plane / KMS ]
-                                 ▲
-                                 │ (Auto-Unseal gRPC)
-                     [ HashiCorp Vault Cluster ]
-                       (StatefulSet: vault-0/1/2)
-                       (Raft Consensus Storage)
-                                 ▲
-                                 │ (Secure API Call)
-                     [ GKE Applications / Pods ]
+1. **Global API Server (`GLOBAL_API_KUBECONFIG` / `global-api`)**: Hosts project-scoped `ProjectServiceAccount` (`vault-kms-sa`) and `iam.global.gdc.goog/v1` `IAMRoleBinding` resources (`kms-admin`, `kms-developer`, `kms-viewer`).
+2. **Zone Management API Server (`ZONE_KUBECONFIG` / `<org>-admin`)**: Reconciles declarative `kms.gdc.goog/v1` `AEADKey` (`vault-unseal-key`, `AES_256_GCM`) and `HarborInstance` (`harbor001`) resources inside the tenant project namespace.
+3. **GDCag KMS & STS Data Plane**: `gdc-kms-bridge` exchanges the `vault-kms-sa` ES256 key at `https://service-accounts.<org>.<domain>/authenticate` (`urn:k8s:params:oauth:token-type:serviceaccount`) for an `STS-Bearer` token and translates Vault's `seal "gcpckms"` gRPC calls into `/goog.gdc.kms.v1.CryptoOperationsService/{Encrypt,Decrypt}` operations on camelCase `namespaces/<project>/aeadKeys/vault-unseal-key`.
+4. **User Cluster (`USER_CLUSTER_KUBECONFIG`)**: Runs the 3-pod `vault` `StatefulSet` (`vault-0`, `vault-1`, `vault-2`) with `gdc-kms-bridge` on `127.0.0.1:443` (`hostAliases` for `cloudkms.googleapis.com` & `oauth2.googleapis.com`), the `vault-agent-injector` (`vault-k8s:1.7.2`) mutating webhook, and `standard-rwo` Raft PVCs.
+
+![Pattern 11 HashiCorp Vault and GDCag KMS Auto-Unseal Architecture](./diagrams/p11-vault-gdc-kms-architecture.svg)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant K8s as User Cluster Kubelet
+    participant Bridge as gdc-kms-bridge Sidecar (127.0.0.1:443)
+    participant Vault as Vault Server (vault-0..2)
+    participant STS as GDCag STS (/authenticate)
+    participant KMS as GDCag KMS (CryptoOperationsService)
+
+    K8s->>Bridge: Start native sidecar (restartPolicy: Always)
+    Bridge->>Bridge: Write ephemeral TLS CA + OAuth stub to /vault/kms-bridge (tmpfs)
+    K8s->>Bridge: startupProbe GET /healthz:18080 -> 200 OK
+    K8s->>Vault: Start vault container (hostAliases -> 127.0.0.1)
+    Vault->>Bridge: OAuth2 POST /token + gRPC Encrypt/Decrypt (keyRings/<project>/cryptoKeys/vault-unseal-key)
+    Bridge->>STS: Sign ES256 JWT (vault-kms-sa.json) & exchange STS token
+    STS-->>Bridge: Return STS-Bearer access_token
+    Bridge->>KMS: gRPC Encrypt/Decrypt (namespaces/<project>/aeadKeys/vault-unseal-key)
+    KMS-->>Bridge: Hardware-backed AEAD ciphertext / plaintext
+    Bridge-->>Vault: gcpckms gRPC response (Vault auto-unseals: Sealed=false)
 ```
 
 ### **Key Solution Capabilities**
 
-* **Hardware-Backed Auto-Unseal**: Integrates with GDC KMS keys, avoiding manual shamir-key entry during container rotation.
-* **Consensus-based Persistence**: Deploys a 3-replica configuration using Raft consensus storage to guarantee consensus state safety.
-* **Network isolation policy**: Strict network boundary limits egress to KubeDNS and the control plane KMS API.
-* **Disaster Recovery Automation**: Facilitates automated backups to local GDC Object Storage buckets via Raft snapshot commands.
+* **Hardware-Backed GDCag KMS Auto-Unseal**: Wraps Vault's master key with an `AES_256_GCM` `AEADKey` on the GDCag KMS enclave via the zero-dependency `gdc-kms-bridge` native sidecar—eliminating manual Shamir key entry across pod restarts and node maintenance.
+* **3-Node Raft Consensus Persistence**: Deploys a 3-replica `StatefulSet` (`setNodeId: true`, `retry_join`, `service_registration "kubernetes" {}`) backed by `50Gi` `standard-rwo` (`csi.kubevirt.io`) PVCs and an initialization-safe `livenessProbe` (`uninitok=true&sealedcode=204`).
+* **Air-Gapped Harbor Compliance**: Pulls OCI charts (`gpc-system-helm-packages/vault` `0.32.0`) and signed webhook images (`library/hashicorp/vault-k8s:1.7.2`) from System Harbor while pulling OSS `vault:1.15.0` and `gdc-kms-bridge:1.0.0` from **Project Managed Harbor** (`harbor001-<project>.../iac/...`) using `harbor-creds`—avoiding System Harbor `library/` Cosign `412 Precondition Failed` rejections and `vault-enterprise` license exits.
+* **Zero-Trust Network Isolation**: Scopes `8201/TCP` Raft replication strictly to `vault` pods while permitting cross-namespace client ingress on `8200/TCP` (`namespaceSelector: {}`), cluster DNS (`53/UDP+TCP`), K8s API `TokenReview` (`443/6443` TCP), KMS/STS (`443/TCP`), and in-cluster OIDC JWKS endpoints.
 
 ---
 
@@ -40,91 +60,95 @@ Vault is deployed as a GKE `StatefulSet` within the GDC project boundary, securi
 
 Ensure the following prerequisites are met:
 
-* GDC air-gapped version 1.15.1 or higher.
-* GDC KMS service enabled and configured.
-* `helm`, `kubectl`, and `gdcloud` CLIs configured on your developer workstation.
-* Necessary project-level IAM roles:
-  * **KMS Admin**: `roles/cloudkms.admin` (to create keyrings).
-  * **KMS Viewer & Encrypter/Decrypter**: `roles/cloudkms.viewer` and `roles/cloudkms.encrypterDecrypter` (to verify keys and authorize unsealing).
-  * **GKE Developer**: `roles/gke.developer` (to deploy Helm charts).
+* **GDC air-gapped (`GDCag`) version `1.15.1` or higher** (live-validated on `v1.16.2`).
+* **`gdcloud`, `kubectl`, `helm`, and `docker` CLIs** installed on your operator workstation.
+* **Project-level GDCag `IAMRole` bindings** (provisioned via `iam.global.gdc.goog/v1` `IAMRoleBinding` on `GLOBAL_API_KUBECONFIG`):
+  * **KMS Admin (`kms-admin`)**: Bound to the operator / IaC `ProjectServiceAccount` to create and inspect `AEADKey` resources.
+  * **KMS Developer (`kms-developer`) & KMS Viewer (`kms-viewer`)**: Bound to `vault-kms-sa` to authorize `Encrypt`/`Decrypt` and key metadata operations on the KMS data plane.
+  * **Namespace Admin (`namespace-admin`) / Cluster Developer (`cluster-developer`)**: To deploy Helm releases, RBAC, and `NetworkPolicy` resources on the target User Cluster.
+  * **Harbor Instance Admin (`harbor-instance-admin`) & Project Creator (`harbor-project-creator`)**: To provision Project Managed Harbor (`harbor001`) if not already created in Stage 2 (`charts/gdc-harbors`).
 
 ---
 
-## **Section 1: Common Setup**
+## **Section 1: Multi-Plane CLI Authentication & Base Cluster Setup**
 
-## 1.2 Base Cluster Resource & Node Pool Requirements
+### 1.1 Workstation Binary Path & Envoy TLS Handshake Configuration (`GODEBUG=tlsmlkem=0`)
 
-### 1.2.1 Component Resource Allocation Breakdown
+On operator workstations with newer system `kubectl` or `helm` binaries compiled with Go `1.27+`, TLS handshakes through the GDCag Envoy ingress gateway can time out due to oversized post-quantum `X25519MLKEM768` `ClientHello` frames. Always prepend the `gdcloud`-bundled BoringCrypto `kubectl` binary and export `GODEBUG=tlsmlkem=0`:
+
+```bash
+export GDCLOUD_CLI_PATH="${GDCLOUD_CLI_PATH:-/google/gdcloud}"
+mkdir -p "${HOME}/bin"
+if [ -f "${GDCLOUD_CLI_PATH}/bin/component_bundles/kubectl_linux_amd64_1.23.5.tar.gz" ]; then
+  tar -xzf "${GDCLOUD_CLI_PATH}/bin/component_bundles/kubectl_linux_amd64_1.23.5.tar.gz" \
+    -C "${HOME}/bin" --strip-components=1 bin/kubectl
+fi
+
+export PATH="${HOME}/bin:${GDCLOUD_CLI_PATH}/bin:${PATH}"
+export GODEBUG=tlsmlkem=0
+```
+
+### 1.2 Generate the 3 Official GDCag IAM Kubeconfigs
+
+Authenticate with `gdcloud` and generate separate kubeconfigs for the **Global API**, **Zone Management API**, and **User Cluster**:
+
+```bash
+export ORG_NAME="org-12345"
+export GDCH_ZONE="zone1"
+export GDCH_DOMAIN="google.gdch.test"
+export PROJECT_ID="my-gdc-project"
+export NAMESPACE="vault"
+export IAC_SA="iac001-sa"
+export USER_CLUSTER="my-user-cluster"
+export WORK_DIR="/tmp/p11-vault-artifacts"
+
+export KUBECONFIG_DIR="${WORK_DIR}/kubeconfigs"
+export GLOBAL_API_KUBECONFIG="${KUBECONFIG_DIR}/global-api.kubeconfig"
+export ZONE_KUBECONFIG="${KUBECONFIG_DIR}/${ORG_NAME}-admin.kubeconfig"
+export USER_CLUSTER_KUBECONFIG="${KUBECONFIG_DIR}/${USER_CLUSTER}.kubeconfig"
+mkdir -p "${KUBECONFIG_DIR}"
+
+# 1. Configure gdcloud organization & activate IAM ServiceAccount (or run `gdcloud auth login`)
+gdcloud config set core/organization_console_url "https://console.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+gdcloud config set core/project "${PROJECT_ID}"
+gdcloud config set core/zone "${GDCH_ZONE}"
+gdcloud auth activate-service-account --key-file="/path/to/${IAC_SA}.json"
+
+# 2. Global API Kubeconfig (ProjectServiceAccounts, IAMRoleBindings)
+gdcloud config set core/zone ""
+KUBECONFIG="${GLOBAL_API_KUBECONFIG}" gdcloud clusters get-credentials global-api
+kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" auth whoami
+
+# 3. Zone Management API Kubeconfig (AEADKeys, HarborInstances, Clusters)
+gdcloud config set core/zone "${GDCH_ZONE}"
+KUBECONFIG="${ZONE_KUBECONFIG}" gdcloud clusters get-credentials "${ORG_NAME}-admin" --zone "${GDCH_ZONE}"
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" auth whoami
+
+# 4. User Cluster Kubeconfig (Vault StatefulSet, Sidecar, NetworkPolicy)
+KUBECONFIG="${USER_CLUSTER_KUBECONFIG}" gdcloud clusters get-credentials "${USER_CLUSTER}" --zone "${GDCH_ZONE}"
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" auth whoami
+
+export KUBECONFIG="${USER_CLUSTER_KUBECONFIG}"
+```
+
+### 1.3 Base Cluster Resource & Node Pool Requirements
+
+#### Component Resource Allocation Breakdown
 
 | Component | Replicas | CPU Request (Limit) | Memory Request (Limit) | Storage / PVC |
 | :--- | :---: | :--- | :--- | :--- |
-| **Vault Server** | 3 (StatefulSet) | 4 (4) | 16Gi (16Gi) | 50Gi Raft Storage PVC |
-| **GDC KMS** | Managed | N/A | N/A | N/A |
+| **Vault Server (`vault`)** | 3 (`StatefulSet`) | `4` (`4`) | `16Gi` (`16Gi`) | `3 x 50Gi` Raft PVC (`standard-rwo`) |
+| **`gdc-kms-bridge` Sidecar** | 3 (`1` per Vault pod) | `50m` (`200m`) | `64Mi` (`128Mi`) | In-memory `emptyDir` (`medium: Memory`) |
+| **Vault Agent Injector** | 1 (`Deployment`) | `100m` (`250m`) | `128Mi` (`256Mi`) | Stateless |
+| **GDCag KMS (`AEADKey`)** | Platform Managed | N/A | N/A | Hardware-backed KMS enclave |
 
-### 1.2.2 Recommended Node Pool Configurations
+#### Recommended Node Pool Configuration
 
-* **Standard Compute Node Pool**: Dedicated to hosting the Vault server StatefulSet replicas.
-* **Instance Type**: 3 nodes of type **`n2-standard-8-gdc`** (8 vCPUs, 32Gi RAM per node).
-* **Total Resource Pool**: 24 vCPUs, 96Gi RAM.
-* **Resilience Configuration**: A 3-node pool is recommended to distribute the 3 Vault server replicas across separate physical hypervisors using Pod anti-affinity. Since each replica requests 4 vCPUs and 16Gi RAM, the `n2-standard-8-gdc` node ensures ample headroom for Vault storage compaction, TLS handshakes, and system processes.
+* **Production 3-Node HA Pool**: 3 nodes of predefined GDCag machine type **`n2-standard-8-gdc`** (8 vCPUs, 32Gi RAM per node; 24 vCPUs, 96Gi RAM total) labeled `pool: cpu` so each `4 vCPU / 16Gi` Vault replica schedules onto a dedicated hypervisor via `podAntiAffinity` with ample headroom for Raft compaction, `gdc-kms-bridge`, and system daemons.
+* *(Compact Lab / Shared Cluster Profile)*: For non-production validation on smaller `n2-standard-4-gdc` pools, reduce `server.resources` to `250m–500m` CPU / `256Mi–512Mi` RAM and `dataStorage.size` to `10Gi` (`standard-rwo`).
 
-### 1.2.3 Declaring the Cluster & Node Pools in GDC (Declarative Provisioning)
+#### Declarative Standard Cluster Provisioning (Optional — If Creating a Dedicated Cluster)
 
-#### Option A: Using an Existing Shared Cluster or Creating a New One
-
-**1. Create the Shared Cluster YAML (`shared-cluster.yaml`):**
-```yaml
-apiVersion: cluster.gdc.goog/v1
-kind: Cluster
-metadata:
-  name: p11-shared-cluster
-  namespace: platform
-spec:
-  clusterNetwork:
-    podCIDRSize: 21
-    serviceCIDRSize: 23
-  initialVersion:
-    kubernetesVersion: 1.26.5-gke.2100
-  nodePools:
-  - name: cpu-node-pool
-    machineTypeName: n2-standard-8-gdc
-    nodeCount: 3
-    labels:
-      pool: cpu
-  releaseChannel:
-    channel: UNSPECIFIED
-```
-
-**2. Create the Project Binding YAML (`project-binding.yaml`):**
-```yaml
-apiVersion: resourcemanager.gdc.goog/v1
-kind: ProjectBinding
-metadata:
-  name: p11-shared-cluster-binding
-  namespace: platform
-  labels:
-    resourcemanager.gdc.goog/projectbinding-for-user-project: "true"
-spec:
-  clusterRef:
-    name: p11-shared-cluster
-  selector:
-    nameSelector:
-      matchNames:
-      - my-gdc-project
-```
-
-**3. Apply the Manifests:**
-```shell
-export MANAGEMENT_KUBECONFIG="/path/to/zonal-management.kubeconfig"
-kubectl --kubeconfig ${MANAGEMENT_KUBECONFIG} apply -f shared-cluster.yaml
-kubectl --kubeconfig ${MANAGEMENT_KUBECONFIG} apply -f project-binding.yaml
-```
-
----
-
-#### Option B: Creating a Standard Cluster
-
-**1. Create the Standard Cluster YAML (`standard-cluster.yaml`):**
 ```yaml
 apiVersion: cluster.gdc.goog/v1
 kind: Cluster
@@ -135,275 +159,298 @@ spec:
   clusterNetwork:
     podCIDRSize: 21
     serviceCIDRSize: 23
-  initialVersion:
-    kubernetesVersion: 1.26.5-gke.2100
   nodePools:
-  - name: cpu-node-pool
-    machineTypeName: n2-standard-8-gdc
-    nodeCount: 3
-    labels:
-      pool: cpu
+    - name: cpu-node-pool
+      machineTypeName: n2-standard-8-gdc
+      nodeCount: 3
+      labels:
+        pool: cpu
   releaseChannel:
     channel: UNSPECIFIED
 ```
 
-**2. Apply the Manifest:**
-```shell
-export MANAGEMENT_KUBECONFIG="/path/to/zonal-management.kubeconfig"
-kubectl --kubeconfig ${MANAGEMENT_KUBECONFIG} apply -f standard-cluster.yaml
-```
-
-### 1.2.4 Workload Pod Assignment & Scheduling Configuration
-
-Configure `nodeSelector` in the Vault StatefulSet manifest:
-
-```yaml
-spec:
-  template:
-    spec:
-      nodeSelector:
-        pool: cpu
+Apply against the **Zone Management API** (`ZONE_KUBECONFIG`):
+```bash
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f standard-cluster.yaml
 ```
 
 ---
 
-## **Section 2: Configuring GDC KMS for Auto-Unseal**
+## **Section 2: Declarative GDCag KMS & IAM Provisioning**
 
-Prepare the cryptographic unseal keys using the `gdcloud` CLI.
+> **Important GDCag KMS Architecture Note (`AEADKey` vs. Public GCP `KeyRing`):**
+> GDCag has **no `KeyRing` CRD** and no `gdcloud kms key-rings` subcommand, and does not use GKE Workload Identity (`*.svc.id.goog`) or `roles/cloudkms.*`. Instead:
+> 1. Provision a Global **`ProjectServiceAccount`** (`vault-kms-sa`) and bind `iam.global.gdc.goog/v1` `IAMRoleBinding`s to **`kms-developer`** and **`kms-viewer`** on `GLOBAL_API_KUBECONFIG`.
+> 2. Apply a declarative `kms.gdc.goog/v1` **`AEADKey`** (`AES_256_GCM`) in the project namespace on `ZONE_KUBECONFIG`.
+> 3. Address the key on the KMS data plane using camelCase **`namespaces/<project>/aeadKeys/vault-unseal-key`** (lowercase `aeadkeys` fails with `InvalidArgument`).
 
-#### Option A: Manual (CLI)
-```shell
-export PROJECT_ID="my-gdc-project"
-export NAMESPACE="my-gdc-project"
+### 2.1 Create `ProjectServiceAccount`, Bind `IAMRole`s & Export ES256 Key (`GLOBAL_API_KUBECONFIG`)
 
-# 1. Create KeyRing
-gdcloud kms key-rings create vault-ring --location=zone-1 --project=${PROJECT_ID}
+Apply `manifests/gdc/kms/global-iam.yaml` (after running `configure-blueprints.sh` or substituting `${PROJECT_ID}`):
 
-# 2. Create CryptoKey for unsealing
-gdcloud kms keys create vault-unseal-key \
-    --key-ring=vault-ring \
-    --location=zone-1 \
-    --purpose=encryption \
-    --project=${PROJECT_ID}
-
-# 3. Grant Encrypter/Decrypter access to the Vault ServiceAccount
-gdcloud kms keys add-iam-policy-binding vault-unseal-key \
-    --key-ring=vault-ring \
-    --location=zone-1 \
-    --member="serviceAccount:${PROJECT_ID}.svc.id.goog/${NAMESPACE}/vault-kms-sa" \
-    --role="roles/cloudkms.encrypterDecrypter" \
-    --project=${PROJECT_ID}
-
-# 4. Grant Viewer access to allow key verification
-gdcloud kms keys add-iam-policy-binding vault-unseal-key \
-    --key-ring=vault-ring \
-    --location=zone-1 \
-    --member="serviceAccount:${PROJECT_ID}.svc.id.goog/${NAMESPACE}/vault-kms-sa" \
-    --role="roles/cloudkms.viewer" \
-    --project=${PROJECT_ID}
-```
-
----
-
-## **Section 3: Deploying HashiCorp Vault**
-
-### 3.1 Provision Vault dedicated ServiceAccount
-
-Create the ServiceAccount prior to deploying Helm values:
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
   name: vault-kms-sa
   namespace: my-gdc-project
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: vault-kms-sa--kms-developer
+  namespace: my-gdc-project
+  labels:
+    iam.global.gdc.goog/iam-role-name: kms-developer
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: kms-developer
+  subjects:
+    - kind: ServiceAccount
+      name: vault-kms-sa
+      namespace: my-gdc-project
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: vault-kms-sa--kms-viewer
+  namespace: my-gdc-project
+  labels:
+    iam.global.gdc.goog/iam-role-name: kms-viewer
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: kms-viewer
+  subjects:
+    - kind: ServiceAccount
+      name: vault-kms-sa
+      namespace: my-gdc-project
 ```
-Save as `vault-sa.yaml` and apply:
-```shell
-kubectl apply -f vault-sa.yaml -n my-gdc-project
-```
 
-### 3.2 Authenticate Docker & Upload Vault Image
+Apply and export the `vault-kms-sa.json` ES256 credential file:
 
-Before GKE user workloads can pull images from the air-gapped GDC environment, you must push the official `hashicorp/vault:1.15.0` container image to your internal Harbor registry.
-
-1. Authenticate your local Docker daemon using your registry credentials:
 ```bash
-export INSTANCE_URL="harbor.shared-services.gdc.local"
-export ROBOT_NAME="robot\$p11-puller"  # Escape the $ character
-export ROBOT_SECRET="your-robot-secret"
+kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" apply -f manifests/gdc/kms/global-iam.yaml
 
-docker login ${INSTANCE_URL} --username ${ROBOT_NAME} --password ${ROBOT_SECRET}
+# Export login CA bundle and generate ES256 JSON key for vault-kms-sa
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret -n gpc-system TrustStore-root-ext \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d > "${WORK_DIR}/gdc-login-ca.crt" 2>/dev/null || \
+  cp /etc/ssl/certs/ca-certificates.crt "${WORK_DIR}/gdc-login-ca.crt"
+
+gdcloud iam service-accounts keys create "${WORK_DIR}/vault-kms-sa.json" \
+  --iam-account=vault-kms-sa \
+  --project="${PROJECT_ID}" \
+  --ca-cert-path="${WORK_DIR}/gdc-login-ca.crt"
 ```
-2. Tag and push the Vault container image:
-```bash
-docker pull hashicorp/vault:1.15.0
-docker tag hashicorp/vault:1.15.0 harbor.shared-services.gdc.local/security-artifacts/vault:1.15.0
-docker push harbor.shared-services.gdc.local/security-artifacts/vault:1.15.0
-```
 
-### 3.3 Helm Configuration Values
+### 2.2 Provision & Verify the Zonal `AEADKey` (`ZONE_KUBECONFIG`)
 
-Deploy Vault using the internal registry chart and customize unseal configs.
+Apply `manifests/gdc/kms/zonal-aeadkey.yaml` against `ZONE_KUBECONFIG`:
 
-#### *manifests/helm/values.yaml*:
 ```yaml
-global:
-  image:
-    repository: "harbor.shared-services.gdc.local/security-artifacts/vault"
-    tag: "1.15.0"
-
-server:
-  image:
-    repository: "harbor.shared-services.gdc.local/security-artifacts/vault"
-    tag: "1.15.0"
-  
-  serviceAccount:
-    create: false
-    name: "vault-kms-sa"
-
-  ha:
-    enabled: true
-    replicas: 3
-    raft:
-      enabled: true
-      config: |
-        ui = true
-        
-        listener "tcp" {
-          tls_disable = 1
-          address = "[::]:8200"
-          cluster_address = "[::]:8201"
-        }
-
-        seal "gcpckms" {
-          project    = "my-gdc-project"
-          region     = "us-central1"
-          key_ring   = "vault-ring"
-          crypto_key = "vault-unseal-key"
-        }
-        storage "raft" {
-          path = "/vault/data"
-        }
-  
-  dataStorage:
-    storageClass: "standard"
+apiVersion: kms.gdc.goog/v1
+kind: AEADKey
+metadata:
+  name: vault-unseal-key
+  namespace: my-gdc-project
+spec:
+  algorithm: AES_256_GCM
 ```
 
-Install the Helm chart:
-```shell
-helm upgrade --install vault ./charts/vault \
-  --namespace my-gdc-project \
-  -f manifests/helm/values.yaml
+```bash
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f manifests/gdc/kms/zonal-aeadkey.yaml
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get aeadkey vault-unseal-key -n "${PROJECT_ID}" -o yaml
+
+# Verify live KMS round-trip encryption/decryption using camelCase `aeadKeys`
+gdcloud config set auth/login_config_cert_path "${WORK_DIR}/gdc-login-ca.crt"
+echo -n "gdc-vault-kms-test" > "${WORK_DIR}/plain.txt"
+
+gdcloud kms keys encrypt "namespaces/${PROJECT_ID}/aeadKeys/vault-unseal-key" \
+  --plaintext-file="${WORK_DIR}/plain.txt" \
+  --ciphertext-file="${WORK_DIR}/cipher.enc"
+
+gdcloud kms keys decrypt "namespaces/${PROJECT_ID}/aeadKeys/vault-unseal-key" \
+  --ciphertext-file="${WORK_DIR}/cipher.enc" \
+  --plaintext-file="${WORK_DIR}/decrypted.txt"
+
+cat "${WORK_DIR}/decrypted.txt" && echo ""
 ```
 
 ---
 
-## **Section 4: Initializing the Vault Cluster**
+## **Section 3: Air-Gapped Harbor Mirroring & Deploying HashiCorp Vault**
 
-Because the database backend is empty, initialize the cluster manually:
+### 3.1 Mirror OSS Vault & Build `gdc-kms-bridge` into Project Managed Harbor
 
-```shell
-kubectl exec vault-0 -n my-gdc-project -- vault operator init
+> **Harbor Registry & Cosign `412` Gotcha:**
+> * **Never push unsigned or re-tagged images to System Harbor `library/`** (`harbor.<org>.<zone>.google.gdch.test/library/`), which enforces Cosign signature verification and rejects pushes with `412 Precondition Failed`.
+> * **Do not use `library/hashicorp/vault-enterprise`** unless mounting a valid Enterprise license secret (otherwise `vault-0` exits on startup with `license check failed`).
+> * Instead, push OSS `vault:1.15.0`, `vault-k8s:1.7.2` (or reference System Harbor's signed `library/hashicorp/vault-k8s:1.7.2`), and `gdc-kms-bridge:1.0.0` to **Project Managed Harbor** (`harbor001-${PROJECT_ID}.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}/iac/...`) using `tools/mirror-images/mirror_images.py` (or `common-scripts/mirror_images.py`).
+
+```bash
+export SYSTEM_HARBOR="harbor.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+export PROJECT_HARBOR="harbor001-${PROJECT_ID}.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+
+# 1. Authenticate Docker with Project Managed Harbor robot credentials
+docker login "${PROJECT_HARBOR}" -u "${HARBOR_USER}" -p "${HARBOR_SECRET}"
+
+# 2. Mirror 3P images (hashicorp/vault:1.15.0, hashicorp/vault-k8s:1.7.2) via mirror_images.py
+# (Supports --save-dir / --load-dir for two-step disconnected air-gap transfer)
+python3 ./tools/mirror-images/mirror_images.py \
+  --images-file ./blueprints/patterns/p11-vault/external_images.txt \
+  --registry "${PROJECT_HARBOR}/iac"
+
+# 3. Build and push the zero-dependency gdc-kms-bridge sidecar image
+REGISTRY_HOST="${PROJECT_HARBOR}/iac" PUSH_IMAGES=true \
+  ./blueprints/patterns/p11-vault/scripts/build.sh
+
+# 4. Pull the upstream Vault 0.32.0 Helm chart from System Harbor
+GODEBUG=tlsmlkem=0 helm pull "oci://${SYSTEM_HARBOR}/gpc-system-helm-packages/vault" \
+  --version 0.32.0 --untar -d "${WORK_DIR}/charts"
 ```
-Securely record the **Recovery Keys** and **Initial Root Token** generated by this command. Vault will automatically perform unseal routines using the GDC KMS configurations.
+
+### 3.2 Create User Cluster Namespace, `gdc-kms-sa` Secret & `harbor-creds` Pull Secret
+
+```bash
+export KUBECONFIG="${USER_CLUSTER_KUBECONFIG}"
+
+kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+# Mount the exported ProjectServiceAccount ES256 key for gdc-kms-bridge STS exchange
+kubectl -n "${NAMESPACE}" create secret generic gdc-kms-sa \
+  --from-file=vault-kms-sa.json="${WORK_DIR}/vault-kms-sa.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Create imagePullSecret for Project Managed Harbor
+kubectl -n "${NAMESPACE}" create secret generic harbor-creds \
+  --from-file=.dockerconfigjson="${HOME}/.docker/config.json" \
+  --type=kubernetes.io/dockerconfigjson \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### 3.3 Configure & Install Vault (`manifests/helm/values.yaml`)
+
+Configure target parameters (replace `harbor.gdc.local` with `${PROJECT_HARBOR}` and `my-gdc-project` with `${PROJECT_ID}` via `common-scripts/configure-blueprints.sh`), and verify `GDC_KMS_ENDPOINT` in `manifests/helm/values.yaml` matches `https://kms.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}`:
+
+Key GDCag settings in `manifests/helm/values.yaml`:
+* `global.imagePullSecrets: [{name: harbor-creds}]`
+* `server.image.repository: "${PROJECT_HARBOR}/iac/vault"` (`1.15.0`)
+* `injector.image.repository: "${PROJECT_HARBOR}/iac/vault-k8s"` (`1.7.2`, or `${SYSTEM_HARBOR}/library/hashicorp/vault-k8s`) and `injector.agentImage.repository: "${PROJECT_HARBOR}/iac/vault"` (`1.15.0`)
+* `server.dataStorage.storageClass: "standard-rwo"` (`50Gi`)
+* `server.livenessProbe.path: "/v1/sys/health?standbyok=true&uninitok=true&sealedcode=204"` (prevents kubelet restarts while `vault-0` awaits initialization)
+* `server.hostAliases`: maps `cloudkms.googleapis.com` and `oauth2.googleapis.com` to `127.0.0.1`
+* `server.extraInitContainers`: runs `gdc-kms-bridge:1.0.0` with `restartPolicy: Always`, loopback listener `127.0.0.1:443`, and `startupProbe` `GET /healthz:18080`
+* `server.ha`: `replicas: 3`, `raft.setNodeId: true`, `retry_join` across `vault-0..2.vault-internal:8200`, `seal "gcpckms"` with `project = "${PROJECT_ID}"` and `key_ring = "${PROJECT_ID}"`, and `service_registration "kubernetes" {}`
+
+Install Vault via Helm:
+```bash
+GODEBUG=tlsmlkem=0 helm upgrade --install vault "${WORK_DIR}/charts/vault" \
+  --namespace "${NAMESPACE}" \
+  -f ./blueprints/patterns/p11-vault/manifests/helm/values.yaml
+```
+
+---
+
+## **Section 4: Initializing & Auto-Unsealing the Vault Cluster**
+
+Wait for `vault-0` to finish starting `gdc-kms-bridge`, then initialize Vault inside `-c vault` using JSON output:
+
+```bash
+kubectl -n "${NAMESPACE}" wait --for=condition=Initialized pod/vault-0 --timeout=120s
+
+# Note: With KMS auto-unseal enabled, Vault generates recovery keys rather than unseal keys.
+# Customize recovery quorum if needed via `-recovery-shares=5 -recovery-threshold=3` (not `-key-shares`).
+kubectl -n "${NAMESPACE}" exec vault-0 -c vault -- \
+  vault operator init -recovery-shares=5 -recovery-threshold=3 -format=json > "${WORK_DIR}/vault-init.json"
+chmod 600 "${WORK_DIR}/vault-init.json"
+```
+
+Securely store `${WORK_DIR}/vault-init.json` (`recovery_keys_b64` and `root_token`) in your organization's offline break-glass vault, then remove the file from the workstation. `vault-0` automatically wraps its master key via `gdc-kms-bridge` -> GDCag KMS (`Sealed: false`), and `vault-1` / `vault-2` join the Raft cluster via `retry_join` and auto-unseal automatically.
 
 ---
 
 ## **Section 5: Network Policy Hardening**
 
-Apply a strict `NetworkPolicy` whitelisting Vault traffic boundaries.
+Apply `manifests/security/network-policy.yaml` so:
+* Cross-namespace application pods and `vault-agent` sidecars can reach Vault API port `8200/TCP` (`namespaceSelector: {}`).
+* Raft replication port `8201/TCP` (and peer `8200/TCP`) is restricted strictly to `app.kubernetes.io/name: vault` pods on both ingress and egress.
+* Egress permits `kube-system` DNS (`53/UDP` and `53/TCP`), in-cluster OIDC JWKS providers (`80/443/8080` TCP for GitLab/Keycloak JWT auth), and GDCag KMS/STS (`443/TCP`) plus Kubernetes API `TokenReview` (`443/TCP` and post-DNAT `6443/TCP`).
 
-#### *manifests/security/network-policy.yaml*:
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: vault-internal-policy
-  namespace: my-gdc-project
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: vault
-  ingress:
-  - from:
-    - podSelector: {}
-    ports:
-    - port: 8200
-    - port: 8201
-  egress:
-  - to:
-    - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
-    ports:
-    - port: 53
-      protocol: UDP
-  - to:
-    - ipBlock: { cidr: 0.0.0.0/0 }
-    ports:
-    - port: 443
-```
-Apply:
-```shell
-kubectl apply -f network-policy.yaml -n my-gdc-project
+```bash
+kubectl -n "${NAMESPACE}" apply -f ./blueprints/patterns/p11-vault/manifests/security/network-policy.yaml
 ```
 
 ---
 
-## **Section 6: Validation**
+## **Section 6: Validation & Troubleshooting**
 
-### 6.1 Check Unseal Status & Health
-
-#### Option A: Automated Checkmark Verification Pod (Self-Contained)
-Execute an ephemeral verification check directly against `vault-0` to verify unseal status:
+### 6.1 Exec Status & `gdc-kms-bridge` Audit Log Check
 
 ```bash
-kubectl run p11-verify --rm -i --restart=Never -n my-gdc-project \
-  --image=busybox:1.36 --command -- sh -c '
-    sleep 2 && \
-    echo "===============================================" && \
-    echo "✅ PASS: Pattern 11 Vault Cluster status verified!" && \
-    echo "✅ SUCCESS: Vault pod reached cleanly and unsealed" && \
-    echo "===============================================" && \
-    wget -qO- http://vault-0.vault-internal:8200/v1/sys/health | head -c 200 && \
-    echo ""
+kubectl -n "${NAMESPACE}" exec vault-0 -c vault -- vault status
+kubectl -n "${NAMESPACE}" logs vault-0 -c gdc-kms-bridge
+```
+
+**Expected `vault status` Output:**
+* `Recovery Seal Type`: `shamir`
+* `Initialized`: `true`
+* `Sealed`: `false`
+* `Storage Type`: `raft`
+* `HA Mode`: `active`
+
+### 6.2 Ephemeral Pod Health Verification (Using Mirrored Image & Exit-Code Assertions)
+
+```bash
+kubectl run p11-verify --rm -i --restart=Never -n "${NAMESPACE}" \
+  --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
+  --image="${PROJECT_HARBOR}/iac/vault:1.15.0" --command -- sh -ec '
+    sleep 2
+    HEALTH=$(wget -qO- "http://vault-0.vault-internal:8200/v1/sys/health?standbyok=true")
+    echo "${HEALTH}" | grep -q "\"sealed\":false"
+    echo "==============================================="
+    echo "✅ PASS: Pattern 11 Vault Cluster status verified!"
+    echo "✅ SUCCESS: Vault pod reached cleanly and unsealed"
+    echo "==============================================="
+    echo "${HEALTH}"
   '
 ```
-**Expected Production Output:**
-```text
-===============================================
-✅ PASS: Pattern 11 Vault Cluster status verified!
-✅ SUCCESS: Vault pod reached cleanly and unsealed
-===============================================
-{"initialized":true,"sealed":false,"standby":false,...}
-```
-*(Note: Prepending `sleep 2` ensures `kubectl -i` completes its SPDY interactive connection handshake cleanly without `warning: couldn't attach to pod...` errors, giving you an immediate, zero-warning confirmation check).*
 
-#### Option B: Exec Status Check
-Describe Vault pods and check unseal status via CLI:
-```shell
-kubectl exec vault-0 -n my-gdc-project -- vault status
-# Expected output: Sealed = false, HA Mode = active
-```
+### 6.3 Common GDCag Troubleshooting Reference
+
+| Symptom | Root Cause | Remediation |
+| :--- | :--- | :--- |
+| `Unable to connect to the server: net/http: TLS handshake timeout` | Go `1.27+` `kubectl`/`helm` sends post-quantum `X25519MLKEM768` `ClientHello` to GDCag Envoy gateway. | Prepend `gdcloud`-bundled `kubectl` to `PATH` and set `GODEBUG=tlsmlkem=0`. |
+| `412 Precondition Failed: The image doesn't pass Cosign signature verification` | Pushing unsigned images to System Harbor `library/`. | Mirror `vault:1.15.0` and `gdc-kms-bridge:1.0.0` to Project Managed Harbor (`harbor001-<project>.../iac/`) with `imagePullSecrets: [{name: harbor-creds}]`. |
+| `license check failed: no autoloaded license provided` | Pulling `vault-enterprise` without an Enterprise license. | Use OSS `${PROJECT_HARBOR}/iac/vault:1.15.0` for `server.image` and `injector.agentImage`. |
+| `storageclass.storage.k8s.io "standard" not found` | Default `standard` StorageClass does not exist on GDCag user clusters. | Set `storageClass: "standard-rwo"`. |
+| `InvalidArgument: ... expected format namespaces/<namespace>/aeadKeys/<name>` | Using lowercase `aeadkeys` or GCP `projects/.../keyRings/...` URI directly against GDCag KMS. | Use camelCase `namespaces/<project>/aeadKeys/vault-unseal-key` in `gdcloud kms keys` and run `gdc-kms-bridge` for Vault `seal "gcpckms"`. |
 
 ---
 
 ## **Section 7: Operations & Disaster Recovery**
 
 ### 7.1 Raft Snapshots
-Execute a backup snapshot:
-```shell
-kubectl exec vault-0 -n my-gdc-project -- \
+```bash
+kubectl -n "${NAMESPACE}" exec vault-0 -c vault -- \
   vault operator raft snapshot save /vault/data/backup.snapshot
+kubectl cp "${NAMESPACE}/vault-0:/vault/data/backup.snapshot" ./backup.snapshot -c vault
 ```
 
-### 7.2 Restoration
-To restore database states onto a fresh cluster:
-1. Copy the snapshot file to the new master pod:
-   ```shell
-   kubectl cp backup.snapshot my-gdc-project/vault-0:/vault/data/restore.snapshot
-   ```
-2. Run restore command:
-   ```shell
-   kubectl exec vault-0 -n my-gdc-project -- \
-     vault operator raft snapshot restore /vault/data/restore.snapshot
-   ```
-The cluster will restart, retrieve encryption keys from KMS, and auto-unseal with previous secrets active.
+### 7.2 Snapshot Restoration
+```bash
+kubectl cp ./backup.snapshot "${NAMESPACE}/vault-0:/vault/data/restore.snapshot" -c vault
+kubectl -n "${NAMESPACE}" exec vault-0 -c vault -- \
+  vault operator raft snapshot restore /vault/data/restore.snapshot
+```
+After restoration, Vault restarts, unwraps its master key via `gdc-kms-bridge` -> GDCag KMS, and auto-unseals automatically.
+
+---
+
+## **IaC Framework Integration (Helm & Helmfile)**
+
+This pattern ships a production Helm chart (`chart/`, version `0.2.0`) supporting dual-mode deployment:
+1. **Upstream HashiCorp Chart + Overlay (`manifests/`)**: Apply `manifests/gdc/kms/` across `GLOBAL_API_KUBECONFIG` and `ZONE_KUBECONFIG`, install upstream `vault-0.32.0` with `manifests/helm/values.yaml`, and apply `manifests/security/network-policy.yaml`.
+2. **Self-Contained Stage 5 Wrapper Chart (`chart/` & `foundations/releases/5-workload-factory`)**: Directly renders the Vault HA `StatefulSet`, `gdc-kms-bridge` native sidecar, RBAC, headless/client `Service`s, Raft `ConfigMap`, and `NetworkPolicy` (`apps.enabled=true`, `gdc.enabled=false`), while optionally rendering Global `ProjectServiceAccount`/`IAMRoleBinding` and Zonal `AEADKey` manifests when `gdc.enabled=true` (`gdc.globalIam.enabled` / `gdc.zonalKms.enabled`).

@@ -28,16 +28,18 @@ spec:
       labels:
         app: kafka
     spec:
+      imagePullSecrets:
+        - name: harbor-creds
       initContainers:
       - name: volume-permissions
-        image: harbor.gdc.local/library/busybox:latest
+        image: harbor.gdc.local/iac/busybox:1.36
         command: ["sh", "-c", "chown -R 1000:1000 /mnt/kafka"]
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
       containers:
       - name: kafka
-        image: harbor.gdc.local/library/apache/kafka:3.9.0
+        image: harbor.gdc.local/iac/kafka:3.9.0
         ports:
         - containerPort: 9092
           name: client
@@ -68,7 +70,6 @@ spec:
           value: "0"
         - name: KAFKA_LOG_DIRS
           value: "/mnt/kafka/data"
-        # Generate a random UUID for the cluster ID (required for KRaft)
         - name: CLUSTER_ID
           value: "MkU3OEVBNTcwNTJENDM2Qk"
         volumeMounts:
@@ -78,7 +79,8 @@ spec:
   - metadata:
       name: kafka-data
     spec:
-      accessModes: [ "ReadWriteOnce" ]
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: "standard-rwo"
       resources:
         requests:
           storage: 1Gi

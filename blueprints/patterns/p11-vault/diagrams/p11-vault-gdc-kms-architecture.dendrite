@@ -1,0 +1,102 @@
+theme: "gcp-pro"
+renderOrder: nodes-first
+
+Style @ZoneRoot {
+  color: "#f8fafd"
+  borderColor: "#c2d7f5"
+  borderWidth: 2
+}
+
+Style @SubZone {
+  color: "#ffffff"
+  borderColor: "#dadce0"
+  borderStyle: dashed
+  borderWidth: 1.5
+}
+
+Style @GdcCard {
+  color: "#e8f0fe"
+  borderColor: "#1a73e8"
+  textColor: "#202124"
+  borderWidth: 1.8
+}
+
+Style @SecurityCard {
+  color: "#fce8e6"
+  borderColor: "#d93025"
+  textColor: "#202124"
+  borderWidth: 1.8
+}
+
+Style @StorageCard {
+  color: "#e6f4ea"
+  borderColor: "#188038"
+  textColor: "#202124"
+  borderWidth: 1.8
+}
+
+Zone @GDCPartition {
+  title: "GDC Air-Gapped Partition Boundary"
+  style: @ZoneRoot
+  layout: column
+  gap: 36
+  padding: 28
+
+  Zone @ControlAndKMS {
+    title: "Global, Zonal & KMS Planes"
+    style: @SubZone
+    layout: row
+    gap: 32
+    padding: 24
+
+    [global_iam: "Global API Plane" | "ProjectServiceAccount · IAMRole"] {
+      style: @SecurityCard
+      icon: "CloudIAM"
+    }
+    [zonal_api: "Zone Management API" | "kms.gdc.goog/v1 AEADKey"] {
+      style: @SecurityCard
+      icon: "KMS"
+    }
+    [kms_dp: "GDCag KMS & STS Plane" | "CryptoOperations · ES256 STS"] {
+      style: @SecurityCard
+      icon: "ShieldCheck"
+    }
+    [harbor: "Harbor Registries" | "Project & System Harbor"] {
+      style: @StorageCard
+      icon: "ArtifactRegistry"
+    }
+  }
+
+  Zone @UserCluster {
+    title: "User Cluster Workload Plane"
+    style: @SubZone
+    layout: row
+    gap: 32
+    padding: 24
+
+    [bridge: "gdc-kms-bridge Sidecar" | "127.0.0.1:443 gRPC Bridge"] {
+      style: @SecurityCard
+      icon: "Lock"
+    }
+    [vault_ha: "HashiCorp Vault HA" | "Raft 3x50Gi standard-rwo"] {
+      style: @GdcCard
+      icon: "GKE"
+    }
+    [injector: "Vault Agent Injector" | "Mutating Webhook v1.7.2"] {
+      style: @GdcCard
+      icon: "Server"
+    }
+    [clients: "Tenant Apps & GitLab CI" | "K8s TokenReview · OIDC JWT"] {
+      style: @StorageCard
+      icon: "ComputeEngine"
+    }
+  }
+}
+
+[global_iam] --> [kms_dp]: "Authorizes SA"
+[zonal_api] --> [kms_dp]: "Reconciles Key"
+[bridge] --> [kms_dp]: "STS + AEAD gRPC"
+[vault_ha] --> [bridge]: "Auto-Unseal"
+[harbor] -.-> [vault_ha]: "Pulls Images"
+[injector] --> [clients]: "Injects tmpfs"
+[clients] --> [vault_ha]: "Reads Secrets"

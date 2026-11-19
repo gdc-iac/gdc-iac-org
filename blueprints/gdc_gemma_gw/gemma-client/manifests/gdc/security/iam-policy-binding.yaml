@@ -1,13 +1,23 @@
-apiVersion: iam.gdc.goog/v1
-kind: IAMPolicyBinding
+# Apply against the Global API server kubeconfig (`GLOBAL_API_KUBECONFIG` / `global-api`):
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
-  name: gemma-client-storage-admin
+  name: gemma-client-sa
   namespace: test-project # kpt-set: ${namespace}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: gemma-client-sa--project-bucket-object-admin
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
 spec:
-  subjects:
-  - kind: ServiceAccount
-    name: gemini-gui-sa
-    namespace: test-project # kpt-set: ${namespace}
   roleRef:
+    apiGroup: iam.global.gdc.goog/v1
     kind: IAMRole
-    name: roles/storage.objectAdmin
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: gemma-client-sa
+      namespace: test-project # kpt-set: ${namespace}

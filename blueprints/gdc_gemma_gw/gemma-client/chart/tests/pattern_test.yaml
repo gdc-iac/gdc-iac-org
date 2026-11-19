@@ -14,6 +14,7 @@
 suite: gemma-gemma-client chart unit tests
 templates:
   - templates/apps/workloads.yaml
+  - templates/gdc/resources.yaml
 tests:
   - it: should render User Cluster workloads by default
     template: templates/apps/workloads.yaml
@@ -23,3 +24,29 @@ tests:
       - isKind:
           of: Deployment
         documentIndex: 0
+  - it: should not render GDC resources by default
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: should render Zonal DBCluster and Global IAMRoleBinding when gdc.enabled is true
+    set:
+      gdc:
+        enabled: true
+      global:
+        projectId: gemma-inference
+        namespace: gemma-inference
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: DBCluster
+        documentIndex: 0
+      - isKind:
+          of: IAMRoleBinding
+        documentIndex: 1
+      - equal:
+          path: spec.roleRef.name
+          value: project-bucket-object-admin
+        documentIndex: 1

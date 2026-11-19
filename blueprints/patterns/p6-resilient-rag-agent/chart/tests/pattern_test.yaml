@@ -56,6 +56,9 @@ tests:
       - isKind:
           of: DBCluster
         documentIndex: 0
+      - isKind:
+          of: IAMRoleBinding
+        documentIndex: 1
   - it: should keep Day-2 Failover disabled even when gdc.enabled is true unless explicitly triggered
     set:
       gdc:

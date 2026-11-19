@@ -82,7 +82,7 @@ Ensure the following prerequisites are met in your target GDC air-gapped environ
 * Centralized Keycloak (`p12-keycloak`) deployed or an accessible enterprise Keycloak instance with administration permissions to create realms and register OIDC clients.
 * Pre-installed GDC Platform PKI (`cert-manager` and `ClusterIssuer/gdc-ca-issuer`).
 * Necessary project-level IAM roles:
-  * **GKE Developer**: `roles/gke.developer` (to deploy application and Gateway API manifests to the GKE cluster).
+  * **GKE Developer**: `namespace-admin` / `cluster-developer` (to deploy application and Gateway API manifests to the GKE cluster).
 
 ---
 
@@ -116,7 +116,7 @@ This generates:
 > [!TIP]
 > **Customizing Developer Tooling & Language SDK Recipes:**  
 > If your organization requires additional language runtimes (Golang, Java OpenJDK/Maven/Gradle, Node.js/TypeScript, OpenTofu, enterprise CA certificates) or slimmer base images to enforce least-privilege policies, customize the Dockerfile before running the offline build. See the dedicated guide:  
-> 📖 [**Customizing Developer Workspace Images (gdc-dev)**](../customizing-developer-workspace-images.md) (or [workspace/README.md](../../p13-gdc-dev/example-app/workspace/README.md)).
+> 📖 [**Customizing Developer Workspace Images (gdc-dev)**](../operations/customizing-developer-workspace-images.md) (or [workspace/README.md](../../p13-gdc-dev/example-app/workspace/README.md)).
 
 ---
 
@@ -1203,3 +1203,10 @@ kubectl rollout status deployment/gdc-dev-landing-page -n gdc-dev
 | `Workspace session pod stuck in Pending state with PVC binding failure` | The `standard-rwo` StorageClass is not available on the cluster or the developer namespace `ResourceQuota` has exceeded its `requests.storage` limit. | Check `kubectl describe pvc -l app=gdc-dev-workspace-session -n gdc-dev` and verify GDC block/object storage capacity. |
 | `Rollout exceeded progress deadline (0 out of 1 new replicas updated)` | Deployment was stuck due to non-existent ServiceAccount or image pull error, locking the controller. | Clear the frozen controller state via `kubectl delete deployment gdc-dev-landing-page -n gdc-dev` and re-apply the Phase 3 manifest. |
 
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

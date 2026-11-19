@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,35 +12,459 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
+{{- $ns := include "p11-vault.namespace" . -}}
+{{- $projectId := include "p11-vault.projectId" . -}}
+{{- $registry := include "p11-vault.registry" . -}}
+{{- $ksa := .Values.vault.k8sServiceAccountName | default "vault" -}}
+{{- $replicas := int (.Values.vault.replicas | default 3) -}}
+{{- $keyName := .Values.vault.kms.keyName | default "vault-unseal-key" -}}
+{{- $region := .Values.vault.kms.region | default "zone1" -}}
+{{- $healthPort := int (.Values.vault.bridge.healthPort | default 18080) -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $ksa | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-discovery-role
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "watch", "list", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-discovery-rolebinding
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-discovery-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ $ksa | quote }}
+    namespace: {{ $ns | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-%s-auth-delegator" (include "p11-vault.fullname" .) $ns | trunc 63 | trimSuffix "-" | quote }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ $ksa | quote }}
+    namespace: {{ $ns | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- include "p11-vault.labels" . | nindent 4 }}
+data:
+  extraconfig-from-values.hcl: |
+    disable_mlock = true
+    ui = true
+
+    listener "tcp" {
+      tls_disable = 1
+      address = "[::]:8200"
+      cluster_address = "[::]:8201"
+    }
+
+    storage "raft" {
+      path = "/vault/data"
+    {{- range $i := until $replicas }}
+      retry_join {
+        leader_api_addr = "http://vault-{{ $i }}.vault-internal:8200"
+      }
+    {{- end }}
+    }
+
+    seal "gcpckms" {
+      project    = {{ $projectId | quote }}
+      region     = {{ $region | quote }}
+      key_ring   = {{ $projectId | quote }}
+      crypto_key = {{ $keyName | quote }}
+    }
+
+    service_registration "kubernetes" {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-internal
+  namespace: {{ $ns | quote }}
+  labels:
+    app.kubernetes.io/name: vault
+    {{- include "p11-vault.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+    - name: https-internal
+      port: 8201
+      targetPort: 8201
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: vault
+    component: server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: {{ $ns | quote }}
+  labels:
+    app.kubernetes.io/name: vault
+    {{- include "p11-vault.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+    - name: https-internal
+      port: 8201
+      targetPort: 8201
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: vault
+    component: server
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vault
+  namespace: {{ $ns | quote }}
+  labels:
+    app.kubernetes.io/name: vault
+    component: server
+    {{- include "p11-vault.labels" . | nindent 4 }}
+spec:
+  serviceName: vault-internal
+  podManagementPolicy: Parallel
+  replicas: {{ $replicas }}
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+      component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault
+        component: server
+    spec:
+      serviceAccountName: {{ $ksa | quote }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vault.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: vault
+                    component: server
+                topologyKey: kubernetes.io/hostname
+      hostAliases:
+        - ip: "127.0.0.1"
+          hostnames:
+            - "cloudkms.googleapis.com"
+            - "oauth2.googleapis.com"
+      {{- if .Values.vault.bridge.enabled }}
+      initContainers:
+        - name: gdc-kms-bridge
+          image: {{ printf "%s/%s:%s" $registry (.Values.vault.bridge.image.repository | default "gdc-kms-bridge") (.Values.vault.bridge.image.tag | default "1.0.0") | quote }}
+          imagePullPolicy: {{ .Values.vault.bridge.image.pullPolicy | default "IfNotPresent" | quote }}
+          restartPolicy: Always
+          command: ["/usr/local/bin/gdc-kms-bridge"]
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          env:
+            - name: GDC_SA_KEY_FILE
+              value: {{ printf "/vault/userconfig/gdc-kms-sa/%s" (.Values.vault.bridge.secretKey | default "vault-kms-sa.json") | quote }}
+            - name: GDC_KMS_ENDPOINT
+              value: {{ .Values.vault.bridge.kmsEndpoint | quote }}
+            - name: GOOGLE_PROJECT
+              value: {{ $projectId | quote }}
+            - name: GDC_BRIDGE_SHARED_DIR
+              value: "/vault/kms-bridge"
+            - name: GDC_BRIDGE_LISTEN
+              value: {{ .Values.vault.bridge.listenAddr | default "127.0.0.1:443" | quote }}
+            - name: GDC_BRIDGE_HEALTH_LISTEN
+              value: {{ printf "0.0.0.0:%d" $healthPort | quote }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $healthPort }}
+            initialDelaySeconds: 1
+            periodSeconds: 1
+            failureThreshold: 15
+          volumeMounts:
+            - name: kms-bridge
+              mountPath: /vault/kms-bridge
+            - name: userconfig-gdc-kms-sa
+              mountPath: /vault/userconfig/gdc-kms-sa
+              readOnly: true
+      {{- end }}
+      containers:
+        - name: vault
+          image: {{ printf "%s/%s:%s" $registry (.Values.vault.image.repository | default "vault") (.Values.vault.image.tag | default "1.15.0") | quote }}
+          imagePullPolicy: {{ .Values.vault.image.pullPolicy | default "IfNotPresent" | quote }}
+          command:
+            - "/bin/sh"
+            - "-ec"
+          args:
+            - |
+              sed -E "s/HOST_IP/${HOST_IP?}/g" /vault/config/extraconfig-from-values.hcl > /tmp/storageconfig.hcl;
+              sed -Ei "s/POD_IP/${POD_IP?}/g" /tmp/storageconfig.hcl;
+              exec docker-entrypoint.sh vault server -config=/tmp/storageconfig.hcl
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: HOME
+              value: "/home/vault"
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: VAULT_K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: VAULT_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+            - name: VAULT_API_ADDR
+              value: "http://$(POD_IP):8200"
+            - name: VAULT_CLUSTER_ADDR
+              value: "https://$(VAULT_K8S_POD_NAME).vault-internal:8201"
+            - name: VAULT_RAFT_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SKIP_CHOWN
+              value: "true"
+            - name: SKIP_SETCAP
+              value: "true"
+            - name: GOOGLE_REGION
+              value: {{ $region | quote }}
+            - name: GOOGLE_PROJECT
+              value: {{ $projectId | quote }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/vault/kms-bridge/gcp-credentials.json"
+            - name: SSL_CERT_FILE
+              value: "/vault/kms-bridge/ca-certificates.crt"
+          ports:
+            - containerPort: 8200
+              name: http
+              protocol: TCP
+            - containerPort: 8201
+              name: https-internal
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: "/v1/sys/health?standbyok=true&perfstandbyok=true"
+              port: 8200
+              scheme: HTTP
+            failureThreshold: 2
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: "/v1/sys/health?standbyok=true&uninitok=true&sealedcode=204"
+              port: 8200
+              scheme: HTTP
+            failureThreshold: 2
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 3
+          {{- with .Values.vault.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /vault/data
+            - name: config
+              mountPath: /vault/config
+              readOnly: true
+            - name: kms-bridge
+              mountPath: /vault/kms-bridge
+              readOnly: true
+            - name: home
+              mountPath: /home/vault
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: vault-config
+        - name: kms-bridge
+          emptyDir:
+            medium: Memory
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.vault.bridge.enabled }}
+        - name: userconfig-gdc-kms-sa
+          secret:
+            secretName: {{ .Values.vault.bridge.secretName | default "gdc-kms-sa" | quote }}
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ .Values.vault.storageClass | default "standard-rwo" | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.vault.storageSize | default "50Gi" | quote }}
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: vault-internal-policy
-  namespace: {{ include "p11-vault.namespace" . }}
+  namespace: {{ $ns | quote }}
   labels:
     {{- include "p11-vault.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: vault
+  policyTypes:
+    - Ingress
+    - Egress
   ingress:
-  - from:
-    - podSelector: {}
-    ports:
-    - port: 8200
-    - port: 8201
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8200
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    - ports:
+        - protocol: TCP
+          port: {{ $healthPort }}
   egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-    ports:
-    - port: 53
-      protocol: UDP
-  - to:
-    - ipBlock:
-        cidr: 0.0.0.0/0
-    ports:
-    - port: 443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+    - to:
+        {{- range $cidr := (.Values.vault.networkPolicy.controlPlaneCidrs | default (list "0.0.0.0/0")) }}
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
 {{- end }}

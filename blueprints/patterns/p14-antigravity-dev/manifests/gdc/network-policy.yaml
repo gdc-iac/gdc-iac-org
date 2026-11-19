@@ -66,11 +66,24 @@ spec:
       port: 443
     - protocol: TCP
       port: 8080
-  # Allow internal session proxying from landing page to operator
+  # Allow internal session proxying from landing page/operator to workspace & JupyterLab session pods
   - to:
-    - podSelector:
-        matchLabels:
-          app: gdc-dev-operator
+    - podSelector: {}
     ports:
     - protocol: TCP
       port: 3000
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 8888
+  # Allow operator egress to Kubernetes API server (443/TCP & post-DNAT 6443/TCP) to manage workspace pods
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443

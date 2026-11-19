@@ -63,8 +63,8 @@ Ensure the following prerequisites are met:
 * An internal Git server (e.g. GitLab Enterprise) and runners configured to run inside the cluster or project network.
 * `helm`, `kubectl`, and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
-  * **GKE Cluster Admin**: `roles/gke.clusterAdmin` (required to install cluster-wide MLOps CRDs).
-  * **Storage Reader/Writer**: `roles/storage.objectAdmin` (for training data access).
+  * **GKE Cluster Admin**: `standard-cluster-admin` / `user-cluster-admin` (required to install cluster-wide MLOps CRDs).
+  * **Storage Reader/Writer**: `project-bucket-object-admin` (for training data access).
 
 ---
 
@@ -393,3 +393,11 @@ Verify:
 | `Canary fails & rolls back` | The newly trained model accuracy is below threshold, or serving throws exceptions. | Inspect training logs in GitLab CI; check model serving error logs. |
 | `Webhook fails to trigger pipeline` | Network configuration prevents Alertmanager pods from communicating with GitLab. | Verify network routes and whitelists inside your user project's network configs. |
 | `Rollout status Stuck` | Insufficient compute resources to schedule new canary pods. | Check GKE node capacity; provision additional standard node pools if needed. |
+
+---
+
+## IaC Framework Integration (Helm & Helmfile)
+
+This pattern includes a Helm wrapper chart (`chart/`) supporting dual-mode deployment:
+1. **Standalone Mode (`manifests/`)**: Apply raw manifests directly using `kubectl apply -f manifests/`.
+2. **Orchestrated Mode (`chart/` & `foundations/releases/5-workload-factory`)**: Deploy User Cluster workloads (`apps.enabled=true`, `gdc.enabled=false`) via Stage 5 of the `foundations/` Helmfile pipeline after Stage 2 (`2-resources`) provisions Zonal databases and VMs via `charts/gdc-dbs` and `charts/gdc-vm`.

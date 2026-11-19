@@ -16,7 +16,7 @@ apiVersion: v2
 name: p4-event-driven-kafka
 description: "Pattern 4: Event-Driven Pipeline with Kafka and Managed PostgreSQL on GDC air-gapped"
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.0.0"
 maintainers:
   - name: gdc-iac

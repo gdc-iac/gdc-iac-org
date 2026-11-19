@@ -12,20 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: v1
-kind: ServiceAccount
+# Apply ProjectServiceAccount and IAMRoleBinding on Global API (`GLOBAL_API_KUBECONFIG`):
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
 metadata:
   name: rag-sa
   namespace: test-project # kpt-set: ${namespace}
 ---
-apiVersion: iam.gdc.goog/v1
-kind: ProjectPolicy
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
 metadata:
-  name: rag-bindings
+  name: rag-sa--project-bucket-object-admin
   namespace: test-project # kpt-set: ${namespace}
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
 spec:
-  bindings:
-  - role: Role/ai-ocr-developer
-    members: [ serviceAccount:rag-sa ]
-  - role: Role/ai-translation-developer
-    members: [ serviceAccount:rag-sa ]
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: rag-sa
+      namespace: test-project # kpt-set: ${namespace}
