@@ -41,6 +41,7 @@ create_db_secret() {
         --from-literal=password="${PASSWORD}" \
         --from-literal=host="${HOST}" \
         --from-literal=db_name="postgres" \
+        --from-literal=connection_string="postgresql://${USERNAME}:${PASSWORD}@${HOST}:5432/postgres" \
         --dry-run=client -o yaml | kubectl apply -f -
     echo "  Secret ${SECRET_NAME} created."
 }

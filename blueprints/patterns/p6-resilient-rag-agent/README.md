@@ -191,6 +191,7 @@ Sync the `manifests/gdc/iam/rag-permissions.yaml` file to your cluster.
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
 export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
+export APP_DB_PASSWORD='<YOUR_STRONG_APP_PASSWORD>'
 
 # 1. Create Managed Database Cluster (PostgreSQL 15 HA)
 gdcloud database clusters create rag-db \
@@ -208,11 +209,11 @@ DB_HOST="${DB_URL%:5432}"
 kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
   -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-rag-db}' | base64 -d > /tmp/rag-db-ca.crt
 
-# 3. Create Connection Secret on the User Cluster
+# 3. Create Connection Secret on the User Cluster (using dedicated rag_app role created in Step 3)
 kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-credentials \
   --namespace="${PROJECT_ID}" \
-  --from-literal=username=dbsadmin \
-  --from-literal=password="${DB_ADMIN_PASSWORD}" \
+  --from-literal=username=rag_app \
+  --from-literal=password="${APP_DB_PASSWORD}" \
   --from-literal=host="${DB_HOST}" \
   --from-literal=db_name=postgres \
   --from-file=ca.crt=/tmp/rag-db-ca.crt \
@@ -221,20 +222,29 @@ kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-c
 
 **Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Replace the base64 placeholder in `Secret/db-pw-rag-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/postgres.yaml` (`Secret/db-pw-rag-db` + `DBCluster/rag-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`), then create `rag-db-credentials` on the User Cluster as shown above.
+Replace the base64 placeholder in `Secret/db-pw-rag-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/postgres.yaml` (`Secret/db-pw-rag-db` + `DBCluster/rag-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`), then initialize the schema/role in Step 3 and create `rag-db-credentials` on the User Cluster as shown above.
 
-### Step 3: Initialize Database Schema (`pgvector`)
+### Step 3: Initialize Database Schema (`pgvector` & PostgreSQL 15 Privileges)
 
-The application requires a specific database schema with the `pgvector` extension enabled (`pgvector` `0.8.0` is pre-installed on GDCag `POSTGRESQL_15`).
+The application requires the `pgvector` extension (`0.8.0` is pre-installed on GDCag `POSTGRESQL_15`) and the `documents`, `chats`, and `messages` tables. Because `CREATE EXTENSION vector` requires `dbsadmin` (`cloudsqlsuperuser`) privileges and PostgreSQL 15 revokes `CREATE` on `schema public` from `PUBLIC` by default, bootstrap the extension, tables, and `rag_app` role as `dbsadmin` first.
 
-**For GDC Production (PostgreSQL HA):**
-Connect to your GDC Database Service instance as `dbsadmin` using the extracted CA (`PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/rag-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run the following SQL commands:
+**For GDC Production (PostgreSQL 15 HA):**
+Connect to your GDC Database Service instance as `dbsadmin` using the extracted CA (`PGPASSWORD="${DB_ADMIN_PASSWORD}" PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/rag-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run the following SQL commands:
 
 ```sql
--- 1. Enable pgvector extension (Run as dbsadmin)
+-- 1. Enable pgvector extension (must be run as dbsadmin / cloudsqlsuperuser)
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- 2. Create Documents Table
+-- 2. Create dedicated least-privilege application role
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rag_app') THEN
+    CREATE ROLE rag_app WITH LOGIN PASSWORD '<YOUR_STRONG_APP_PASSWORD>';
+  END IF;
+END
+$$;
+
+-- 3. Create Documents Table & Cosine Vector Index
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     filename TEXT UNIQUE,
@@ -244,7 +254,10 @@ CREATE TABLE IF NOT EXISTS documents (
     source_path TEXT
 );
 
--- 3. Create Chat History Tables
+CREATE INDEX IF NOT EXISTS documents_embedding_cosine_idx
+ON documents USING hnsw (embedding vector_cosine_ops);
+
+-- 4. Create Chat History Tables
 CREATE TABLE IF NOT EXISTS chats (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -259,6 +272,14 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 5. Grant PostgreSQL 15 Schema, Table, and Sequence Privileges to rag_app
+GRANT CONNECT ON DATABASE postgres TO rag_app;
+GRANT USAGE, CREATE ON SCHEMA public TO rag_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents, chats, messages TO rag_app;
+GRANT USAGE, SELECT, UPDATE ON SEQUENCE documents_id_seq, chats_id_seq, messages_id_seq TO rag_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO rag_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO rag_app;
 ```
 
 ### Step 4: Deploy Ingestion Job
@@ -339,7 +360,7 @@ If you need to wipe all data and start fresh (e.g., to clear old non-RBAC docume
 gcloud storage rm -r ${BUCKET_NAME}/**
 
 # 2. Clear Database Tables (WARNING: Deletes all metadata and chat history)
-kubectl exec -n test-project postgres-0 -- psql -U user -d ragdb -c "TRUNCATE documents, chats, messages;"
+kubectl exec -n test-project postgres-0 -- psql -U postgres -d postgres -c "TRUNCATE documents, chats, messages RESTART IDENTITY CASCADE;"
 
 # 3. Restart Ingestion Job (to reset its processed cache)
 kubectl delete job -n test-project -l app=ingest-job

@@ -1643,6 +1643,7 @@ metadata:
   namespace: ${NAMESPACE}
 type: Opaque
 data:
+  # Key must match DBCluster metadata.name; replace with base64-encoded dbsadmin password before applying on ZONE_KUBECONFIG
   ${APP_NAME}-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
@@ -1952,7 +1953,8 @@ registry: ""
 gdc:
   enabled: false
   location: "zone1"
-  dbAdminPasswordB64: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+  db:
+    base64EncodedPassword: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
   dbVersion: "15"
   dbCpu: 2
   dbMemory: "8Gi"
@@ -2005,7 +2007,12 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
       "properties": {
         "enabled": { "type": "boolean" },
         "location": { "type": "string" },
-        "dbAdminPasswordB64": { "type": "string" },
+        "db": {
+          "type": "object",
+          "properties": {
+            "base64EncodedPassword": { "type": "string" }
+          }
+        },
         "dbVersion": { "type": "string" },
         "dbCpu": { "type": "integer" },
         "dbMemory": { "type": "string" },
@@ -2084,7 +2091,7 @@ metadata:
   namespace: {{ include "${APP_NAME}.namespace" . }}
 type: Opaque
 data:
-  ${APP_NAME}-db: {{ .Values.gdc.dbAdminPasswordB64 | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
+  ${APP_NAME}-db: {{ (.Values.gdc.db).base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
@@ -2926,14 +2933,15 @@ kubectl --context="${USER_CLUSTER_CONTEXT}" create namespace "${NAMESPACE}" --dr
 #    4a. Discover DBCluster primary endpoint & TLS CA on Zone Admin, initialize as dbsadmin, and create User Cluster DB Secret
 DB_ENDPOINT=$(kubectl --context="${ZONE_ADMIN_CONTEXT}" get dbcluster.postgresql.dbadmin.gdc.goog "${APP_NAME}-db" -n "${NAMESPACE}" -o jsonpath='{.status.primary.url}')
 DB_HOST="${DB_ENDPOINT%:5432}"
-kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret dbs-certificates -n "${NAMESPACE}" -o jsonpath="{.data.dbs-pg-cert-${APP_NAME}-db}" | base64 -d > ca.crt
+kubectl --context="${ZONE_ADMIN_CONTEXT}" get secret dbs-certificates -n "${NAMESPACE}" -o jsonpath="{.data['dbs-pg-cert-${APP_NAME}-db']}" | base64 -d > ca.crt
 PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres -c "CREATE EXTENSION IF NOT EXISTS vector;"
 kubectl --context="${USER_CLUSTER_CONTEXT}" create secret generic "${APP_NAME}-db-credentials" \
   --from-literal=host="${DB_HOST}" \
   --from-literal=username="${APP_DB_USER}" \
   --from-literal=password="${APP_DB_PASSWORD}" \
   --from-literal=database="postgres" \
-  --from-literal=connection_string="postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@${DB_HOST}:5432/postgres" \
+  --from-file=ca.crt=./ca.crt \
+  --from-literal=connection_string="postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/db-tls/ca.crt" \
   -n "${NAMESPACE}" --dry-run=client -o yaml | kubectl --context="${USER_CLUSTER_CONTEXT}" apply -f -
 
 #    4b. Project Object Storage access-key-id & secret-access-key from Zone Admin 'object-storage-access-keys'

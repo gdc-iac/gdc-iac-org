@@ -3,7 +3,7 @@ from pathlib import Path
 from google.cloud import storage
 from fastapi import UploadFile, HTTPException
 
-INPUT_BUCKET = os.getenv("INPUT_BUCKET", "gemini-gui-files-test-project").strip()
+INPUT_BUCKET = os.getenv("INPUT_BUCKET", "gemma-client-files-test-project").strip()
 while INPUT_BUCKET.startswith(("gs://", "s3://")):
     INPUT_BUCKET = INPUT_BUCKET[5:].strip("/")
 

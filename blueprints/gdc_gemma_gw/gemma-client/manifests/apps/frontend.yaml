@@ -27,6 +27,10 @@ spec:
         app: frontend
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -40,17 +44,17 @@ spec:
             drop:
             - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         readinessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 3
           periodSeconds: 5
         livenessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
         env:
@@ -59,9 +63,6 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        - name: tmp
-          mountPath: /tmp/nginx
-          subPath: nginx
         - name: nginx-cache
           mountPath: /var/cache/nginx
         - name: nginx-run
@@ -85,5 +86,5 @@ spec:
     app: frontend
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
   type: ClusterIP

@@ -28,6 +28,10 @@ spec:
         app: frontend
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -41,7 +45,19 @@ spec:
             drop:
             - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         env:
         - name: VITE_API_URL
           value: "/api"
@@ -70,5 +86,5 @@ spec:
     app: frontend
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
   type: LoadBalancer # Or ClusterIP with Ingress

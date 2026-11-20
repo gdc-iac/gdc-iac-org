@@ -14,6 +14,7 @@
 # limitations under the License.
 */ -}}
 {{- if .Values.apps.enabled }}
+{{- $dbSecretName := .Values.apps.dbCredentials.secretName | default "db-ro-creds" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,17 +62,17 @@ spec:
         - name: DB_USER
           valueFrom:
             secretKeyRef:
-              name: db-ro-creds
+              name: {{ $dbSecretName }}
               key: username
         - name: DB_PASS
           valueFrom:
             secretKeyRef:
-              name: db-ro-creds
+              name: {{ $dbSecretName }}
               key: password
         - name: DB_HOST
           valueFrom:
             secretKeyRef:
-              name: db-ro-creds
+              name: {{ $dbSecretName }}
               key: host
         - name: DB_NAME
           value: postgres
@@ -100,9 +101,19 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
       volumes:
       - name: tmp
         emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: {{ $dbSecretName }}
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service
@@ -118,17 +129,19 @@ spec:
   - port: 80
     targetPort: 8080
   type: ClusterIP
+{{- if .Values.apps.dbCredentials.create }}
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: db-ro-creds
+  name: {{ $dbSecretName }}
   namespace: {{ include "p7-agentic-data-analyst.namespace" . }}
   labels:
     {{- include "p7-agentic-data-analyst.labels" . | nindent 4 }}
 type: Opaque
 stringData:
-  username: postgres
-  password: password
-  host: postgres-db
+  username: {{ .Values.apps.dbCredentials.username | quote }}
+  password: {{ .Values.apps.dbCredentials.password | quote }}
+  host: {{ .Values.apps.dbCredentials.host | quote }}
+{{- end }}
 {{- end }}

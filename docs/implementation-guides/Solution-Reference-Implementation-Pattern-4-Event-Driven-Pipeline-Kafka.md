@@ -47,7 +47,7 @@ Ensure the following prerequisites are met:
 * GDC air-gapped version 1.15.1 or higher.
 * A healthy User GKE Cluster provisioned and assigned to your project.
 * A Harbor container registry instance available and accessible.
-* All required container images (`apache/kafka:3.7.0`, `busybox`, consumer workers) sideloaded into Harbor.
+* All required container images (`apache/kafka:3.9.0`, `busybox:1.36`, consumer workers) sideloaded into Harbor.
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
@@ -287,13 +287,19 @@ BEGIN
 END
 \$\$;
 
-CREATE TABLE IF NOT EXISTS processed_events (
-    id BIGINT PRIMARY KEY,
-    payload JSONB NOT NULL,
-    processed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+-- PostgreSQL 15+ revokes default CREATE on schema public from PUBLIC
+GRANT USAGE, CREATE ON SCHEMA public TO event_consumer;
+
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    event_id VARCHAR(50),
+    data VARCHAR(255),
+    timestamp BIGINT,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-GRANT SELECT, INSERT, UPDATE ON TABLE processed_events TO event_consumer;
+GRANT SELECT, INSERT, UPDATE ON TABLE events TO event_consumer;
+GRANT USAGE, SELECT ON SEQUENCE events_id_seq TO event_consumer;
 SQL
 
 # 3. Create event-db-credentials and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
@@ -338,16 +344,72 @@ spec:
       labels:
         app: kafka
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: volume-permissions
-        image: harbor.shared-services.gdc.local/library/busybox:latest
-        command: ["sh", "-c", "chown -R 1000:1000 /mnt/kafka"]
+        image: harbor.shared-services.gdc.local/iac/busybox:1.36
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        command: ["sh", "-c", "mkdir -p /mnt/kafka/data"]
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+      - name: init-kafka-config
+        image: harbor.shared-services.gdc.local/iac/kafka:3.9.0
+        command: ["sh", "-c", "cp -a /opt/kafka/config/. /work-config/"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        volumeMounts:
+        - name: kafka-config
+          mountPath: /work-config
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: kafka
-        image: harbor.shared-services.gdc.local/library/apache/kafka:3.7.0
+        image: harbor.shared-services.gdc.local/iac/kafka:3.9.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 9092
           name: client
@@ -383,6 +445,19 @@ spec:
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+        - name: tmp
+          mountPath: /tmp
+        - name: kafka-logs
+          mountPath: /opt/kafka/logs
+        - name: kafka-config
+          mountPath: /opt/kafka/config
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: kafka-logs
+        emptyDir: {}
+      - name: kafka-config
+        emptyDir: {}
   volumeClaimTemplates:
   - metadata:
       name: kafka-data
@@ -518,19 +593,19 @@ Persisting processed event: ID 100 success
    ```shell
    kubectl exec -it kafka-0 -n my-gdc-project -- /bin/bash
    ```
-2. Create a test topic:
+2. Create the `events` topic:
    ```bash
-   /opt/kafka/bin/kafka-topics.sh --create --topic test-event-topic --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+   /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic events --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
    ```
-3. Produce test messages:
+3. Produce test messages matching the consumer schema (`eventId`, `data`, `timestamp`):
    ```bash
-   /opt/kafka/bin/kafka-console-producer.sh --topic test-event-topic --bootstrap-server localhost:9092
-   >{"id": 100, "message": "Verify P4 Pipeline Ingest"}
+   /opt/kafka/bin/kafka-console-producer.sh --topic events --bootstrap-server localhost:9092
+   >{"eventId": "evt-100", "data": "Verify P4 Pipeline Ingest", "timestamp": 1700000000}
    ```
-4. Verify consumer logs to verify database writes:
+4. Verify consumer logs and PostgreSQL `events` table writes:
    ```shell
    kubectl logs -l app=consumer -n my-gdc-project
-   # Expected output: "Persisting processed event: ID 100 success"
+   # Expected output: "Saved Event to Database"
    ```
 
 ---

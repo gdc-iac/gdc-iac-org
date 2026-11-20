@@ -299,6 +299,9 @@ BEGIN
 END
 \$\$;
 
+-- PostgreSQL 15 revokes default CREATE on schema public; grant explicitly so startup DDL checks succeed
+GRANT USAGE, CREATE ON SCHEMA public TO tier3_app;
+
 CREATE TABLE IF NOT EXISTS todos (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
@@ -353,7 +356,10 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -368,6 +374,7 @@ spec:
         image: harbor.shared-services.gdc.local/my-org/p1-backend:latest
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -382,6 +389,8 @@ spec:
           value: "postgres"
         - name: DB_HOST
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_USER
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
         livenessProbe:
@@ -394,6 +403,12 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -439,12 +454,16 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 101 # Nginx UID
+        runAsGroup: 101
         fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: nginx
         image: harbor.shared-services.gdc.local/my-org/p1-frontend:latest
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -472,6 +491,24 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+      - name: nginx-conf
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

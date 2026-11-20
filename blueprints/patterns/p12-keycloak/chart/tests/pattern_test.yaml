@@ -30,6 +30,57 @@ tests:
       - isKind:
           of: Deployment
         documentIndex: 0
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: init-keycloak-quarkus
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: harbor.corp.local/blueprints/keycloak/keycloak:24.0.4
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.readOnlyRootFilesystem
+          value: true
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.initContainers[0].securityContext.runAsNonRoot
+          value: true
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[2].name
+          value: keycloak-quarkus
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[2].mountPath
+          value: /opt/keycloak/lib/quarkus
+        documentIndex: 0
+  - it: should support keycloak.db.existingSecret and extraVolumes for GDCag DBCluster TLS CA
+    set:
+      keycloak:
+        db:
+          existingSecret: keycloak-db-secret
+        extraVolumes:
+          - name: keycloak-db-ca
+            secret:
+              secretName: keycloak-db-ca
+        extraVolumeMounts:
+          - name: keycloak-db-ca
+            mountPath: /etc/keycloak/db-ca
+            readOnly: true
+    template: templates/apps/workloads.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name
+          value: keycloak-db-secret
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].mountPath
+          value: /etc/keycloak/db-ca
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.volumes[3].secret.secretName
+          value: keycloak-db-ca
+        documentIndex: 0
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:

@@ -136,6 +136,8 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 ```
 
+> **PostgreSQL 15 Least-Privilege Role Note:** If configuring a dedicated non-`dbsadmin` role (such as `legacy_app`), grant PostgreSQL 15 `public` schema and sequence privileges as `dbsadmin` (`GRANT USAGE, CREATE ON SCHEMA public TO legacy_app; GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE orders TO legacy_app; GRANT USAGE, SELECT ON SEQUENCE orders_id_seq TO legacy_app;`).
+
 ### Step 3: Provision VM
 
 *Prerequisite: Run `gdcloud compute images list` to find your exact image name.*

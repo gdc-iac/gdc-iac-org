@@ -124,6 +124,8 @@ kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic keycloak
 
 Update `KC_DB_URL` (`jdbc:postgresql://${DB_HOST}:5432/keycloak`), `KC_DB_USERNAME` (`dbsadmin`), and `KC_DB_PASSWORD` (referencing `Secret/keycloak-db-secret`) in `manifests/apps/keycloak.yaml` (or pass via Helm values) before deploying to the User Cluster.
 
+> **PostgreSQL 15 Least-Privilege Role Note:** If configuring a dedicated non-`dbsadmin` role (e.g., `CREATE ROLE keycloak WITH LOGIN PASSWORD ...`) instead of `dbsadmin`, connect to `-d keycloak` as `dbsadmin` and run `GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak; GRANT ALL ON SCHEMA public TO keycloak;` because PostgreSQL 15+ revokes default `CREATE` privileges on `SCHEMA public` from `PUBLIC`.
+
 ### Step 3: Deploy Identity Application (Kubernetes Manifests)
 
 The centralized Keycloak IAM Gateway is deployed utilizing pure, declarative Kubernetes manifests specifically aligned with GDC baseline constraints, avoiding any fragile 3rd-party vendor locking (e.g. Helm).

@@ -307,7 +307,7 @@ export ANALYST_RO_PASSWORD="<strong-readonly-password>"
 
 PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
   psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
--- Create dedicated read-only role
+-- 1. Create dedicated read-only role
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analyst_ro') THEN
@@ -316,20 +316,26 @@ BEGIN
 END
 \$\$;
 
--- Create sample reporting tables
-CREATE TABLE IF NOT EXISTS product_sales (
+-- 2. Create sales table matching example-app/agent/app.py schema
+CREATE TABLE IF NOT EXISTS sales (
     id SERIAL PRIMARY KEY,
-    product_name VARCHAR(100),
-    units_sold INT,
-    revenue NUMERIC(10,2),
-    quarter VARCHAR(10)
+    date DATE,
+    amount DECIMAL
 );
 
-INSERT INTO product_sales (product_name, units_sold, revenue, quarter) VALUES
-('Standard License', 1500, 75000.00, '2026-Q1'),
-('Pro Add-on', 450, 45000.00, '2026-Q1');
+-- 3. Seed sample sales records (idempotent; total amount = 750)
+INSERT INTO sales (date, amount)
+SELECT v.date, v.amount
+FROM (VALUES
+    (DATE '2023-01-01', 100.00),
+    (DATE '2023-01-02', 150.00),
+    (DATE '2023-01-03', 200.00),
+    (DATE '2023-01-04', 130.00),
+    (DATE '2023-01-05', 170.00)
+) AS v(date, amount)
+WHERE NOT EXISTS (SELECT 1 FROM sales);
 
--- Grant strictly read-only access to reporting tables
+-- 4. Grant strictly read-only PostgreSQL 15 access to reporting tables
 GRANT CONNECT ON DATABASE postgres TO analyst_ro;
 GRANT USAGE ON SCHEMA public TO analyst_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst_ro;
@@ -346,6 +352,7 @@ kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic db-ro-cr
   --from-literal=username="analyst_ro" \
   --from-literal=password="${ANALYST_RO_PASSWORD}" \
   --from-literal=host="${DB_HOST}" \
+  --from-file=ca.crt=./ca.crt \
   -n my-gdc-project
 
 kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic postgres-db-ca \
@@ -451,7 +458,7 @@ kubectl run p7-verify --rm -i --restart=Never -n my-gdc-project \
   --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
   --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
-    curl -s -X POST http://sql-agent/query -d "{\"question\": \"How many total units of Standard License were sold?\"}" -H "Content-Type: application/json" && \
+    curl -s -X POST http://sql-agent/query -d "{\"question\": \"What is the total sales amount?\"}" -H "Content-Type: application/json" && \
     echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 7 Agentic Data Analyst verified!" && \
@@ -461,11 +468,11 @@ kubectl run p7-verify --rm -i --restart=Never -n my-gdc-project \
 ```
 **Expected Production Output:**
 ```text
+{"answer":[{"sum":"750.00"}],"sql":"SELECT SUM(amount) FROM sales"}
 ===============================================
 ✅ PASS: Pattern 7 Agentic Data Analyst verified!
 ✅ SUCCESS: Natural language SQL query agent reachable
 ===============================================
-{"result":"1500"}
 ```
 *(Note: Prepending `sleep 2` ensures `kubectl -i` completes its SPDY interactive connection handshake cleanly without `warning: couldn't attach to pod...` errors, giving you an immediate, zero-warning confirmation check).*
 
@@ -476,13 +483,13 @@ export AGENT_IP=$(kubectl get service sql-agent -n my-gdc-project -o jsonpath='{
 
 curl -X POST http://${AGENT_IP}/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "How many total units of Standard License were sold?"}'
+  -d '{"question": "What is the total sales amount?"}'
 ```
 Check the agent's logic flow from its logs:
 ```shell
 kubectl logs -l app=sql-agent -n my-gdc-project --tail=20
 ```
-Ensure you see the agent calling the LLM Gateway, planning the select statement `SELECT SUM(units_sold) FROM product_sales WHERE product_name = 'Standard License';`, executing it, and returning the parsed response value (`1500`).
+Ensure you see the agent calling the LLM Gateway, planning the select statement `SELECT SUM(amount) FROM sales;`, executing it inside a read-only session, and returning the aggregated total (`750.00`).
 
 ### 4.3 Live Operational Log Inspection
 To validate live system execution and verify LLM gateway routing, inspect pod logs across key components:

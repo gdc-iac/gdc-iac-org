@@ -202,7 +202,7 @@ kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
 # 3. Create Connection Secret on the User Cluster
 kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemini-gui-db-credentials \
   --namespace="${PROJECT_ID}" \
-  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres" \
+  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/db-tls/ca.crt" \
   --from-file=ca.crt=/tmp/gemini-db-ca.crt \
   --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
 ```
@@ -251,10 +251,12 @@ Connect to your GDC Database Service instance as `dbsadmin` (`PGSSLMODE=verify-c
         is_shared BOOLEAN DEFAULT FALSE
     );
 
-    CREATE INDEX idx_chats_user_id ON chats(user_id);
-    CREATE INDEX idx_messages_chat_id ON messages(chat_id);
-    CREATE INDEX idx_files_user_id ON files(user_id);
+    CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
     ```
+
+> **Note (PostgreSQL 15 Schema Privileges):** If you create a dedicated least-privilege application role (e.g., `gemini_app`) instead of connecting as `dbsadmin`, grant `GRANT USAGE, CREATE ON SCHEMA public TO gemini_app;` and `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chats, messages, files TO gemini_app;` because PostgreSQL 15 revokes default `CREATE` privileges on schema `public` from `PUBLIC`.
 
 ### Step 4: Deploy Application
 
@@ -313,9 +315,9 @@ If you need to wipe all data and start fresh (e.g., to clear old chat history or
 # Ensure BUCKET_NAME is set
 gcloud storage rm -r ${BUCKET_NAME}/**
 
-# 2. Clear Database Tables (WARNING: Deletes all chat history and users)
+# 2. Clear Database Tables (WARNING: Deletes all chat history and uploaded file metadata)
 # Connect to your GDC Database Service instance and run:
-# TRUNCATE users, chats, messages, documents;
+# TRUNCATE chats, messages, files CASCADE;
 
 # 3. Restart Pods (to reset any in-memory state if applicable)
 kubectl delete pod -n <YOUR_NAMESPACE> -l app=backend

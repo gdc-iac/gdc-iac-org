@@ -305,7 +305,7 @@ spec:
 
 ### **Step 2: Deploy Application Tier (Business Logic)**
 
-Prerequisite: Once `DBCluster/tier3-db` is `READY` on `ZONE_KUBECONFIG`, query `.status.primary.url`, extract the server CA from `Secret/dbs-certificates` (`dbs-pg-cert-tier3-db`), initialize the schema/role as `dbsadmin`, and create `Secret/tier3-db-credentials` on the User Cluster (`USER_CLUSTER_KUBECONFIG`).
+Prerequisite: Once `DBCluster/tier3-db` is `READY` on `ZONE_KUBECONFIG`, query `.status.primary.url` (stripping the `:5432` port suffix via `DB_HOST="${DB_URL%:5432}"`), extract the server CA from `Secret/dbs-certificates` (`dbs-pg-cert-tier3-db`), initialize the schema/role as `dbsadmin`, and create `Secret/tier3-db-credentials` on the User Cluster (`USER_CLUSTER_KUBECONFIG`).
 
 This tier connects to the DB and exposes an internal API only.
 
@@ -346,8 +346,12 @@ spec:
         env:
         - name: DB_HOST
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_USER
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
+        - name: DB_NAME
+          value: "postgres"
 ---
 apiVersion: v1
 kind: Service
@@ -389,7 +393,9 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: harbor.gdc.local/library/nginx:latest
+        image: harbor.gdc.local/my-org/p1-frontend:v1
+        ports:
+        - containerPort: 8080
         env:
         # Points to the internal K8s DNS of the logic tier service
         - name: API_UPSTREAM
@@ -403,7 +409,7 @@ metadata:
 spec:
   type: LoadBalancer
   selector: { app: web }
-  ports: [ { protocol: TCP, port: 80, targetPort: 80 } ]
+  ports: [ { protocol: TCP, port: 80, targetPort: 8080 } ]
 
 ```
 
@@ -998,10 +1004,18 @@ spec:
           serviceAccountName: rag-sa  # Must match Step 1
           containers:
           - name: ingest
-            image: harbor.gdc.local/my-org/rag-ingest:v1
+            image: harbor.gdc.local/my-org/rag-ingest:v7
             env:
             - name: INPUT_BUCKET
               value: "gs://raw-docs"
+            - name: DB_HOST
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: host } }
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: username } }
+            - name: DB_PASS
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: password } }
+            - name: DB_NAME
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: database } }
           restartPolicy: OnFailure
 
 ```
@@ -1057,6 +1071,8 @@ Bash
 
 kubectl create secret generic db-ro-creds \
   --namespace=my-gdc-project \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=database="postgres" \
   --from-literal=username=analyst_ro \
   --from-literal=password='<SECURE_PASSWORD>'
 
@@ -1076,6 +1092,8 @@ metadata:
 type: Opaque
 # Values must be base64 encoded: echo -n 'my-password' | base64
 data:
+  host: cG9zdGdyZXMtZGI=
+  database: cG9zdGdyZXM=
   username: YW5hbHlzdF9ybw==
   password: U2VjdXJlUGFzc3dvcmQ=
 
@@ -1109,6 +1127,10 @@ spec:
       - name: langchain
         image: harbor.gdc.local/my-org/sql-agent-adk:v1
         env:
+        - name: DB_HOST
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: host } }
+        - name: DB_NAME
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: database } }
         - name: DB_USER
           valueFrom: { secretKeyRef: { name: db-ro-creds, key: username } }
         - name: DB_PASS
@@ -1351,7 +1373,7 @@ spec:
 ```
 
 ### **Step 2: Initialize `keycloak` Database & Deploy Keycloak**
-*(Query `.status.primary.url` and `Secret/dbs-certificates` on `ZONE_KUBECONFIG`, connect as `dbsadmin` to run `CREATE DATABASE keycloak;` and create the `keycloak` role, and populate `Secret/keycloak-db-credentials` on `USER_CLUSTER_KUBECONFIG` prior to rollout)*
+*(Query `.status.primary.url` and strip its `:5432` port suffix via `DB_HOST="${DB_URL%:5432}"`, extract `Secret/dbs-certificates` on `ZONE_KUBECONFIG`, connect as `dbsadmin` to run `CREATE DATABASE keycloak;` and create the `keycloak` role, and populate `Secret/keycloak-db-credentials` on `USER_CLUSTER_KUBECONFIG` prior to rollout)*
 
 ```bash
 helm upgrade --install keycloak oci://harbor.gdc.local/charts/keycloak \

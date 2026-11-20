@@ -170,9 +170,10 @@ By default, Pattern 6 includes lightweight mock headers (`X-User-ID`, `X-User-Ro
 3. **Identity Header Extraction**: Pass extracted claims (`sub` as `X-User-ID` and `realm_access.roles` as `X-User-Role`) to `query-service`.
 4. **Document Access Isolation**: `query-service` filters PostgreSQL vector queries using the authenticated user identity:
    ```sql
-   SELECT content, filename FROM documents 
-   WHERE (owner_id = %s OR source_path LIKE 'shared/%%') 
-   ORDER BY embedding <=> %s::vector LIMIT 5;
+   SELECT content, filename, 1 - (embedding <=> %s::vector) AS similarity
+   FROM documents
+   WHERE (owner_id IS NULL OR owner_id = %s)
+   ORDER BY similarity DESC LIMIT 5;
    ```
 5. **Full Integration Guide**: Refer to [`docs/keycloak_integration_guide.md`](../operations/keycloak_integration_guide.md) for detailed OIDC proxy configuration.
 
@@ -479,9 +480,10 @@ export APP_DB_PASSWORD="<strong-rag-db-password>"
 
 PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
   psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
--- Must be executed as dbsadmin (cloudsqlsuperuser)
+-- 1. Must be executed as dbsadmin (cloudsqlsuperuser)
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- 2. Create dedicated least-privilege application role
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rag_app') THEN
@@ -490,27 +492,50 @@ BEGIN
 END
 \$\$;
 
-CREATE TABLE IF NOT EXISTS document_embeddings (
+-- 3. Create RAG application tables matching ingestion/app.py and query-service/app.py
+CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
-    document_name VARCHAR(255),
-    chunk_index INT,
-    text_content TEXT,
-    embedding vector(768)  -- Sized for standard text-embedding-004
+    filename TEXT UNIQUE,
+    content TEXT,
+    embedding vector(768),  -- Sized for standard text-embedding-004
+    owner_id TEXT DEFAULT NULL,
+    source_path TEXT
 );
 
-CREATE INDEX IF NOT EXISTS document_embedding_cosine_idx 
-ON document_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX IF NOT EXISTS documents_embedding_cosine_idx
+ON documents USING hnsw (embedding vector_cosine_ops);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_embeddings TO rag_app;
-GRANT USAGE, SELECT ON SEQUENCE document_embeddings_id_seq TO rag_app;
+CREATE TABLE IF NOT EXISTS chats (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Grant PostgreSQL 15 schema, table, and sequence privileges to rag_app
+GRANT CONNECT ON DATABASE postgres TO rag_app;
+GRANT USAGE, CREATE ON SCHEMA public TO rag_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents, chats, messages TO rag_app;
+GRANT USAGE, SELECT, UPDATE ON SEQUENCE documents_id_seq, chats_id_seq, messages_id_seq TO rag_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO rag_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO rag_app;
 SQL
 
-# 3. Create rag-db-credentials and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
+# 3. Create rag-db-credentials (including server TLS CA) on the User Cluster (USER_CLUSTER_KUBECONFIG)
 kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-credentials \
   --from-literal=host="${DB_HOST}" \
   --from-literal=username="rag_app" \
   --from-literal=password="${APP_DB_PASSWORD}" \
-  --from-literal=database="postgres" \
+  --from-literal=db_name="postgres" \
+  --from-file=ca.crt=./ca.crt \
   -n my-gdc-project
 
 kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic rag-db-ca \
@@ -661,7 +686,7 @@ kubectl run p6-verify --rm -i --restart=Never -n my-gdc-project \
   --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
   --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
-    curl -s -X POST http://query-service/ask -d "{\"question\": \"Summarize the contents of the test document.\"}" -H "Content-Type: application/json" && \
+    curl -s -X POST http://query-service/query -d "{\"query\": \"Summarize the contents of the test document.\"}" -H "Content-Type: application/json" && \
     echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 6 Resilient RAG Agent verified!" && \
@@ -686,7 +711,7 @@ export QUERY_IP=$(kubectl get service query-service -n my-gdc-project -o jsonpat
 
 curl -X POST http://${QUERY_IP}/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "Summarize the contents of the test document."}'
+  -d '{"query": "Summarize the contents of the test document."}'
 ```
 Ensure the model successfully returns an accurate answer based on the document text.
 

@@ -1386,50 +1386,6 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
 }
 EOF
 
-cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/gdc/resources.yaml
-{{- if .Values.gdc.enabled }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-pw-${APP_NAME}-db
-  namespace: {{ include "${APP_NAME}.namespace" . }}
-type: Opaque
-data:
-  ${APP_NAME}-db: {{ (.Values.gdc.db).base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
----
-apiVersion: postgresql.dbadmin.gdc.goog/v1
-kind: DBCluster
-metadata:
-  name: ${APP_NAME}-db
-  namespace: {{ include "${APP_NAME}.namespace" . }}
-spec:
-  availability:
-    enableHighAvailability: true
-    enableAutoFailover: true
-  primarySpec:
-    adminUser:
-      passwordRef:
-        name: db-pw-${APP_NAME}-db
-    version: {{ .Values.gdc.dbVersion | default "15" | quote }}
-    resources:
-      cpu: {{ .Values.gdc.dbCpu | default 2 }}
-      memory: {{ .Values.gdc.dbMemory | default "8Gi" }}
-      disks:
-      - name: DataDisk
-        size: {{ .Values.gdc.dbDiskSize | default "50Gi" }}
----
-apiVersion: object.gdc.goog/v1
-kind: Bucket
-metadata:
-  name: {{ .Values.apps.bucketName | quote }}
-  namespace: {{ include "${APP_NAME}.namespace" . }}
-spec:
-  description: "Sovereign Mission Attachment Storage"
-  location: {{ .Values.gdc.location | default "zone1" | quote }}
-  storageClass: Standard
-{{- end }}
-EOF
-
 cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/apps/workloads.yaml
 {{- if .Values.apps.enabled }}
 {{- if .Values.apps.createServiceAccount }}
@@ -1703,6 +1659,92 @@ spec:
   - {}
   egress:
   - {}
+{{- end }}
+EOF
+
+cat <<EOF > ~/GitHub/${APP_NAME}/manifests/gdc/resources.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-${APP_NAME}-db
+  namespace: ${NAMESPACE}
+type: Opaque
+data:
+  ${APP_NAME}-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: ${APP_NAME}-db
+  namespace: ${NAMESPACE}
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-${APP_NAME}-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+      - name: DataDisk
+        size: 50Gi
+---
+apiVersion: object.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: ${APP_NAME}-bucket
+  namespace: ${NAMESPACE}
+spec:
+  description: "Sovereign Mission Attachment Storage"
+  location: "zone1"
+  storageClass: Standard
+EOF
+
+cat <<EOF > ~/GitHub/${APP_NAME}/chart/templates/gdc/resources.yaml
+{{- if .Values.gdc.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-${APP_NAME}-db
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+type: Opaque
+data:
+  ${APP_NAME}-db: {{ (.Values.gdc.db).base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: ${APP_NAME}-db
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-${APP_NAME}-db
+    version: {{ .Values.gdc.dbVersion | default "15" | quote }}
+    resources:
+      cpu: {{ .Values.gdc.dbCpu | default 2 }}
+      memory: {{ .Values.gdc.dbMemory | default "8Gi" }}
+      disks:
+      - name: DataDisk
+        size: {{ .Values.gdc.dbDiskSize | default "50Gi" }}
+---
+apiVersion: object.gdc.goog/v1
+kind: Bucket
+metadata:
+  name: {{ .Values.apps.bucketName | quote }}
+  namespace: {{ include "${APP_NAME}.namespace" . }}
+spec:
+  description: "Sovereign Mission Attachment Storage"
+  location: {{ .Values.gdc.location | default "zone1" | quote }}
+  storageClass: Standard
 {{- end }}
 EOF
 

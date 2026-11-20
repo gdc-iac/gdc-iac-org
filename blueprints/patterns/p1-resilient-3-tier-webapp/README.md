@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 ```
 
+> **Note (PostgreSQL 15 Schema Privileges):** If you create a dedicated least-privilege application role (instead of connecting as `dbsadmin`), PostgreSQL 15 revokes default `CREATE` privileges on schema `public` from `PUBLIC`. Because the backend executes `CREATE TABLE IF NOT EXISTS todos` at startup, grant `GRANT USAGE, CREATE ON SCHEMA public TO <app_role>;` in addition to `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE todos TO <app_role>;` and `GRANT USAGE, SELECT ON SEQUENCE todos_id_seq TO <app_role>;`.
+
 ### Step 3: Deploy Application Tier (Business Logic)
 
 *Prerequisite: Database must be READY so the secret `tier3-db-credentials` exists.*

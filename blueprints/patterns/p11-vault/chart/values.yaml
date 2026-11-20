@@ -63,6 +63,8 @@ vault:
     limits:
       cpu: "4"
       memory: "16Gi"
+  extraVolumes: []
+  extraVolumeMounts: []
   kms:
     region: "zone1"
     keyName: "vault-unseal-key"

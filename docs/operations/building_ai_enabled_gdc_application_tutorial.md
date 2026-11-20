@@ -1301,7 +1301,8 @@ registry: ""
 gdc:
   enabled: false
   location: "zone1"
-  dbAdminPasswordB64: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+  db:
+    base64EncodedPassword: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
   dbVersion: "15"
   dbCpu: 2
   dbMemory: "8Gi"
@@ -1353,7 +1354,12 @@ cat << 'EOF' > ~/GitHub/${APP_NAME}/chart/values.schema.json
       "properties": {
         "enabled": { "type": "boolean" },
         "location": { "type": "string" },
-        "dbAdminPasswordB64": { "type": "string" },
+        "db": {
+          "type": "object",
+          "properties": {
+            "base64EncodedPassword": { "type": "string" }
+          }
+        },
         "dbVersion": { "type": "string" },
         "dbCpu": { "type": "integer" },
         "dbMemory": { "type": "string" },
@@ -1707,7 +1713,7 @@ metadata:
   namespace: {{ include "${APP_NAME}.namespace" . }}
 type: Opaque
 data:
-  ${APP_NAME}-db: {{ .Values.gdc.dbAdminPasswordB64 | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
+  ${APP_NAME}-db: {{ (.Values.gdc.db).base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster

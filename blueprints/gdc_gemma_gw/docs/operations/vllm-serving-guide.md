@@ -84,12 +84,18 @@ Deploying the full **Gemma 4 Dedicated Inference Gateway** stack in production G
   ```
 * **Database Schema Application (Manual)**: Because standard application workloads lack extension installation privileges inside GDC, the database operator must manually initialize the schema as `dbsadmin` before deploying the client application.
   
-  1. Retrieve the primary endpoint (`.status.primary.url`) and TLS CA certificate (`Secret/dbs-certificates`) from `ZONE_KUBECONFIG`, then connect to your `DBCluster` instance as `dbsadmin` via `psql`:
+  1. Retrieve the primary endpoint (`.status.primary.url`, stripping its `:5432` port suffix) and TLS CA certificate (`Secret/dbs-certificates`) from `ZONE_KUBECONFIG`, then connect to your `DBCluster` instance as `dbsadmin` via `psql` and create `Secret/gemma-client-db-credentials` on the User Cluster:
      ```bash
-     DB_HOST=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbclusters.postgresql.dbadmin.gdc.goog gemma-client-db \
+     DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gemma-client-db \
        -n <your-project-id> -o jsonpath='{.status.primary.url}')
+     DB_HOST="${DB_URL%:5432}"
      kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
        -n <your-project-id> -o jsonpath="{.data['dbs-pg-cert-gemma-client-db']}" | base64 -d > gemma-client-db-ca.crt
+
+     kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemma-client-db-credentials \
+       --namespace=<your-project-id> \
+       --from-file=ca.crt=./gemma-client-db-ca.crt \
+       --from-literal=connection_string="postgresql://dbsadmin:<DBSADMIN_PASSWORD>@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/db-tls/ca.crt"
 
      PGPASSWORD="<DBSADMIN_PASSWORD>" PGSSLMODE=verify-ca PGSSLROOTCERT=./gemma-client-db-ca.crt \
        psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres
@@ -125,9 +131,9 @@ Deploying the full **Gemma 4 Dedicated Inference Gateway** stack in production G
          is_shared BOOLEAN DEFAULT FALSE
      );
 
-     CREATE INDEX idx_chats_user_id ON chats(user_id);
-     CREATE INDEX idx_messages_chat_id ON messages(chat_id);
-     CREATE INDEX idx_files_user_id ON files(user_id);
+     CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+     CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+     CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
      ```
 
 ### 3. GDC Object Storage Buckets
@@ -144,7 +150,7 @@ Deploying the full **Gemma 4 Dedicated Inference Gateway** stack in production G
 ### 4. Gemma Client Application (Core Gateway Consumer)
 * **Why?** The gateway itself is a middle-tier routing proxy. The user-facing UI and session backend reside inside **`gemma-client/`**, which is a key component of the architecture.
 * **Prerequisites**:
-  - **GDC IAM Permission Bindings**: GDC air-gapped environments do **not** support GCP Workload Identity. Instead, all service accounts are native GKE/GDC accounts. Access control to platform resources is authorized by binding local GDC IAM roles to the application `ServiceAccount` (`gemma-client-sa` or `gemini-gui-sa`).
+  - **GDC IAM Permission Bindings**: GDC air-gapped environments do **not** support GCP Workload Identity. Instead, all service accounts are native GKE/GDC accounts. Access control to platform resources is authorized by binding local GDC IAM roles to the application `ServiceAccount` (`gemma-client-sa`).
     
     **CLI Method (`gdcloud`):**
     ```bash

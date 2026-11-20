@@ -39,3 +39,11 @@ gdc:
 # User Cluster workload execution gate (Stage 5: 5-workload-factory)
 apps:
   enabled: true
+  # Read-only DB credentials Secret on the User Cluster.
+  # Defaults to create: false so Stage 5 GitOps syncs never overwrite operator-created db-ro-creds.
+  dbCredentials:
+    create: false
+    secretName: "db-ro-creds"
+    host: "postgres-db"
+    username: "analyst_ro"
+    password: "CHANGE_ME_RO_PASSWORD"

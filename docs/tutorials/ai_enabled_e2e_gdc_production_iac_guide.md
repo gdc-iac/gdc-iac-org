@@ -256,16 +256,15 @@ prd:
                 registry: "harbor.infra.gdc.local/gdc-iac"
                 deploy_gdc_resources: false
                 deploy_apps: true
+                values_files:
+                  - "../../../blueprints/gdc_gemma_gw/blueprints/vllm-gke/values-gdc.yaml"
                 values:
-                  fullnameOverride: "vllm-26b"
                   model:
-                    id: "google/gemma-4-26b-it"
-                    tier: "26b"
+                    name: "/models/gemma-4-26B-A4B-it-weights"
+                    servedModelName: "gemma4:26b"
                     maxModelLen: 32768
-                    dtype: "bfloat16"
-                  pvc:
-                    useExisting: true
-                    name: "gemma-weights-rwx-pvc"
+                  persistence:
+                    existingClaim: "gemma-weights-rwx-pvc"
                   nodeSelector:
                     pool: "gpu-moe"
 
@@ -277,16 +276,15 @@ prd:
                 registry: "harbor.infra.gdc.local/gdc-iac"
                 deploy_gdc_resources: false
                 deploy_apps: true
+                values_files:
+                  - "../../../blueprints/gdc_gemma_gw/blueprints/vllm-gke/values-gdc.yaml"
                 values:
-                  fullnameOverride: "vllm-31b"
                   model:
-                    id: "google/gemma-4-31b-it"
-                    tier: "31b"
+                    name: "/models/gemma-4-31B-it-weights"
+                    servedModelName: "gemma4:31b"
                     maxModelLen: 32768
-                    dtype: "bfloat16"
-                  pvc:
-                    useExisting: true
-                    name: "gemma-weights-rwx-pvc"
+                  persistence:
+                    existingClaim: "gemma-weights-rwx-pvc"
                   nodeSelector:
                     pool: "gpu-dense"
 
@@ -508,17 +506,15 @@ kubectl logs -n gemma-inference deploy/gemma-gateway --tail=200 | grep -E "Class
 > **Full Demo Script & Copy-Paste Prompts:**  
 > For a complete click-by-click walkthrough with copy-pasteable prompts, sample RAG upload files, and expected UI badges for live demonstrations, see [GUI Functional Walkthrough & Live Demo Playbook](./gui_demo_walkthrough_and_prompts.md).
 
-#### 1. `https://ai-gateway.gdc.local` (or Port `8080` — `🧠 Gemma 4 Gateway Control Plane`)
-* **OIDC Authentication Bar (Top Strip)**: Click **`🔑 Keycloak SSO Login (/auth)`** (`charlie` / `password`) or **`🛡️ One-Click Admin (charlie)`** to sign in (`Role: ADMIN`).
-* **Card 1 — `⚡ Live System Performance & Telemetry`**: Verify live `CPU Load` and `GPU Core Load` gauges, `Tokens Out/Sec`, `Active DB Pools`, and the `VRAM Consumption` progress bar.
-* **Card 2 — `🎛️ Gateway Parameters Override` (True Gateway-Enforced Overrides)**:
-  * All parameters saved in this card (`Temperature`, `Top-P`, `Max Vision Tokens`, and `Model Variant Hot-Swap`) are persisted across Gateway workers in `/tmp/gemma_gateway_state.json` and **unconditionally enforced** on every `/v1/chat/completions` call across `intel.gdc.local`, `intel-ingress.gdc.local`, and `dev.gdc.local` (overriding any client-supplied defaults) and echoed in `X-Gemma-Temperature`, `X-Gemma-Top-P`, and `X-Gemma-Vision-Budget` response headers.
-  * **Interactive Override Check**: Set **`Sampling Temperature`** to `0.2` and **`Model Variant Hot-Swap`** to **`Gemma 4 31B (Dense)`**, click **`Save Gateway Configuration`**, send a simple conversational prompt on `https://intel.gdc.local` (`Tactical Chat` with **`Gemma 4 Gateway (Auto)`** selected), and verify the navbar routing badge updates to **`→ gemma4:31b`**. Then click **`↺ Reset to Auto`** on `https://ai-gateway.gdc.local` to restore **`Gemma 4 Gateway (Auto: 26B MoE → 31B Dense)`** and **`Temperature`** `0.7`.
-* **Card 3 — `🕵️ Active User Session Oversight & Kill-Switch`**: Displays `User ID`, `Client IP`, `Status`, `Last Active`, and the **`Kill Session`** button.
-  > **Note on When Users Appear in `Active User Session Oversight & Kill-Switch`:** Logging into Keycloak on `https://intel.gdc.local` (`alice`) or `https://intel-ingress.gdc.local` (`charlie`) authenticates the browser with the frontend, but `gemma-gateway` records a session in this table **only when that user submits an AI inference request** (`/v1/chat/completions`) via **Tactical Chat**, **All-Source Intel (RAG)**, **Operational Readiness (SQL)**, or the **GDC Dev AI Swarm**.
-* **Card 4 — `👥 User Access Blocklist Management`**: Enter a `User ID` (e.g., `alice`) and click **`Block User`** to test instant `403 Forbidden` revocation, then click **`Unblock`** to restore access.
-
----
+1. **`https://ai-gateway.gdc.local` (or Port `8080` — `🧠 Gemma 4 Gateway Control Plane`)**:
+   * **OIDC Authentication Bar (Top Strip)**: Click **`🔑 Keycloak SSO Login (/auth)`** (`charlie` / `password`) or **`🛡️ One-Click Admin (charlie)`** to sign in (`Role: ADMIN`).
+   * **Card 1 — `⚡ Live System Performance & Telemetry`**: Verify live `CPU Load` and `GPU Core Load` gauges, `Tokens Out/Sec`, `Active DB Pools`, and the `VRAM Consumption` progress bar.
+   * **Card 2 — `🎛️ Gateway Parameters Override` (True Gateway-Enforced Overrides)**:
+     * All parameters saved in this card (`Temperature`, `Top-P`, `Max Vision Tokens`, and `Model Variant Hot-Swap`) are persisted across Gateway workers in `/tmp/gemma_gateway_state.json` and **unconditionally enforced** on every `/v1/chat/completions` call across `intel.gdc.local`, `intel-ingress.gdc.local`, and `dev.gdc.local` (overriding any client-supplied defaults) and echoed in `X-Gemma-Temperature`, `X-Gemma-Top-P`, and `X-Gemma-Vision-Budget` response headers.
+     * **Interactive Override Check**: Set **`Sampling Temperature`** to `0.2` and **`Model Variant Hot-Swap`** to **`Gemma 4 31B (Dense)`**, click **`Save Gateway Configuration`**, send a simple conversational prompt on `https://intel.gdc.local` (`Tactical Chat` with **`Gemma 4 Gateway (Auto)`** selected), and verify the navbar routing badge updates to **`→ gemma4:31b`**. Then click **`↺ Reset to Auto`** on `https://ai-gateway.gdc.local` to restore **`Gemma 4 Gateway (Auto: 26B MoE → 31B Dense)`** and **`Temperature`** `0.7`.
+   * **Card 3 — `🕵️ Active User Session Oversight & Kill-Switch`**: Displays `User ID`, `Client IP`, `Status`, `Last Active`, and the **`Kill Session`** button.
+     > **Note on When Users Appear in `Active User Session Oversight & Kill-Switch`:** Logging into Keycloak on `https://intel.gdc.local` (`alice`) or `https://intel-ingress.gdc.local` (`charlie`) authenticates the browser with the frontend, but `gemma-gateway` records a session in this table **only when that user submits an AI inference request** (`/v1/chat/completions`) via **Tactical Chat**, **All-Source Intel (RAG)**, **Operational Readiness (SQL)**, or the **GDC Dev AI Swarm**.
+   * **Card 4 — `👥 User Access Blocklist Management`**: Enter a `User ID` (e.g., `alice`) and click **`Block User`** to test instant `403 Forbidden` revocation, then click **`Unblock`** to restore access.
 
 #### 2. `https://intel.gdc.local` (Gateway API / Port `8081`) & `https://intel-ingress.gdc.local` (Ingress / Port `8082`) — `Joint Intelligence & Readiness Console` / `Gemma Client`
 * Open `https://intel.gdc.local` (log in via **Sign In with Keycloak SSO** as `alice` / `password`) and `https://intel-ingress.gdc.local` (log in as `charlie` / `password`) to verify identical behavior across **Kubernetes Gateway API** (`HTTPRoute`) and **Kubernetes Ingress**.

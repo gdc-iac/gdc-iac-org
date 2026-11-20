@@ -26,6 +26,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
@@ -47,8 +48,12 @@ spec:
           capabilities:
             drop: ["ALL"]
         env:
+        - name: DB_NAME
+          value: "postgres"
         - name: DB_HOST
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_USER
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
         volumeMounts:

@@ -45,10 +45,20 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: gateway
         image: {{ if $registry }}{{ $registry }}/{{ .Values.apps.imageName | default "gemma-proxy" }}:{{ .Values.apps.imageTag | default "latest" }}{{ else }}gemma-gateway:latest{{ end }}
         imagePullPolicy: {{ .Values.apps.imagePullPolicy | default "IfNotPresent" }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8080
         env:
@@ -100,6 +110,9 @@ spec:
           value: '{"gemma4:26b": "http://ollama-26b:11434", "gemma4:31b": "http://ollama-31b:11434", "*": "http://ollama-26b:11434"}'
           {{- end }}
 
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
         resources:
           requests:
             cpu: 100m
@@ -107,6 +120,9 @@ spec:
           limits:
             cpu: 500m
             memory: 512Mi
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

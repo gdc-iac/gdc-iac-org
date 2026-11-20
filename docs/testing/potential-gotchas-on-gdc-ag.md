@@ -102,10 +102,10 @@ This document outlines common pitfalls and unexpected behaviors encountered when
     ```
 
 ### Managed Service Credentials & Cross-Cluster Projection
-*   **The Issue:** GDC Managed PostgreSQL (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) runs on the Zonal Management Plane (`ZONE_KUBECONFIG`) and does **not** automatically project a `<cluster-name>-credentials` Secret into your User Cluster (`USER_CLUSTER_KUBECONFIG`). Instead, operators provide `Secret/db-pw-<name>` (for `dbsadmin`), discover `.status.primary.url`, extract the server TLS CA from `Secret/dbs-certificates` (`dbs-pg-cert-<name>`), and create the workload `Secret` on the User Cluster with the exact keys expected by the application (`host`, `username`, `password`, `database`, or `connection_string`).
-*   **The Symptom:** `CreateContainerConfigError` (missing User Cluster `Secret`) or `CrashLoopBackOff` with "Authentication failed" / TLS certificate verification errors.
+*   **The Issue:** GDC Managed PostgreSQL (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) runs on the Zonal Management Plane (`ZONE_KUBECONFIG`) and does **not** automatically project a `<cluster-name>-credentials` Secret into your User Cluster (`USER_CLUSTER_KUBECONFIG`). Instead, operators provide `Secret/db-pw-<name>` (for `dbsadmin`), discover `.status.primary.url` (note: `.status.primary.url` includes `:5432`, so strip it via `DB_HOST="${DB_URL%:5432}"`), extract the server TLS CA from `Secret/dbs-certificates` (`dbs-pg-cert-<name>`), and create the workload `Secret` on the User Cluster with the exact keys expected by the application (`host`, `username`, `password`, `database`, `ca.crt`, or `connection_string`).
+*   **The Symptom:** `CreateContainerConfigError` (missing User Cluster `Secret`) or `CrashLoopBackOff` with "Authentication failed" / TLS certificate verification errors / doubled `:5432:5432` port strings.
 *   **The Fix:** 
-    *   Query `.status.primary.url` and `Secret/dbs-certificates` on `ZONE_KUBECONFIG`, initialize your least-privilege application role as `dbsadmin` (`PGSSLMODE=verify-ca`), and create the workload connection `Secret` + CA `Secret` on `USER_CLUSTER_KUBECONFIG`.
+    *   Query `.status.primary.url` (`DB_HOST="${DB_URL%:5432}"`) and `Secret/dbs-certificates` on `ZONE_KUBECONFIG`, initialize your least-privilege application role as `dbsadmin` (`PGSSLMODE=verify-ca`), and create the workload connection `Secret` + CA `Secret` (mounted at a dedicated path like `/etc/db-tls/ca.crt`, never masking `/etc/ssl/certs`) on `USER_CLUSTER_KUBECONFIG`.
     *   Verify the `Secret` keys match the `secretKeyRef` mappings in your `Deployment`.
 *   **What Good Looks Like (`deployment.yaml`):**
     ```yaml

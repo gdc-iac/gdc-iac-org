@@ -26,12 +26,13 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
+        runAsGroup: 101
         fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
       - name: nginx
-        image: test-registry.local/library/nginx:latest
+        image: test-registry.local/p1-frontend:latest
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -41,6 +42,9 @@ spec:
         # Points to the internal K8s DNS of the logic tier service
         - name: API_UPSTREAM
           value: "http://logic-svc.test-project.svc.cluster.local:8080"
+        ports:
+        - containerPort: 8080
+          name: http
         volumeMounts:
         - name: tmp
           mountPath: /tmp
@@ -48,12 +52,16 @@ spec:
           mountPath: /var/cache/nginx
         - name: nginx-run
           mountPath: /var/run
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
       volumes:
       - name: tmp
         emptyDir: {}
       - name: nginx-cache
         emptyDir: {}
       - name: nginx-run
+        emptyDir: {}
+      - name: nginx-conf
         emptyDir: {}
 ---
 apiVersion: v1
@@ -64,4 +72,4 @@ metadata:
 spec:
   type: LoadBalancer
   selector: { app: web }
-  ports: [ { protocol: TCP, port: 80, targetPort: 80 } ]
+  ports: [ { protocol: TCP, port: 80, targetPort: 8080 } ]

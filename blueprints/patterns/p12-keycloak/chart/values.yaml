@@ -39,3 +39,16 @@ gdc:
 # User Cluster workload execution gate (Stage 5: 5-workload-factory)
 apps:
   enabled: true
+
+# Keycloak workload & PostgreSQL connection configuration
+keycloak:
+  db:
+    url: "jdbc:postgresql://keycloak-postgresql:5432/keycloak"
+    username: "postgres"
+    password: "postgres_password"
+    existingSecret: ""
+    urlKey: "jdbc_url"
+    usernameKey: "username"
+    passwordKey: "password"
+  extraVolumes: []
+  extraVolumeMounts: []

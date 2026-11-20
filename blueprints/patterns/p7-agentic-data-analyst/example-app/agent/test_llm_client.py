@@ -32,7 +32,7 @@ try:
 except ImportError:
     sys.modules['requests'] = mock_requests
 
-from app import ask_llm
+from app import ask_llm, init_db, validate_readonly_sql
 
 class TestP7LLMClient(unittest.TestCase):
 
@@ -95,6 +95,45 @@ class TestP7LLMClient(unittest.TestCase):
             headers = mock_post.call_args[1]["headers"]
             self.assertEqual(headers["x-goog-user-project"], "projects/my-workload-project")
             self.assertEqual(headers["Authorization"], "Bearer gdc-test-sts-token")
+
+    @patch('app.get_db_connection')
+    def test_init_db_skips_ddl_when_sales_table_exists(self, mock_get_conn):
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_get_conn.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cur
+        mock_cur.fetchone.side_effect = [('sales',), (5,)]
+
+        init_db()
+
+        executed_sql = [c[0][0] for c in mock_cur.execute.call_args_list]
+        self.assertFalse(any("CREATE TABLE" in s for s in executed_sql))
+        self.assertFalse(any("INSERT INTO sales" in s for s in executed_sql))
+        mock_cur.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    @patch('app.get_db_connection')
+    def test_init_db_creates_and_seeds_sales_when_missing(self, mock_get_conn):
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_get_conn.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cur
+        mock_cur.fetchone.side_effect = [(None,), (0,)]
+
+        init_db()
+
+        executed_sql = [c[0][0] for c in mock_cur.execute.call_args_list]
+        self.assertTrue(any("CREATE TABLE IF NOT EXISTS sales" in s for s in executed_sql))
+        self.assertTrue(any("INSERT INTO sales" in s for s in executed_sql))
+        mock_conn.commit.assert_called_once()
+
+    def test_validate_readonly_sql_allows_select_and_blocks_dml(self):
+        ok, sql = validate_readonly_sql("SELECT SUM(amount) FROM sales;")
+        self.assertTrue(ok)
+        self.assertEqual(sql, "SELECT SUM(amount) FROM sales")
+
+        ok_drop, _ = validate_readonly_sql("DROP TABLE sales;")
+        self.assertFalse(ok_drop)
 
 if __name__ == "__main__":
     unittest.main()

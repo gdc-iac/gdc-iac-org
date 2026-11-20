@@ -18,17 +18,17 @@ import os
 import random
 from kafka import KafkaProducer
 
-KAFKA_BROKER = os.environ.get('KAFKA_BROKER', 'kafka:9092')
-TOPIC = 'orders'
+KAFKA_BROKERS = (os.environ.get('KAFKA_BROKERS') or os.environ.get('KAFKA_BROKER', 'kafka:9092')).split(',')
+TOPIC = os.environ.get('KAFKA_TOPIC', 'events')
 
 def get_producer():
     while True:
         try:
             producer = KafkaProducer(
-                bootstrap_servers=[KAFKA_BROKER],
+                bootstrap_servers=KAFKA_BROKERS,
                 value_serializer=lambda x: json.dumps(x).encode('utf-8')
             )
-            print("Connected to Kafka")
+            print(f"Connected to Kafka brokers: {KAFKA_BROKERS}")
             return producer
         except Exception as e:
             print(f"Waiting for Kafka: {e}")
@@ -38,11 +38,17 @@ if __name__ == "__main__":
     producer = get_producer()
     
     while True:
-        order = {
-            'id': random.randint(1000, 9999),
-            'item': f"Item-{random.randint(1, 100)}",
-            'amount': random.randint(10, 500)
+        seq_id = random.randint(1000, 9999)
+        item_name = f"Item-{random.randint(1, 100)}"
+        amount = random.randint(10, 500)
+        event = {
+            'eventId': f"evt-{seq_id}",
+            'data': f"{item_name} (amount={amount})",
+            'timestamp': int(time.time()),
+            'id': seq_id,
+            'item': item_name,
+            'amount': amount
         }
-        producer.send(TOPIC, value=order)
-        print(f"Sent order: {order}")
+        producer.send(TOPIC, value=event)
+        print(f"Sent event: {event}")
         time.sleep(2)

@@ -30,6 +30,33 @@ tests:
       - isKind:
           of: Deployment
         documentIndex: 0
+      - isKind:
+          of: StatefulSet
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: init-kafka-config
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].image
+          value: harbor.corp.local/blueprints/kafka:3.9.0
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].securityContext.readOnlyRootFilesystem
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].securityContext.runAsNonRoot
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].name
+          value: kafka-config
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].mountPath
+          value: /opt/kafka/config
+        documentIndex: 1
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:

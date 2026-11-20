@@ -44,12 +44,20 @@ def get_auth_token():
         return None
 
 def get_db_connection():
-    return psycopg2.connect(
-        host=os.environ.get('DB_HOST', 'localhost'),
-        database=os.environ.get('DB_NAME', 'rag_db'),
-        user=os.environ.get('DB_USER', 'postgres'),
-        password=os.environ.get('DB_PASS', 'password')
-    )
+    conn_kwargs = {
+        "host": os.environ.get('DB_HOST', 'localhost'),
+        "database": os.environ.get('DB_NAME', 'rag_db'),
+        "user": os.environ.get('DB_USER', 'postgres'),
+        "password": os.environ.get('DB_PASS', 'password'),
+    }
+    ca_path = os.environ.get('DB_SSLROOTCERT', '/etc/db-tls/ca.crt')
+    sslmode = os.environ.get('DB_SSLMODE')
+    if os.path.isfile(ca_path) and os.path.getsize(ca_path) > 0:
+        conn_kwargs["sslmode"] = sslmode or "verify-ca"
+        conn_kwargs["sslrootcert"] = ca_path
+    elif sslmode:
+        conn_kwargs["sslmode"] = sslmode
+    return psycopg2.connect(**conn_kwargs)
 
 def get_embedding(text):
     url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{EMBEDDING_MODEL}:predict"

@@ -165,6 +165,9 @@ BEGIN
 END
 \$\$;
 
+-- PostgreSQL 15+ revokes default CREATE on schema public from PUBLIC
+GRANT USAGE, CREATE ON SCHEMA public TO legacy_app;
+
 CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
     product_id INT NOT NULL,
@@ -319,7 +322,7 @@ To trigger an operator-initiated failover using the `gdcloud` CLI:
 gdcloud database clusters failover legacy-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+#### Option B: GitOps / IaC (`manifests/gdc/infra/failover.yaml` on `ZONE_KUBECONFIG`)
 Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1

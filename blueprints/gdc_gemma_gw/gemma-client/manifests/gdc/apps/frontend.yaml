@@ -30,12 +30,16 @@ spec:
       nodeSelector:
         pool: cpu
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
       - name: frontend
-        image: us-central1-docker.pkg.dev/test-project/blueprint-images/p10-frontend:latest
-        imagePullPolicy: Always
+        image: harbor.gdc.local/gemma-client-frontend:latest
+        imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -43,16 +47,25 @@ spec:
             drop:
             - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
         env:
         - name: VITE_API_URL
           value: "/api"
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        - name: tmp
-          mountPath: /tmp/nginx
-          subPath: nginx
         - name: nginx-cache
           mountPath: /var/cache/nginx
         - name: nginx-run
@@ -75,5 +88,5 @@ spec:
     app: frontend
   ports:
   - port: 80
-    targetPort: 80
-  type: LoadBalancer # Or ClusterIP with Ingress
+    targetPort: 8080
+  type: ClusterIP # Exposed via Gateway API HTTPRoute (gemma-unified-routes)

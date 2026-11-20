@@ -30,6 +30,49 @@ tests:
       - isKind:
           of: Deployment
         documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: DB_USER
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.name
+          value: tier3-db-credentials
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].env[2].valueFrom.secretKeyRef.key
+          value: username
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 101
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.securityContext.runAsGroup
+          value: 101
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 101
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: http://logic-svc.custom-tenant-ns.svc.cluster.local:8080
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].name
+          value: nginx-conf
+        documentIndex: 5
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].mountPath
+          value: /etc/nginx/conf.d
+        documentIndex: 5
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:

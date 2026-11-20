@@ -19,18 +19,18 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: db-pw-gemini-db
+  name: db-pw-gemma-client-db
   namespace: {{ $ns }}
   labels:
     {{- include "gemma-gemma-client.labels" . | nindent 4 }}
 type: Opaque
 data:
-  gemini-db: {{ .Values.gdc.db.base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
+  gemma-client-db: {{ .Values.gdc.db.base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE" | quote }}
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
-  name: gemini-db
+  name: gemma-client-db
   namespace: {{ $ns }}
   labels:
     {{- include "gemma-gemma-client.labels" . | nindent 4 }}
@@ -41,7 +41,7 @@ spec:
   primarySpec:
     adminUser:
       passwordRef:
-        name: db-pw-gemini-db
+        name: db-pw-gemma-client-db
     version: "15"
     resources:
       cpu: 2

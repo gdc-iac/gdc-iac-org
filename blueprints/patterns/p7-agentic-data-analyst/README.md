@@ -154,26 +154,41 @@ Update `host` (set to `DBCluster` `.status.primary.url` stripped of `:5432`) and
 
 ### Step 3: Initialize Database Schema & Read-Only Role
 
-Connect to your GDC Database Service instance as `dbsadmin` (`PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/postgres-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run:
+Connect to your GDC Database Service instance as `dbsadmin` (`PGPASSWORD="${DB_ADMIN_PASSWORD}" PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/postgres-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run:
 
 ```sql
--- 1. Create Table
+-- 1. Create Sales Table (matches sql-agent schema)
 CREATE TABLE IF NOT EXISTS sales (
     id SERIAL PRIMARY KEY,
     date DATE,
     amount DECIMAL
 );
 
--- 2. Seed Data (if empty)
-INSERT INTO sales (date, amount) VALUES 
-('2023-01-01', 100), ('2023-01-02', 150), ('2023-01-03', 200),
-('2023-01-04', 130), ('2023-01-05', 170);
+-- 2. Seed Sample Data (idempotent)
+INSERT INTO sales (date, amount)
+SELECT v.date, v.amount
+FROM (VALUES
+    (DATE '2023-01-01', 100.00),
+    (DATE '2023-01-02', 150.00),
+    (DATE '2023-01-03', 200.00),
+    (DATE '2023-01-04', 130.00),
+    (DATE '2023-01-05', 170.00)
+) AS v(date, amount)
+WHERE NOT EXISTS (SELECT 1 FROM sales);
 
--- 3. Create Read-Only Role for SQL Agent
-CREATE ROLE analyst_ro WITH LOGIN PASSWORD '<SECURE_READONLY_PASSWORD>';
+-- 3. Create Read-Only Role for SQL Agent (PostgreSQL 15 least-privilege grants)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analyst_ro') THEN
+    CREATE ROLE analyst_ro WITH LOGIN PASSWORD '<SECURE_READONLY_PASSWORD>';
+  END IF;
+END
+$$;
+
 GRANT CONNECT ON DATABASE postgres TO analyst_ro;
 GRANT USAGE ON SCHEMA public TO analyst_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO analyst_ro;
 ```
 
 ### Step 4: Deploy Agent

@@ -28,6 +28,10 @@ spec:
         app: frontend
     spec:
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -41,7 +45,19 @@ spec:
             drop:
             - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         volumeMounts:
         - name: tmp
           mountPath: /tmp
@@ -68,5 +84,5 @@ spec:
   ports:
   - protocol: TCP
     port: 80
-    targetPort: 80
+    targetPort: 8080
   type: LoadBalancer

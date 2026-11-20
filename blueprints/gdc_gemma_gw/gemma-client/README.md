@@ -16,7 +16,7 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
               │ (/auth)                   │ (/api)                    │ (/)
               ▼                           ▼                           ▼
          [ Keycloak ]             [ gemma-client Backend ] ◄── [ gemma-client Frontend ]
-                                    (FastAPI, Port 8000)          (React+Vite, Port 80)
+                                    (FastAPI, Port 8000)          (React+Vite, Port 8080)
                                           │
                     ┌─────────────────────┼─────────────────────┐
                     │                     │                     │
@@ -203,31 +203,34 @@ gdcloud database clusters create gemma-client-db \
   --storage-size=50Gi
 
 # 2. Retrieve Primary Endpoint & Server TLS Certificate on ZONE_KUBECONFIG
-DB_HOST=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbclusters.postgresql.dbadmin.gdc.goog gemma-client-db \
+# (.status.primary.url includes ':5432', so strip the port suffix before building DB_HOST)
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gemma-client-db \
   -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
 
 kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
   -n "${PROJECT_ID}" -o jsonpath="{.data['dbs-pg-cert-gemma-client-db']}" | base64 -d > gemma-client-db-ca.crt
 
-# 3. Create Connection Secret on the User Cluster
+# 3. Create Connection Secret (including TLS CA certificate) on the User Cluster
 kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemma-client-db-credentials \
   --namespace="${PROJECT_ID}" \
-  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/ssl/certs/db-ca.crt"
+  --from-file=ca.crt=./gemma-client-db-ca.crt \
+  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/db-tls/ca.crt"
 ```
 
 **Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Replace the placeholder base64 password in `Secret/db-pw-gemini-db` (`data.gemini-db`) and sync `manifests/gdc/db/postgres.yaml` (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) to your Zonal API server (`ZONE_KUBECONFIG`).
+Replace the placeholder base64 password in `Secret/db-pw-gemma-client-db` (`data.gemma-client-db`) and sync `manifests/gdc/db/postgres.yaml` (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) to your Zonal API server (`ZONE_KUBECONFIG`).
 
 ### Step 3: Initialize Database Schema
 
 The application requires a specific database schema to store chat history and file metadata.
 
 **Schema Definition:**
-The schema includes three tables: `chats`, `messages`, and `files`. It also requires the `uuid-ossp` extension. You can find the reference SQL definition in `manifests/gcp/postgres-configmap.yaml`.
+The core chat and file schema includes three tables: `chats`, `messages`, and `files`, and requires the `uuid-ossp` extension. (If also running the Joint Intelligence & Readiness Console tabs, apply `../test-data/seed_readiness_db.sql` or allow the backend's idempotent startup DDL to create `sensor_telemetry`, `military_units`, `equipment_inventory`, `fuel_and_supplies`, `convoy_routes`, and `intelligence_reports`; see `manifests/gcp/postgres-configmap.yaml`).
 
-**For GDC Production (PostgreSQL):**
-You must manually apply the schema to your GDC Database Service instance as the `dbsadmin` user.
+**For GDC Production (PostgreSQL 15):**
+You must manually apply the schema to your GDC Database Service instance as the `dbsadmin` user (and if you create a dedicated least-privilege application role instead of connecting as `dbsadmin`, grant PostgreSQL 15 schema privileges via `GRANT USAGE, CREATE ON SCHEMA public TO <app_role>;`).
 
 1.  Connect to your PostgreSQL instance using `psql` with the extracted TLS CA certificate:
     ```bash
@@ -266,9 +269,9 @@ You must manually apply the schema to your GDC Database Service instance as the 
         is_shared BOOLEAN DEFAULT FALSE
     );
 
-    CREATE INDEX idx_chats_user_id ON chats(user_id);
-    CREATE INDEX idx_messages_chat_id ON messages(chat_id);
-    CREATE INDEX idx_files_user_id ON files(user_id);
+    CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
     ```
 
 ### Step 4: Deploy Application
@@ -339,9 +342,9 @@ If you need to wipe all data and start fresh (e.g., to clear old chat history or
 # Ensure BUCKET_NAME is set
 gcloud storage rm -r ${BUCKET_NAME}/**
 
-# 2. Clear Database Tables (WARNING: Deletes all chat history and users)
+# 2. Clear Database Tables (WARNING: Deletes all chat history and uploaded file metadata)
 # Connect to your GDC Database Service instance and run:
-# TRUNCATE users, chats, messages, documents;
+# TRUNCATE chats, messages, files CASCADE;
 
 # 3. Restart Pods (to reset any in-memory state if applicable)
 # kubectl delete pod -n <YOUR_NAMESPACE> -l app=backend
@@ -363,7 +366,7 @@ GKE regional pools can sometimes encounter dynamic hardware stock exhaustions (N
 **The Registry Synchronization Clash**: If you are forced to shift GKE cluster coordinates (e.g., from `us-central1` to `us-west4`), **you MUST update your Artifact Registry region coordinates symmetrically (`REGISTRY_HOST` variable)**!
 If you fail to do this, your build script will push new dynamic containers to the central repository, but GKE will continue to pull from the old `us-west4` repository, running yesterday's stale baseline layers without OIDC flags!
 *   **The Fix**: Symmetrically map all target regions inside your build environment before building:
-    `export PROJECT_ID="grace-playground"`
+    `export PROJECT_ID="my-gcp-project"`
     `export REGISTRY_HOST="us-west4-docker.pkg.dev/${PROJECT_ID}/gemma-repo"`
     `./gemma-client/scripts/build.sh -p $PROJECT_ID -r $REGISTRY_HOST`
 

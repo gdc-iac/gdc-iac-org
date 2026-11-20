@@ -224,19 +224,34 @@ Workloads can exchange `/var/run/secrets/kubernetes.io/serviceaccount/token` dir
 
 ### Option C: Integrating Vault with GDCag Managed PostgreSQL (`DBCluster` / `database/` Dynamic Secrets Engine)
 
-When configuring Vault's Dynamic Database Secrets Engine (`database/`) or a PostgreSQL backend against a Zonal GDCag Managed PostgreSQL `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`), Vault server pods require `5432/TCP` egress to the Zonal database subnet:
+When configuring Vault's Dynamic Database Secrets Engine (`database/`) or a PostgreSQL backend against a Zonal GDCag Managed PostgreSQL `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`), Vault server pods require `5432/TCP` egress to the Zonal database subnet and the `DBCluster` server TLS CA certificate (`Secret/dbs-certificates` extracted from `ZONE_KUBECONFIG`) mounted for `sslmode=verify-ca`:
 
-* **Standalone Manifest (`manifests/security/network-policy.yaml`)**: Includes egress rule `# 5` allowing `5432/TCP` (`cidr: 0.0.0.0/0` by default; scope `cidr` to your Zonal DB subnet in production).
-* **Helm Wrapper Chart (`chart/`)**: Enable PostgreSQL egress and scope the allowed Zonal DB subnet CIDRs via `vault.networkPolicy.allowPostgresEgress` (defaults to `false`) and `vault.networkPolicy.postgresCidrs`:
+* **Standalone Manifest (`manifests/security/network-policy.yaml`)**: Egress rule `# 5` (`5432/TCP`) is commented out by default (matching `allowPostgresEgress: false` in the Helm chart). Uncomment rule `# 5` and replace `<POSTGRES_SUBNET_CIDR>/32` with your Zonal `DBCluster` VIP/subnet CIDR before applying.
+* **Helm Wrapper Chart (`chart/`)**: Enable PostgreSQL egress via `vault.networkPolicy.allowPostgresEgress=true` with `vault.networkPolicy.postgresCidrs`, and mount your User Cluster TLS CA Secret (`db-tls-ca`) into the Vault server container via `vault.extraVolumes` and `vault.extraVolumeMounts`:
+  ```yaml
+  # values-postgres.yaml
+  vault:
+    extraVolumes:
+      - name: db-tls-ca
+        secret:
+          secretName: db-tls-ca
+    extraVolumeMounts:
+      - name: db-tls-ca
+        mountPath: /vault/userconfig/db-tls-ca
+        readOnly: true
+    networkPolicy:
+      allowPostgresEgress: true
+      postgresCidrs:
+        - "10.200.16.0/24"
+  ```
   ```bash
   GODEBUG=tlsmlkem=0 helm upgrade --install p11-vault ./chart \
     --namespace "${NAMESPACE}" \
+    -f values-postgres.yaml \
     --set global.projectId="${PROJECT_ID}" \
     --set global.namespace="${NAMESPACE}" \
     --set global.registry="${PROJECT_HARBOR}/iac" \
-    --set vault.bridge.kmsEndpoint="https://kms.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}" \
-    --set vault.networkPolicy.allowPostgresEgress=true \
-    --set "vault.networkPolicy.postgresCidrs={10.200.16.0/24}"
+    --set vault.bridge.kmsEndpoint="https://kms.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
   ```
 
 ---

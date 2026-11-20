@@ -30,6 +30,45 @@ tests:
       - isKind:
           of: Deployment
         documentIndex: 0
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.securityContext.runAsUser
+          value: 101
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.securityContext.runAsGroup
+          value: 101
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.securityContext.fsGroup
+          value: 101
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].ports[0].containerPort
+          value: 8080
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.port
+          value: 8080
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.port
+          value: 8080
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+        documentIndex: 1
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8080
+        documentIndex: 1
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:

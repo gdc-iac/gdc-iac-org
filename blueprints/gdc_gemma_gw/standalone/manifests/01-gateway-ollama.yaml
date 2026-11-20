@@ -16,10 +16,20 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: gateway
         image: gemma-gateway:latest 
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8080
         env:
@@ -35,6 +45,11 @@ spec:
           value: "rag-frontend"
         - name: ADMIN_REQUIRE_OIDC
           value: "true"
+        - name: GATEWAY_STATE_FILE
+          value: "/tmp/gemma_gateway_state.json"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
         resources:
           requests:
             cpu: "100m"
@@ -42,6 +57,9 @@ spec:
           limits:
             cpu: "500m"
             memory: "512Mi"
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

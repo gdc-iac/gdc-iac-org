@@ -17,7 +17,7 @@ templates:
   - templates/gdc/resources.yaml
   - templates/gdc/failover.yaml
 tests:
-  - it: should render User Cluster workloads by default with custom namespace and labels
+  - it: should render User Cluster workloads by default without overwriting pre-created db-ro-creds
     set:
       global:
         namespace: custom-tenant-ns
@@ -26,10 +26,51 @@ tests:
     template: templates/apps/workloads.yaml
     asserts:
       - hasDocuments:
-          count: 3
+          count: 2
       - isKind:
           of: Deployment
         documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name
+          value: db-ro-creds
+        documentIndex: 0
+      - isKind:
+          of: Service
+        documentIndex: 1
+  - it: should render db-ro-creds Secret when apps.dbCredentials.create is true
+    set:
+      global:
+        namespace: custom-tenant-ns
+      apps:
+        dbCredentials:
+          create: true
+          secretName: custom-db-ro-creds
+          host: 10.200.0.15
+          username: analyst_ro
+          password: test-ro-password
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name
+          value: custom-db-ro-creds
+        documentIndex: 0
+      - isKind:
+          of: Secret
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: custom-db-ro-creds
+        documentIndex: 2
+      - equal:
+          path: stringData.host
+          value: 10.200.0.15
+        documentIndex: 2
+      - equal:
+          path: stringData.username
+          value: analyst_ro
+        documentIndex: 2
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:

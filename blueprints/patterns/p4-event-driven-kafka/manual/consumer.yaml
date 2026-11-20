@@ -38,9 +38,9 @@ spec:
           capabilities:
             drop: ["ALL"]
         env:
-        # Assumes Helm created a service named 'kafka'
+        # Connects to the headless KRaft Kafka StatefulSet service 'kafka-svc'
         - name: KAFKA_BROKERS
-          value: "kafka.test-project.svc.cluster.local:9092"
+          value: "kafka-svc.test-project.svc.cluster.local:9092"
         - name: DB_CONN
           valueFrom: { secretKeyRef: { name: event-db-credentials, key: connection_string } }
         volumeMounts:

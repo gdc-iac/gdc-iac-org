@@ -80,9 +80,19 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
       volumes:
       - name: tmp
         emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: db-ro-creds
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service
