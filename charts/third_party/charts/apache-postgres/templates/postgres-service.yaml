@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.postgres.name }}
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    app: {{ .Values.postgres.name }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.postgres.port }}
+    targetPort: {{ .Values.postgres.port }}
+    protocol: TCP
+  selector:
+    app: {{ .Values.postgres.name }}

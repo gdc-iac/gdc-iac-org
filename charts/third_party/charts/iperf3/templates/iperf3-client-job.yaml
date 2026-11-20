@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.client.name }}
+  namespace: {{ required "namespace is required" .Values.namespace }}
+  labels:
+    app: {{ .Values.client.name }}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.client.name }}
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: iperf3-client
+        image: "{{ .Values.client.image.repository }}:{{ .Values.client.image.tag }}"
+        imagePullPolicy: {{ .Values.client.image.pullPolicy }}
+        command: ["iperf3"]
+        args:
+          {{- toYaml .Values.client.args | nindent 10 }}
+        resources:
+          {{- toYaml .Values.client.resources | nindent 10 }}
+  backoffLimit: 4
