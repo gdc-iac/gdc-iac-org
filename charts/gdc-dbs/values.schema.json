@@ -2,10 +2,153 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Values schema for gdc-dbs",
   "type": "object",
+  "definitions": {
+    "postgresqlCluster": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "clusterName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createSecret": {
+          "type": "boolean"
+        },
+        "base64EncodedPassword": {
+          "type": "string"
+        },
+        "secretName": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "enum": ["15"]
+        },
+        "cpu": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "memory": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(Mi|Gi|Ti)$"
+        },
+        "dataDiskSize": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(Gi|Ti)$"
+        },
+        "availability": {
+          "type": "object",
+          "properties": {
+            "enableHighAvailability": {
+              "type": "boolean"
+            },
+            "enableAutoFailover": {
+              "type": "boolean"
+            }
+          }
+        },
+        "databaseFlags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "backupPlan": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "backupRetainDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 90
+            },
+            "paused": {
+              "type": "boolean"
+            },
+            "PITREnabled": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  },
   "properties": {
-    "namespace": {},
-    "base64EncodedPassword": {},
-    "postgresql": {},
-    "oracle": {}
+    "global": {
+      "type": "object"
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base64EncodedPassword": {
+      "type": "string"
+    },
+    "postgresql": {
+      "$ref": "#/definitions/postgresqlCluster"
+    },
+    "postgresqlClusters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/postgresqlCluster",
+        "required": ["clusterName"]
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "clusterName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createSecret": {
+          "type": "boolean"
+        },
+        "base64EncodedPassword": {
+          "type": "string"
+        },
+        "secretName": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "cpu": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "memory": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(Mi|Gi|Ti)$"
+        },
+        "dataDiskSize": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(Gi|Ti)$"
+        },
+        "logDiskSize": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(Gi|Ti)$"
+        },
+        "cdbName": {
+          "type": "string"
+        }
+      }
+    }
   }
 }

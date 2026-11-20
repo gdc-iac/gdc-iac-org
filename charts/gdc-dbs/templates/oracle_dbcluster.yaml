@@ -12,29 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- if .Values.oracle.enabled }}
+{{- $ora := .Values.oracle | default dict -}}
+{{- if $ora.enabled }}
+{{- $oraName := required "oracle.clusterName is required" $ora.clusterName }}
+---
 apiVersion: oracle.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
-  name: {{ .Values.oracle.clusterName }}
+  name: {{ $oraName }}
   namespace: {{ .Values.namespace }}
   labels:
-    app.kubernetes.io/name: {{ include "gdch-dbs.name" . }}
+    app.kubernetes.io/name: {{ include "gdc-dbs.name" . }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
 spec:
   primarySpec:
-    version: {{ .Values.oracle.version | quote }}
+    version: {{ ($ora.version | default "19") | quote }}
     adminUser:
       passwordRef:
-        name: db-pw-{{ .Values.oracle.clusterName }}
+        name: {{ $ora.secretName | default (printf "db-pw-%s" $oraName) }}
     resources:
-      cpu: {{ .Values.oracle.cpu }}
-      memory: {{ .Values.oracle.memory }}
+      cpu: {{ $ora.cpu | default 2 }}
+      memory: {{ $ora.memory | default "8Gi" }}
       disks:
-      - name: DataDisk
-        size: {{ .Values.oracle.dataDiskSize }}
-      - name: LogDisk
-        size: {{ .Values.oracle.logDiskSize }}
-    cdbName: {{ .Values.oracle.cdbName }}
+        - name: DataDisk
+          size: {{ $ora.dataDiskSize | default "20Gi" }}
+        - name: LogDisk
+          size: {{ $ora.logDiskSize | default "20Gi" }}
+    cdbName: {{ $ora.cdbName }}
 {{- end }}
-

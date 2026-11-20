@@ -1,26 +1,42 @@
-{{- if .Values.alloydbomni.enabled }}
-AlloyDBOmni DBCluster "{{ .Values.alloydbomni.clusterName }}" is being deployed.
+{{- $ora := .Values.oracle | default dict -}}
+{{- if $ora.enabled }}
+Oracle DBCluster "{{ $ora.clusterName }}" is being deployed.
 
 To check status:
-kubectl get dbcluster.alloydbomni.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.alloydbomni.clusterName }} -w
+kubectl get dbcluster.oracle.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ $ora.clusterName }} -w
+
+CDB Name: {{ $ora.cdbName }}
 {{- end }}
 
-{{- if .Values.oracle.enabled }}
-Oracle DBCluster "{{ .Values.oracle.clusterName }}" is being deployed.
+{{- $pg := .Values.postgresql | default dict -}}
+{{- if $pg.enabled }}
+PostgreSQL DBCluster "{{ $pg.clusterName }}" is being deployed.
 
 To check status:
-kubectl get dbcluster.oracle.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.oracle.clusterName }} -w
-
-CDB Name: {{ .Values.oracle.cdbName }}
-{{- end }}
-
-{{- if .Values.postgresql.enabled }}
-PostgreSQL DBCluster "{{ .Values.postgresql.clusterName }}" is being deployed.
-
-To check status:
-kubectl get dbcluster.postgresql.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ .Values.postgresql.clusterName }} -w
+kubectl get dbcluster.postgresql.dbadmin.gdc.goog -n {{ .Values.namespace }} {{ $pg.clusterName }} -w
 
 Admin user: dbsadmin
-Password Secret: db-pw-{{ .Values.clusterName }} is expected.
+Password Secret: {{ $pg.secretName | default (printf "db-pw-%s" $pg.clusterName) }}
+{{- if ($pg.backupPlan | default dict).enabled }}
+BackupPlan: {{ ($pg.backupPlan).name | default (printf "%s-backup-plan" $pg.clusterName) }}
+{{- end }}
 {{- end }}
 
+{{- range $cluster := (.Values.postgresqlClusters | default list) }}
+{{- $cEnabled := true -}}
+{{- if hasKey $cluster "enabled" -}}
+  {{- $cEnabled = $cluster.enabled -}}
+{{- end -}}
+{{- if $cEnabled }}
+PostgreSQL DBCluster "{{ $cluster.clusterName }}" is being deployed.
+
+To check status:
+kubectl get dbcluster.postgresql.dbadmin.gdc.goog -n {{ $.Values.namespace }} {{ $cluster.clusterName }} -w
+
+Admin user: dbsadmin
+Password Secret: {{ $cluster.secretName | default (printf "db-pw-%s" $cluster.clusterName) }}
+{{- if ($cluster.backupPlan | default dict).enabled }}
+BackupPlan: {{ ($cluster.backupPlan).name | default (printf "%s-backup-plan" $cluster.clusterName) }}
+{{- end }}
+{{- end }}
+{{- end }}

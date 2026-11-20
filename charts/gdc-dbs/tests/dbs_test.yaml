@@ -1,0 +1,241 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+suite: gdc-dbs chart unit tests
+templates:
+  - templates/secret.yaml
+  - templates/postgresql_dbcluster.yaml
+  - templates/postgresql_backupplan.yaml
+  - templates/oracle_dbcluster.yaml
+tests:
+  - it: should not render any resources by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render PostgreSQL Secret using top-level base64EncodedPassword fallback and gdc-dbs label
+    set:
+      namespace: iac-root
+      base64EncodedPassword: "dGVzdC1wYXNzd29yZA=="
+      postgresql:
+        enabled: true
+        clusterName: gitlab-db
+    template: templates/secret.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.name
+          value: db-pw-gitlab-db
+      - equal:
+          path: metadata.namespace
+          value: iac-root
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: gdc-dbs
+      - equal:
+          path: data.gitlab-db
+          value: "dGVzdC1wYXNzd29yZA=="
+
+  - it: should render PostgreSQL 15 DBCluster with Zonal HA, auto-failover, 2 vCPU, 8Gi RAM, and 50Gi DataDisk by default
+    set:
+      namespace: iac-root
+      base64EncodedPassword: "dGVzdC1wYXNzd29yZA=="
+      postgresql:
+        enabled: true
+        clusterName: gitlab-db
+    template: templates/postgresql_dbcluster.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: apiVersion
+          value: postgresql.dbadmin.gdc.goog/v1
+      - equal:
+          path: kind
+          value: DBCluster
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: gdc-dbs
+      - equal:
+          path: spec.availability.enableHighAvailability
+          value: true
+      - equal:
+          path: spec.availability.enableAutoFailover
+          value: true
+      - equal:
+          path: spec.primarySpec.version
+          value: "15"
+      - equal:
+          path: spec.primarySpec.adminUser.passwordRef.name
+          value: db-pw-gitlab-db
+      - equal:
+          path: spec.primarySpec.resources.cpu
+          value: 2
+      - equal:
+          path: spec.primarySpec.resources.memory
+          value: 8Gi
+      - equal:
+          path: spec.primarySpec.resources.disks[0].name
+          value: DataDisk
+      - equal:
+          path: spec.primarySpec.resources.disks[0].size
+          value: 50Gi
+
+  - it: should honor explicit false availability flags and databaseFlags on PostgreSQL DBCluster
+    set:
+      namespace: iac-root
+      postgresql:
+        enabled: true
+        clusterName: gitlab-db
+        base64EncodedPassword: "cGctcGFzcw=="
+        availability:
+          enableHighAvailability: false
+          enableAutoFailover: false
+        databaseFlags:
+          max_connections: "200"
+    template: templates/postgresql_dbcluster.yaml
+    asserts:
+      - equal:
+          path: spec.availability.enableHighAvailability
+          value: false
+      - equal:
+          path: spec.availability.enableAutoFailover
+          value: false
+      - equal:
+          path: spec.primarySpec.databaseFlags.max_connections
+          value: "200"
+
+  - it: should render PostgreSQL BackupPlan when backupPlan.enabled is true
+    set:
+      namespace: iac-root
+      postgresql:
+        enabled: true
+        clusterName: gitlab-db
+        base64EncodedPassword: "cGctcGFzcw=="
+        backupPlan:
+          enabled: true
+          backupRetainDays: 30
+          paused: false
+          PITREnabled: true
+    template: templates/postgresql_backupplan.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: apiVersion
+          value: postgresql.dbadmin.gdc.goog/v1
+      - equal:
+          path: kind
+          value: BackupPlan
+      - equal:
+          path: metadata.name
+          value: gitlab-db-backup-plan
+      - equal:
+          path: spec.dbclusterRef
+          value: gitlab-db
+      - equal:
+          path: spec.backupRetainDays
+          value: 30
+      - equal:
+          path: spec.PITREnabled
+          value: true
+
+  - it: should skip Secret creation when postgresql.createSecret is false
+    set:
+      namespace: iac-root
+      postgresql:
+        enabled: true
+        clusterName: gitlab-db
+        createSecret: false
+    template: templates/secret.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should fail when postgresql is enabled with createSecret true and no password is set
+    set:
+      postgresql:
+        enabled: true
+        clusterName: gitlab-db
+    template: templates/secret.yaml
+    asserts:
+      - failedTemplate:
+          errorPattern: "base64EncodedPassword"
+
+  - it: should render multiple PostgreSQL DBClusters via postgresqlClusters
+    set:
+      namespace: iac-root
+      base64EncodedPassword: "c2hhcmVkLXBhc3M="
+      postgresqlClusters:
+        - clusterName: gitlab-db
+          cpu: 4
+          memory: 16Gi
+          dataDiskSize: 50Gi
+        - clusterName: vault-db
+          createSecret: false
+          cpu: 2
+          memory: 8Gi
+          dataDiskSize: 50Gi
+    template: templates/postgresql_dbcluster.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: gitlab-db
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: vault-db
+        documentIndex: 1
+
+  - it: should render multiple PostgreSQL BackupPlans via postgresqlClusters
+    set:
+      namespace: iac-root
+      postgresqlClusters:
+        - clusterName: gitlab-db
+          createSecret: false
+          backupPlan:
+            enabled: true
+            backupRetainDays: 14
+        - clusterName: vault-db
+          createSecret: false
+          backupPlan:
+            enabled: true
+            backupRetainDays: 30
+    template: templates/postgresql_backupplan.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: spec.dbclusterRef
+          value: vault-db
+        documentIndex: 1
+
+  - it: should render Oracle DBCluster with gdc-dbs label
+    set:
+      namespace: ora-prj
+      oracle:
+        enabled: true
+        clusterName: prod-ora
+        base64EncodedPassword: "b3JhLXBhc3M="
+        cdbName: PRODORACDB
+    template: templates/oracle_dbcluster.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: gdc-dbs

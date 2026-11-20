@@ -12,26 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- if .Values.postgresql.enabled }}
+{{- $pgClusters := list -}}
+{{- $pg := .Values.postgresql | default dict -}}
+{{- if $pg.enabled -}}
+  {{- $pgClusters = append $pgClusters $pg -}}
+{{- end -}}
+{{- range $cluster := (.Values.postgresqlClusters | default list) -}}
+  {{- $cEnabled := true -}}
+  {{- if hasKey $cluster "enabled" -}}
+    {{- $cEnabled = $cluster.enabled -}}
+  {{- end -}}
+  {{- if $cEnabled -}}
+    {{- $pgClusters = append $pgClusters $cluster -}}
+  {{- end -}}
+{{- end -}}
+
+{{- range $item := $pgClusters }}
+{{- $clusterName := required "postgresql.clusterName is required" $item.clusterName -}}
+{{- $avail := $item.availability | default dict -}}
+{{- $enableHA := true -}}
+{{- if hasKey $avail "enableHighAvailability" -}}
+  {{- $enableHA = $avail.enableHighAvailability -}}
+{{- end -}}
+{{- $enableAutoFailover := true -}}
+{{- if hasKey $avail "enableAutoFailover" -}}
+  {{- $enableAutoFailover = $avail.enableAutoFailover -}}
+{{- end }}
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
-  name: {{ .Values.postgresql.clusterName }}
-  namespace: {{ .Values.namespace }}
+  name: {{ $clusterName }}
+  namespace: {{ $.Values.namespace }}
   labels:
-    app.kubernetes.io/name: {{ include "gdch-dbs.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/name: {{ include "gdc-dbs.name" $ }}
+    helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version | replace "+" "_" }}
 spec:
+  availability:
+    enableHighAvailability: {{ $enableHA }}
+    enableAutoFailover: {{ $enableAutoFailover }}
   primarySpec:
-    version: {{ .Values.postgresql.version | quote }}
+    version: {{ ($item.version | default "15") | quote }}
     adminUser:
       passwordRef:
-        name: db-pw-{{ .Values.postgresql.clusterName }}
+        name: {{ $item.secretName | default (printf "db-pw-%s" $clusterName) }}
+    {{- if $item.databaseFlags }}
+    databaseFlags:
+      {{- toYaml $item.databaseFlags | nindent 6 }}
+    {{- end }}
     resources:
-      cpu: {{ .Values.postgresql.cpu }}
-      memory: {{ .Values.postgresql.memory }}
+      cpu: {{ $item.cpu | default 2 }}
+      memory: {{ $item.memory | default "8Gi" }}
       disks:
-      - name: DataDisk
-        size: {{ .Values.postgresql.dataDiskSize }}
+        - name: DataDisk
+          size: {{ $item.dataDiskSize | default "50Gi" }}
 {{- end }}
-

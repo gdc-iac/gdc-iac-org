@@ -13,43 +13,50 @@
 # limitations under the License.
 
 # Common settings
-namespace: my-db-project # Target project namespace
+namespace: my-db-project # Target GDC project namespace on the Zone Management API server
 
-# Base64 encoded administrator password.
-# Generate with: echo -n 'YourSecurePassword' | base64
-# IMPORTANT: Provide this value during helm install using --set, do not store plain secrets in values.yaml
-base64EncodedPassword: "" # Example: "WW91clNlY3VyZVBhc3N3b3Jk"
+# Optional fallback Base64-encoded administrator password (`dbsadmin`).
+# Generate with: echo -n 'YourSecurePassword' | base64 -w0
+# IMPORTANT: Provide via SOPS-encrypted secrets or `--set` at install time; never commit plaintext credentials.
+base64EncodedPassword: ""
 
-# PostgreSQL settings
+# PostgreSQL settings (`postgresql.dbadmin.gdc.goog/v1` DBCluster on AlloyDB Omni runtime)
 postgresql:
   enabled: false
   clusterName: my-pg-cluster
-  version: "14"
+  createSecret: true
+  base64EncodedPassword: "" # Overrides top-level base64EncodedPassword when set
+  # secretName: ""          # Defaults to db-pw-<clusterName>
+  version: "15"
   cpu: 2
-  memory: 4Gi
-  dataDiskSize: 10Gi
-  # secretName: "" # Defaults to <clusterName>-secret
+  memory: 8Gi
+  dataDiskSize: 50Gi
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  databaseFlags: {}
+  backupPlan:
+    enabled: false
+    name: ""                # Defaults to <clusterName>-backup-plan
+    backupRetainDays: 14
+    paused: false
+    PITREnabled: false
 
-# Oracle settings
+# Optional list of additional PostgreSQL DBClusters to provision in the same project release
+# (for example, deploying both `gitlab-db` and `vault-db` via Stage 2 `2-resources`).
+# Each item supports the same fields as `postgresql` above.
+postgresqlClusters: []
+
+# Oracle settings (`oracle.dbadmin.gdc.goog/v1` DBCluster)
 oracle:
   enabled: false
   clusterName: my-ora-cluster
+  createSecret: true
+  base64EncodedPassword: "" # Overrides top-level base64EncodedPassword when set
+  # secretName: ""          # Defaults to db-pw-<clusterName>
   version: "19"
   cpu: 2
   memory: 8Gi
   dataDiskSize: 20Gi
   logDiskSize: 20Gi
   cdbName: MYORACDB
-  # secretName: "" # Defaults to <clusterName>-secret
-
-# AlloyOmni settings
-alloydbomni:
-  enabled: false
-  clusterName: my-alloydbomni-cluster
-  version: "19"
-  cpu: 2
-  memory: 8Gi
-  dataDiskSize: 20Gi
-  logDiskSize: 20Gi
-  cdbName: MYORACDB
-  # secretName: "" # Defaults to <clusterName>-secret
