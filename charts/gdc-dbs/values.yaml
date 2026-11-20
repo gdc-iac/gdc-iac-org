@@ -34,6 +34,7 @@ postgresql:
   availability:
     enableHighAvailability: true
     enableAutoFailover: true
+  isDeleted: false          # Set true before deleting/uninstalling DBCluster (GDCag deletion protection)
   parameters: {}            # Optional key-value PostgreSQL engine parameters (spec.primarySpec.parameters)
   backupPlan:
     enabled: false

@@ -84,6 +84,7 @@ The chart is configured through `values.yaml` or `--set` / `-f` flags during `he
 | `postgresql.dataDiskSize` | Primary `DataDisk` size. | `50Gi` |
 | `postgresql.availability.enableHighAvailability` | Deploy Zonal HA standby replica. | `true` |
 | `postgresql.availability.enableAutoFailover` | Enable automatic failover (`GDCag v1.15.1+`). | `true` |
+| `postgresql.isDeleted` | Mark `spec.isDeleted: true` prior to deleting or uninstalling a PostgreSQL `DBCluster` (`vdbcluster` deletion protection). | `false` |
 | `postgresql.parameters` | Optional key-value PostgreSQL engine parameters (`spec.primarySpec.parameters`, for example `max_connections: "200"`). | `{}` |
 | `postgresql.backupPlan.enabled` | Deploy a `postgresql.dbadmin.gdc.goog/v1` `BackupPlan` targeting `clusterName`. | `false` |
 | `postgresql.backupPlan.name` | Custom `BackupPlan` resource name (defaults to `<clusterName>-backup-plan`). | `""` |
@@ -151,7 +152,10 @@ Once `.status.phase` reaches `DBClusterReady`, retrieve the database endpoint (`
 
 ## Uninstallation
 
+GDCag enforces deletion protection on PostgreSQL `DBCluster` resources (`vdbcluster.postgresql.dbadmin.gdc.goog` denies `DELETE` while `spec.isDeleted` is `false`). Set `isDeleted=true` first, then uninstall the Helm release:
+
 ```bash
+helm upgrade <release-name> . --namespace <namespace> --reuse-values --set postgresql.isDeleted=true
 helm uninstall <release-name> --namespace <namespace>
 ```
 

@@ -49,6 +49,9 @@
             }
           }
         },
+        "isDeleted": {
+          "type": "boolean"
+        },
         "parameters": {
           "type": "object",
           "additionalProperties": {

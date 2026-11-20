@@ -38,6 +38,10 @@
 {{- if hasKey $avail "enableAutoFailover" -}}
   {{- $enableAutoFailover = $avail.enableAutoFailover -}}
 {{- end }}
+{{- $isDeleted := false -}}
+{{- if hasKey $item "isDeleted" -}}
+  {{- $isDeleted = $item.isDeleted -}}
+{{- end }}
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
@@ -48,6 +52,7 @@ metadata:
     app.kubernetes.io/name: {{ include "gdc-dbs.name" $ }}
     helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version | replace "+" "_" }}
 spec:
+  isDeleted: {{ $isDeleted }}
   availability:
     enableHighAvailability: {{ $enableHA }}
     enableAutoFailover: {{ $enableAutoFailover }}

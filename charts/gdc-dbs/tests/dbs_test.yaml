@@ -103,12 +103,16 @@ tests:
         availability:
           enableHighAvailability: false
           enableAutoFailover: false
+        isDeleted: true
         parameters:
           max_connections: 200
         databaseFlags:
           shared_buffers: "2GB"
     template: templates/postgresql_dbcluster.yaml
     asserts:
+      - equal:
+          path: spec.isDeleted
+          value: true
       - equal:
           path: spec.availability.enableHighAvailability
           value: false
