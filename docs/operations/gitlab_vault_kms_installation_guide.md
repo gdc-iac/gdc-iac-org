@@ -145,7 +145,7 @@ This operational guide provides end-to-end instructions for deploying **GitLab 1
 | **Project Managed Harbor Registry** | `harbor001-iac-root.org-12345.zone1.google.gdch.test` |
 | **Default Block StorageClass** | `standard-rwo` (`csi.kubevirt.io`, `ReadWriteOnce`, `allowVolumeExpansion: true`) |
 | **GitLab Managed PostgreSQL (`DBCluster`)** | `gitlab-db` (`postgresql.dbadmin.gdc.goog/v1`, PostgreSQL `"15"`, Zonal HA + Auto-Failover, `4 CPU / 16Gi / 50Gi DataDisk` + daily `BackupPlan`; GitLab `17.11` supports PG `14–16`, whereas GitLab `18.0+` requires PG `16+`) |
-| **Zonal DBS Backup Repository** | `BackupRepository/dbs-backup-repository` (Zone Management API, prerequisite for `BackupPlan`) |
+| **Zonal DBS Backup Repository** | `BackupRepository/org-12345-backup-repository` (Zone Management API `backuprepositories.backup.gdc.goog`, referenced on `BackupPlan` via `fleet.dbadmin.goog/backup-repository`) |
 | **GitLab FQDN & LoadBalancer IP** | `https://gitlab.org-12345.zone1.google.gdch.test` (`10.136.68.48`) |
 | **Vault Internal Service URL** | `http://vault.vault.svc.cluster.local:8200` |
 
@@ -339,7 +339,7 @@ GODEBUG=tlsmlkem=0 helm push "${WORK_DIR}/charts/gitlab-8.11.7.tgz" \
 
 ### 4.1 Step 1: Create `ProjectServiceAccount`, Bind KMS & Database IAM Roles (`global-api.kubeconfig`) & Verify DBS Backup Repository
 
-Grant `kms-admin`, `kms-developer`, `kms-viewer`, and **`project-db-admin`** (required to provision `postgresql.dbadmin.gdc.goog/v1` `DBCluster` and `BackupPlan` resources) in project `iac-root` to `iac001-sa`, create a dedicated `vault-kms-sa` `ProjectServiceAccount` with `kms-developer` and `kms-viewer` privileges for Vault auto-unseal, and verify that the Zonal Database Service `BackupRepository` (`dbs-backup-repository`) is ready:
+Grant `kms-admin`, `kms-developer`, `kms-viewer`, and **`project-db-admin`** (required to provision `postgresql.dbadmin.gdc.goog/v1` `DBCluster` and `BackupPlan` resources) in project `iac-root` to `iac001-sa`, create a dedicated `vault-kms-sa` `ProjectServiceAccount` with `kms-developer` and `kms-viewer` privileges for Vault auto-unseal, and discover the organization's Zonal Database Service `BackupRepository` (`backuprepositories.backup.gdc.goog`):
 
 ```bash
 # 1. Create KMS and Database Service IAMRoleBindings for iac001-sa on the Global API server
@@ -413,9 +413,11 @@ spec:
     namespace: iac-root
 EOF
 
-# 2. Pre-flight check: verify Zonal DBS BackupRepository is Ready before creating BackupPlans
-kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepository dbs-backup-repository || \
-  echo "WARNING: dbs-backup-repository not found on ZONE_KUBECONFIG; ask Infrastructure Operator to configure DBS backup storage before applying BackupPlan resources."
+# 2. Pre-flight check: discover the Zonal DBS BackupRepository name (required for BackupPlan annotation to avoid DBSE0062)
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog
+export BACKUP_REPO="${BACKUP_REPO:-org-12345-backup-repository}"
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog "${BACKUP_REPO}" || \
+  echo "WARNING: BackupRepository ${BACKUP_REPO} not found on ZONE_KUBECONFIG; set BACKUP_REPO from the list above or ask the Infrastructure Operator to configure DBS backup storage before applying BackupPlan resources."
 
 # 3. Create the dedicated vault-kms-sa ProjectServiceAccount and export its credentials JSON
 gdcloud iam service-accounts create vault-kms-sa --project=iac-root || true
@@ -1354,8 +1356,9 @@ Use **Option B (`storage "postgresql"`)** when platform governance mandates stor
 ```bash
 export VAULT_DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
 export VAULT_DB_ADMIN_B64=$(printf '%s' "${VAULT_DB_ADMIN_PASSWORD}" | base64 -w0)
+export BACKUP_REPO="${BACKUP_REPO:-org-12345-backup-repository}"
 
-# 1. Provision Secret/db-pw-vault-db (key MUST match DBCluster name 'vault-db') and DBCluster on ZONE_KUBECONFIG
+# 1. Provision Secret/db-pw-vault-db (Secret name MUST be 'db-pw-vault-db' and data key MUST match 'vault-db') and DBCluster on ZONE_KUBECONFIG
 cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
 apiVersion: v1
 kind: Secret
@@ -1388,14 +1391,16 @@ spec:
           size: 50Gi
 EOF
 
-# Optional: Attach automated daily BackupPlan if BackupRepository/dbs-backup-repository is Ready
-if kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepository dbs-backup-repository >/dev/null 2>&1; then
-  cat <<'EOF' | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
+# Optional: Attach automated daily BackupPlan (annotate with BACKUP_REPO from Section 4.1 to avoid DBSE0062)
+if kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog "${BACKUP_REPO}" >/dev/null 2>&1; then
+  cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: BackupPlan
 metadata:
   name: vault-db-backup
   namespace: iac-root
+  annotations:
+    fleet.dbadmin.goog/backup-repository: "${BACKUP_REPO}"
 spec:
   dbclusterRef: vault-db
   backupRetainDays: 14
@@ -1404,8 +1409,8 @@ spec:
 EOF
 fi
 
-# 2. Wait for DBCluster/vault-db readiness, strip ':5432' from primary URL, and export TLS Root CA
-kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=condition=Ready \
+# 2. Wait for DBCluster/vault-db .status.phase=DBClusterReady, strip ':5432' from primary URL, and export TLS Root CA
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady \
   dbcluster.postgresql.dbadmin.gdc.goog/vault-db -n iac-root --timeout=20m
 
 VAULT_DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog vault-db \
@@ -1429,6 +1434,7 @@ PGPASSWORD="${VAULT_DB_ADMIN_PASSWORD}" PGSSLMODE=verify-full PGSSLROOTCERT="${W
   psql -h "${VAULT_DB_HOST}" -p 5432 -U dbsadmin -d postgres -v vault_pw="${VAULT_DB_PASSWORD}" <<'SQL'
 SELECT format('CREATE ROLE vault WITH LOGIN PASSWORD %L', :'vault_pw')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'vault') \gexec
+ALTER ROLE vault WITH PASSWORD :'vault_pw';
 GRANT vault TO dbsadmin;
 SELECT 'CREATE DATABASE vault OWNER vault'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'vault') \gexec
@@ -1551,15 +1557,16 @@ Install with both files layered (`-f vault-values.yaml -f vault-values-pg.yaml`)
 1. **Explicit System Harbor Image Paths**: User cluster nodes (`vm-9eeae553`) do not have containerd mirror rules for `gcr.io/private-cloud-staging/*`. Every GitLab CNG image in `gitlab-values.yaml` must reference `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/...:v1.16.2-iac-1800e51e18` with `imagePullSecrets: [{name: harbor-creds}]`.
 2. **Zonal HA Managed PostgreSQL 15 (`DBCluster/gitlab-db` + `BackupPlan`)**: The upstream Bitnami PostgreSQL subchart in `gitlab-8.11.7` defaults to un-mirrored `docker.io/bitnami/postgresql:14.8.0` (`postgresql.install: false`). For production resilience on GDCag, provision a Zonal HA `postgresql.dbadmin.gdc.goog/v1` `DBCluster` (`gitlab-db`, `version: "15"`, `enableHighAvailability: true`, `enableAutoFailover: true`, `4 CPU / 16Gi / 50Gi DataDisk`) with an automated daily `BackupPlan` on `ZONE_KUBECONFIG`, and run a one-time pre-install bootstrap `Job` reusing `gitlab-toolbox-ee` (`/usr/bin/psql`) as `dbsadmin` (`cloudsqlsuperuser`) to create the `gitlab` role, `gitlabhq_production` database, and required `pg_trgm` and `btree_gist` extensions prior to `helm upgrade --install gitlab`.
    * *PostgreSQL Version Compatibility Note*: GitLab `17.11.7` officially supports PostgreSQL `14`, `15`, and `16`. Because GitLab `18.0+` raises the minimum PostgreSQL version to `16+` while GDCag `postgresql.dbadmin.gdc.goog/v1` currently provisions PostgreSQL `"15"`, keep GitLab pinned to the `17.11.x` release line until GDCag DBS adds PostgreSQL `16+`.
-3. **Why Redis & Gitaly Remain on User Cluster `standard-rwo` PVCs**: GDCag Database Service manages relational PostgreSQL and Oracle engines only (there is no platform-managed Redis service on GDCag), and Gitaly persists raw Git packfiles over gRPC directly on low-latency POSIX block storage (`standard-rwo`). With `registry.enabled: false` and single-node `gitaly` (`praefect` disabled), only the single `gitlabhq_production` database is required (shared automatically by GitLab `17.11`'s `main` and `ci` logical Rails connections).
+3. **Why Redis & Gitaly Remain on User Cluster `standard-rwo` PVCs**: GDCag Database Service manages relational PostgreSQL engines only (with Oracle Database Service deprecated on GDCag, and no platform-managed Redis service), and Gitaly persists raw Git packfiles over gRPC directly on low-latency POSIX block storage (`standard-rwo`). With `registry.enabled: false` and single-node `gitaly` (`praefect` disabled), only the single `gitlabhq_production` database is required (shared automatically by GitLab `17.11`'s `main` and `ci` logical Rails connections).
 
 ### 6.2 Step 1: Provision Zonal Managed PostgreSQL 15 (`gitlab-db`) & `BackupPlan` (`ZONE_KUBECONFIG`)
 
-Provision `Secret/db-pw-gitlab-db` (whose `data` key **must** match the `DBCluster` `metadata.name`: `gitlab-db`), `DBCluster/gitlab-db`, and `BackupPlan/gitlab-db-backup` in namespace `iac-root` on the Zone Management API (`ZONE_KUBECONFIG`). You can apply raw KRM manifests (**Option A**) or install the repository's [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) (`v0.2.0`) Helm chart (**Option B**):
+Provision `Secret/db-pw-gitlab-db` (the `vdbcluster.postgresql.dbadmin.gdc.goog` webhook enforces both `metadata.name: db-pw-<clusterName>` and `data.<clusterName>`, so use `db-pw-gitlab-db` with key `gitlab-db`), `DBCluster/gitlab-db`, and `BackupPlan/gitlab-db-backup` in namespace `iac-root` on the Zone Management API (`ZONE_KUBECONFIG`). You can apply raw KRM manifests (**Option A**) or install the repository's [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) (`v0.2.0`) Helm chart (**Option B**):
 
 ```bash
 export GITLAB_DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
 export GITLAB_DB_ADMIN_B64=$(printf '%s' "${GITLAB_DB_ADMIN_PASSWORD}" | base64 -w0)
+export BACKUP_REPO="${BACKUP_REPO:-org-12345-backup-repository}"
 
 # Option A: Declarative KRM Manifests on ZONE_KUBECONFIG
 cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
@@ -1586,6 +1593,8 @@ spec:
       passwordRef:
         name: db-pw-gitlab-db
     version: "15"
+    parameters:
+      max_connections: "200"
     resources:
       cpu: 4
       memory: 16Gi
@@ -1594,14 +1603,16 @@ spec:
           size: 50Gi
 EOF
 
-# Attach automated daily BackupPlan (requires BackupRepository/dbs-backup-repository verified in Section 4.1)
-if kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepository dbs-backup-repository >/dev/null 2>&1; then
-  cat <<'EOF' | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
+# Attach automated daily BackupPlan (annotate with BACKUP_REPO verified in Section 4.1 to avoid DBSE0062)
+if kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog "${BACKUP_REPO}" >/dev/null 2>&1; then
+  cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: BackupPlan
 metadata:
   name: gitlab-db-backup
   namespace: iac-root
+  annotations:
+    fleet.dbadmin.goog/backup-repository: "${BACKUP_REPO}"
 spec:
   dbclusterRef: gitlab-db
   backupRetainDays: 14
@@ -1611,15 +1622,44 @@ EOF
 fi
 ```
 
-*(**Option B - via [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) `v0.2.0`**: Instead of applying the raw YAML above, run `GODEBUG=tlsmlkem=0 helm upgrade --install gitlab-db ./charts/gdc-dbs -n iac-root --kubeconfig="${ZONE_KUBECONFIG}" --set namespace=iac-root --set postgresql.enabled=true --set postgresql.clusterName=gitlab-db --set postgresql.base64EncodedPassword="${GITLAB_DB_ADMIN_B64}" --set postgresql.cpu=4 --set postgresql.memory=16Gi --set postgresql.dataDiskSize=50Gi --set postgresql.backupPlan.enabled=true --set postgresql.backupPlan.name=gitlab-db-backup`.)*
-
-Wait for `DBCluster/gitlab-db` to reach `Ready=True` on `ZONE_KUBECONFIG`, strip `:5432` from `.status.primary.url`, and extract the Zonal server TLS Root CA from `Secret/dbs-certificates`:
+**Option B - via [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) (`v0.2.0`)**:
+Argo CD GitOps deploys `DBCluster` and `BackupPlan` in a single sync via `argocd.argoproj.io/sync-wave: "1"`. When installing directly from the `helm` CLI (which sorts Custom Resources alphabetically and submits `BackupPlan` before `DBCluster`), run a two-step `helm upgrade --install` so `vbackupplan.postgresql.dbadmin.gdc.goog` verifies that `DBCluster/gitlab-db` already exists before admitting an unpaused `BackupPlan`:
 
 ```bash
-kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=condition=Ready \
+# Step 1: Provision Secret/db-pw-gitlab-db and Zonal HA PostgreSQL 15 DBCluster/gitlab-db
+GODEBUG=tlsmlkem=0 helm upgrade --install gitlab-db ./charts/gdc-dbs \
+  -n iac-root \
+  --kubeconfig="${ZONE_KUBECONFIG}" \
+  --set namespace=iac-root \
+  --set postgresql.enabled=true \
+  --set postgresql.clusterName=gitlab-db \
+  --set postgresql.base64EncodedPassword="${GITLAB_DB_ADMIN_B64}" \
+  --set postgresql.cpu=4 \
+  --set postgresql.memory=16Gi \
+  --set postgresql.dataDiskSize=50Gi \
+  --set-string postgresql.parameters.max_connections=200
+
+# Step 2: Enable automated BackupPlan once DBCluster/gitlab-db exists
+GODEBUG=tlsmlkem=0 helm upgrade --install gitlab-db ./charts/gdc-dbs \
+  -n iac-root \
+  --kubeconfig="${ZONE_KUBECONFIG}" \
+  --reuse-values \
+  --set postgresql.backupPlan.enabled=true \
+  --set postgresql.backupPlan.name=gitlab-db-backup \
+  --set postgresql.backupPlan.backupRepository="${BACKUP_REPO}"
+```
+
+> [!NOTE]
+> **GDCag `DBCluster` Deletion Protection (`spec.isDeleted: true`):**
+> The `vdbcluster.postgresql.dbadmin.gdc.goog` admission webhook blocks `DELETE` operations (`kubectl delete dbcluster` and `helm uninstall`) while `spec.isDeleted` is `false` (`Cannot delete a DBCluster if spec.isDeleted is false`). Before decommissioning a test or retired `DBCluster`, first mark `spec.isDeleted: true` via `kubectl --kubeconfig="${ZONE_KUBECONFIG}" patch dbcluster.postgresql.dbadmin.gdc.goog/gitlab-db -n iac-root --type=merge -p '{"spec":{"isDeleted":true}}'` (or `helm upgrade gitlab-db ./charts/gdc-dbs -n iac-root --kubeconfig="${ZONE_KUBECONFIG}" --reuse-values --set postgresql.isDeleted=true` before `helm uninstall`).
+
+Wait for `DBCluster/gitlab-db` to reach `.status.phase=DBClusterReady` on `ZONE_KUBECONFIG` (`DBCluster.status.conditions` reports `Provisioned`, `AdminPasswordReady`, and `DNSReady` rather than a `Ready` condition), strip `:5432` from `.status.primary.url`, and extract the Zonal server TLS Root CA from `Secret/dbs-certificates`:
+
+```bash
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady \
   dbcluster.postgresql.dbadmin.gdc.goog/gitlab-db -n iac-root --timeout=20m
 
-# .status.primary.url includes ':5432' (e.g., gitlab-db-primary.iac-root...:5432); strip port for global.psql.host
+# .status.primary.url includes ':5432' (e.g., gitlab-db.pg.iac-root.dbs.org-12345.zone1.google.gdch.test:5432); strip port for global.psql.host
 DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gitlab-db \
   -n iac-root -o jsonpath='{.status.primary.url}')
 export DB_HOST="${DB_URL%:5432}"
@@ -1831,7 +1871,7 @@ kubectl delete job gitlab-db-bootstrap -n gitlab
 <details>
 <summary><strong>Alternative (Dev / Lab Stepping-Stone Only): In-Cluster Self-Managed PostgreSQL (<code>tenable/postgres:17</code>)</strong></summary>
 
-In disconnected development or lab environments where Zonal DBS quota or `BackupRepository/dbs-backup-repository` is not yet provisioned, you can deploy a single-replica self-managed PostgreSQL container (`harbor.org-12345.zone1.google.gdch.test/library/tenable/postgres:17`, no HA, manual backups) inside `-n gitlab` instead of Sections 6.2–6.3 above. When using this lab fallback, set `global.psql.host: gitlab-postgresql.gitlab.svc.cluster.local` and omit `global.certificates.customCAs` and `global.extraEnv` (`PGSSLMODE` / `PGSSLROOTCERT`) in `gitlab-values.yaml`:
+In disconnected development or lab environments where Zonal DBS bare-metal VM capacity or a cluster-scoped `BackupRepository` is not yet provisioned, you can deploy a single-replica self-managed PostgreSQL container (`harbor.org-12345.zone1.google.gdch.test/library/tenable/postgres:17`, no HA, manual backups) inside `-n gitlab` instead of Sections 6.2 to 6.3 above. When using this lab fallback, set `global.psql.host: gitlab-postgresql.gitlab.svc.cluster.local` and omit `global.certificates.customCAs` and `global.extraEnv` (`PGSSLMODE` / `PGSSLROOTCERT`) in `gitlab-values.yaml`:
 
 ```yaml
 apiVersion: v1
@@ -2463,7 +2503,7 @@ export VAULT_ROOT_TOKEN=$(jq -r '.root_token' "${WORK_DIR}/vault-init.json")
 kubectl -n vault exec -i vault-0 -c vault -- env VAULT_TOKEN="${VAULT_ROOT_TOKEN}" sh -c '
   # Write application secrets to KVv2 (mounted at secret/, pointing at the tenant Managed DBCluster host)
   vault kv put secret/apps/my-app/config \
-    DB_HOST="my-app-db-primary.iac-root.dbs.org-12345.zone1.google.gdch.test" \
+    DB_HOST="my-app-db.pg.iac-root.dbs.org-12345.zone1.google.gdch.test" \
     DB_PORT="5432" \
     DB_USER="my_app_user" \
     DB_PASSWORD="AppVaultSecretPassword2026!" \
@@ -2886,7 +2926,7 @@ To eliminate static long-lived database passwords altogether, configure HashiCor
 > **Three Prerequisites for Dynamic Credentials Against GDCag Managed PostgreSQL 15:**
 > 1. **Outbound `5432/TCP` Egress**: Ensure `vault-internal-policy` in `-n vault` allows `5432/TCP` egress to the Zonal `DBCluster` CIDR ([Section 5.5](#55-step-4-apply-user-cluster-vault-networkpolicy-5432tcp-managed-dbcluster-egress)).
 > 2. **Explicit `sslrootcert=` Mount in `vault-0`**: Because `gdc-kms-bridge` overrides `SSL_CERT_FILE="/vault/kms-bridge/ca-certificates.crt"`, copy `dbs-pg-cert-<dbcluster>` from `Secret/dbs-certificates` (`ZONE_KUBECONFIG`) into a Secret in `-n vault` (e.g., `vault-db-ca` mounted at `/vault/userconfig/vault-db-ca/ca.crt` via `server.extraVolumes`) and pass `?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt` in `connection_url`.
-> 3. **Pre-Created `NOLOGIN` Group Role (`app_rw`) & PG 15 `DROP OWNED BY` Revocation**: Do not place table-level `GRANT` statements directly inside Vault's `creation_statements` - on PostgreSQL 15, direct ACL dependencies block `DROP ROLE` when leases expire (`cannot be dropped because some objects depend on it`). Instead, grant schema/table privileges once to a `NOLOGIN` group role (`app_rw`), issue dynamic child roles with `IN ROLE app_rw`, and include `DROP OWNED BY "{{name}}";` in `revocation_statements`.
+> 3. **Pre-Created `NOLOGIN` Group Role (`app_rw`), `GRANT "{{name}}" TO vault_db_admin` & PG 15 `DROP OWNED BY` Revocation**: Do not place table-level `GRANT` statements directly inside Vault's `creation_statements` - on PostgreSQL 15, direct ACL dependencies block `DROP ROLE` when leases expire (`cannot be dropped because some objects depend on it`). Instead, grant schema/table privileges once to a `NOLOGIN` group role (`app_rw`), issue dynamic child roles with `IN ROLE app_rw` plus **`GRANT "{{name}}" TO vault_db_admin;`** (required on PostgreSQL 15 so non-superuser `vault_db_admin` holds membership in both the source and target roles during `REASSIGN OWNED BY`), and run `REASSIGN OWNED BY "{{name}}" TO app_rw; DROP OWNED BY "{{name}}"; DROP ROLE IF EXISTS "{{name}}";` in `revocation_statements`.
 
 #### Step 1: Prepare `app_rw` Group Role & `vault_db_admin` Role on the Target `DBCluster`
 
@@ -2907,14 +2947,12 @@ kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" -n vault create secret generic
 # 2. Initialize 'app_db', NOLOGIN group role 'app_rw', and 'vault_db_admin' as dbsadmin
 PGPASSWORD="${APP_DB_ADMIN_PASSWORD}" PGSSLMODE=verify-full PGSSLROOTCERT="${WORK_DIR}/my-app-db-ca.crt" \
   psql -h "${APP_DB_HOST}" -p 5432 -U dbsadmin -d postgres -v vault_adm_pw="${VAULT_DB_ENGINE_PASSWORD}" <<'SQL'
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_rw') THEN
-    CREATE ROLE app_rw NOLOGIN;
-  END IF;
-END $$;
+SELECT 'CREATE ROLE app_rw NOLOGIN'
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_rw') \gexec
 
 SELECT format('CREATE ROLE vault_db_admin WITH LOGIN CREATEROLE PASSWORD %L', :'vault_adm_pw')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'vault_db_admin') \gexec
+ALTER ROLE vault_db_admin WITH PASSWORD :'vault_adm_pw';
 
 GRANT app_rw TO vault_db_admin WITH ADMIN OPTION;
 GRANT app_rw TO dbsadmin;
@@ -2957,10 +2995,10 @@ kubectl -n vault exec -i vault-0 -c vault -- env \
   # 3. Immediately rotate vault_db_admin password so only Vault knows it
   vault write -force database/rotate-root/my-app-postgres
 
-  # 4. Define dynamic role inheriting from app_rw with PG 15-safe revocation statements
+  # 4. Define dynamic role inheriting from app_rw with PG 15 non-superuser safe revocation statements
   vault write database/roles/my-app-dynamic \
     db_name="my-app-postgres" \
-    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '\''{{password}}'\'' VALID UNTIL '\''{{expiration}}'\'' IN ROLE app_rw;" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '\''{{password}}'\'' VALID UNTIL '\''{{expiration}}'\'' IN ROLE app_rw; GRANT \"{{name}}\" TO vault_db_admin;" \
     revocation_statements="REASSIGN OWNED BY \"{{name}}\" TO app_rw; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
     default_ttl="1h" \
     max_ttl="24h"
@@ -2994,8 +3032,10 @@ Workloads using **Pattern A** (`vault-agent-injector`) can render dynamic creden
 First, verify Zonal `DBCluster` + `BackupPlan` health on `ZONE_KUBECONFIG` and confirm that GitLab's live ActiveRecord connection in `-n gitlab` is encrypted over TLS (`pg_stat_ssl`):
 
 ```bash
-# 1. Verify Zonal DBCluster and BackupPlan status on ZONE_KUBECONFIG
+# 1. Verify Zonal DBCluster (.status.phase=DBClusterReady) and BackupPlan status on ZONE_KUBECONFIG
 kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog,backupplan.postgresql.dbadmin.gdc.goog -n iac-root
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady \
+  dbcluster.postgresql.dbadmin.gdc.goog/gitlab-db -n iac-root --timeout=60s
 
 # 2. Confirm GitLab Rails is connected to PostgreSQL 15 over verified TLS
 kubectl exec -n gitlab deploy/gitlab-toolbox -c toolbox -- /srv/gitlab/bin/rails runner '
@@ -3100,5 +3140,10 @@ EOF
 | `PG::InsufficientPrivilege: ERROR: permission denied for extension "btree_gist"` or `permission denied for schema public` | Pre-install `gitlab-db-bootstrap` `Job` was skipped, extensions were created in `-d postgres` instead of `-d gitlabhq_production`, or `GRANT gitlab TO dbsadmin` + PG 15 `GRANT ALL ON SCHEMA public TO gitlab` was omitted. | Run `Job/gitlab-db-bootstrap` as `dbsadmin` against `-d gitlabhq_production` (Section 6.3) before `helm upgrade --install gitlab`. |
 | `PG::ConnectionBad: root certificate file "/home/git/.postgresql/root.crt" does not exist` | `PGSSLMODE=verify-full` (or `verify-ca`) was set without `PGSSLROOTCERT`, or `Secret/gitlab-db-ca` key did not end in `.crt`. | Ensure `Secret/gitlab-db-ca` uses a `.crt` key (`gitlab-db-ca.crt`), set `global.certificates.customCAs: [{secret: gitlab-db-ca}]`, and set `PGSSLROOTCERT: "/etc/ssl/certs/ca-certificates.crt"` under `global.extraEnv` (Section 6.4). |
 | `invalid port ":5432:5432"` or `could not translate host name "<host>:5432"` | `DBCluster` `.status.primary.url` includes `:5432` and was passed raw into `global.psql.host` or `psql -h`. | Strip the port suffix via `DB_HOST="${DB_URL%:5432}"` before passing to `global.psql.host` or `psql -h` (Section 6.2). |
-| `DBCluster` stuck reconciling `adminUser.passwordRef` (`Secret/db-pw-<name>`) | `Secret` `data` key was named `password` instead of matching `DBCluster` `metadata.name`, or operator lacks `project-db-admin`. | Set `data.<dbcluster-name>` (e.g., `data.gitlab-db` in `Secret/db-pw-gitlab-db`) on `ZONE_KUBECONFIG` and bind `IAMRole` `project-db-admin` on `GLOBAL_API_KUBECONFIG` (Sections 4.1 & 6.2). |
+| `DBCluster` rejected at admission or stuck reconciling `adminUser.passwordRef` (`Secret/db-pw-<name>`) | `vdbcluster.postgresql.dbadmin.gdc.goog` enforces `passwordRef.name == "db-pw-<clusterName>"` and `data.<clusterName>`, or operator lacks `project-db-admin`. | Name the Secret `db-pw-<clusterName>` with key `data.<clusterName>` (e.g., `Secret/db-pw-gitlab-db` key `gitlab-db`) on `ZONE_KUBECONFIG` and bind `IAMRole` `project-db-admin` on `GLOBAL_API_KUBECONFIG` (Sections 4.1 & 6.2). |
+| `kubectl wait --for=condition=Ready dbcluster/...` times out even when database is running | GDCag `DBCluster.status.conditions` exposes `Provisioned`, `AdminPasswordReady`, and `DNSReady` (no `Ready` condition); readiness is `.status.phase=DBClusterReady`. | Wait on `.status.phase` via `kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady dbcluster.postgresql.dbadmin.gdc.goog/<name> -n iac-root --timeout=20m` (Sections 5.6, 6.2 & 9.1). |
+| `BackupPlan` reports critical incident `DBSE0062: BackupRepository.backup.gdc.goog "dbs-backup-repository" not found` | Organization's cluster-scoped `BackupRepository` uses a custom or org-prefixed name (e.g., `org-12345-backup-repository`) and `BackupPlan` omitted the repository annotation. | List `kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog` and set `metadata.annotations["fleet.dbadmin.goog/backup-repository"]: "<repo-name>"` (or `--set postgresql.backupPlan.backupRepository=<repo-name>` in `./charts/gdc-dbs`; Sections 4.1, 5.6 & 6.2). |
+| `helm upgrade --install` of `./charts/gdc-dbs` fails with `dbcluster must exist for unpaused backupplan` | Helm 3 sorts unknown CRDs alphabetically and submits `BackupPlan` before `DBCluster` on initial CLI install (whereas Argo CD uses `sync-wave: "1"`). | Run `./charts/gdc-dbs` in two CLI steps: first install `DBCluster` (`backupPlan.enabled=false`), then run `helm upgrade --reuse-values --set postgresql.backupPlan.enabled=true` (Section 6.2). |
+| `kubectl delete dbcluster` or `helm uninstall` denied with `Cannot delete a DBCluster if spec.isDeleted is false` | GDCag `vdbcluster.postgresql.dbadmin.gdc.goog` enforces deletion protection while `spec.isDeleted` is `false`. | Patch `spec.isDeleted: true` (`kubectl --kubeconfig="${ZONE_KUBECONFIG}" patch dbcluster.postgresql.dbadmin.gdc.goog/<name> -n iac-root --type=merge -p '{"spec":{"isDeleted":true}}'` or `--set postgresql.isDeleted=true`) before deleting or uninstalling (Section 6.2). |
 | Vault `x509: certificate signed by unknown authority` when connecting to `DBCluster` (Option B or `database/`) | `gdc-kms-bridge` sets `SSL_CERT_FILE="/vault/kms-bridge/ca-certificates.crt"`, which excludes Zonal `Secret/dbs-certificates`. | Mount `Secret/vault-db-ca` via `server.extraVolumes` and pass explicit `?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt` (or `sslmode=verify-ca` if connecting by raw IP; see Sections 5.6 & 8.5). |
+| Vault `database/` lease revocation fails with `ERROR: permission denied to reassign objects` | On PostgreSQL 15, non-superuser `vault_db_admin` must be a member of both the dynamic role and `app_rw` to run `REASSIGN OWNED BY "{{name}}" TO app_rw`. | Append `GRANT "{{name}}" TO vault_db_admin;` to `creation_statements` alongside `IN ROLE app_rw` (Section 8.5). |
