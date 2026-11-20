@@ -14,7 +14,7 @@
 
 apiVersion: v2
 name: gdc-dbs
-description: A Helm chart for deploying GDC Air-Gapped Database Services (PostgreSQL or Oracle)
+description: A Helm chart for deploying GDC Air-Gapped Database Services (PostgreSQL; Oracle deprecated)
 type: application
 version: 0.2.0
 appVersion: "15"

@@ -3,7 +3,7 @@
 This Helm chart deploys and manages Database Services on Google Distributed Cloud air-gapped (`GDCag`) Zonal Management API servers (`ZONE_KUBECONFIG`). It supports provisioning:
 
 *   **PostgreSQL `DBCluster` & `BackupPlan`** (`postgresql.dbadmin.gdc.goog/v1`, PostgreSQL `15` on AlloyDB Omni runtime)
-*   **Oracle `DBCluster`** (`oracle.dbadmin.gdc.goog/v1`)
+*   **Oracle `DBCluster` *(Deprecated on GDCag)*** (`oracle.dbadmin.gdc.goog/v1`, retained solely for legacy backward compatibility)
 
 ## Prerequisites
 
@@ -38,7 +38,10 @@ helm upgrade --install my-pg-release . \
   --set postgresql.backupPlan.enabled=true
 ```
 
-4. Install an Oracle `DBCluster`:
+4. *(Deprecated on GDCag)* Install a Legacy Oracle `DBCluster`:
+
+> [!WARNING]
+> **Deprecation Notice:** Oracle Database Service (`oracle.dbadmin.gdc.goog/v1`) is deprecated on GDC air-gapped (`GDCag`). The `oracle.*` values and template remain solely for backward compatibility; use Managed PostgreSQL 15 (`postgresql.*`) for all new deployments.
 
 ```bash
 helm upgrade --install my-ora-release . \
@@ -77,16 +80,16 @@ The chart is configured through `values.yaml` or `--set` / `-f` flags during `he
 | `postgresql.backupPlan.paused` | Pause scheduled backup execution. | `false` |
 | `postgresql.backupPlan.PITREnabled` | Enable log replication for Point-in-Time Recovery (`PITR`). | `false` |
 | `postgresqlClusters` | Optional list of additional PostgreSQL `DBCluster` objects (each supporting all `postgresql.*` fields) to provision multiple clusters in one project release. | `[]` |
-| `oracle.enabled` | Deploy an Oracle `DBCluster` (`oracle.dbadmin.gdc.goog/v1`). | `false` |
-| `oracle.clusterName` | Name of the Oracle `DBCluster` resource. | `my-ora-cluster` |
-| `oracle.createSecret` | Render `Secret/db-pw-<clusterName>`. | `true` |
-| `oracle.base64EncodedPassword` | Base64-encoded password for the Oracle admin user (overrides top-level `base64EncodedPassword`). | `""` |
-| `oracle.version` | Oracle version (for example, `"19"`). | `"19"` |
-| `oracle.cpu` | CPU allocation for the primary instance. | `2` |
-| `oracle.memory` | Memory allocation for the primary instance. | `8Gi` |
-| `oracle.dataDiskSize` | Size of `DataDisk`. | `20Gi` |
-| `oracle.logDiskSize` | Size of `LogDisk`. | `20Gi` |
-| `oracle.cdbName` | Oracle Container Database (`CDB`) name. | `MYORACDB` |
+| `oracle.enabled` | *(Deprecated on GDCag)* Deploy an Oracle `DBCluster` (`oracle.dbadmin.gdc.goog/v1`). | `false` |
+| `oracle.clusterName` | *(Deprecated)* Name of the Oracle `DBCluster` resource. | `my-ora-cluster` |
+| `oracle.createSecret` | *(Deprecated)* Render `Secret/db-pw-<clusterName>`. | `true` |
+| `oracle.base64EncodedPassword` | *(Deprecated)* Base64-encoded password for the Oracle admin user (overrides top-level `base64EncodedPassword`). | `""` |
+| `oracle.version` | *(Deprecated)* Oracle version (for example, `"19"`). | `"19"` |
+| `oracle.cpu` | *(Deprecated)* CPU allocation for the primary instance. | `2` |
+| `oracle.memory` | *(Deprecated)* Memory allocation for the primary instance. | `8Gi` |
+| `oracle.dataDiskSize` | *(Deprecated)* Size of `DataDisk`. | `20Gi` |
+| `oracle.logDiskSize` | *(Deprecated)* Size of `LogDisk`. | `20Gi` |
+| `oracle.cdbName` | *(Deprecated)* Oracle Container Database (`CDB`) name. | `MYORACDB` |
 
 ### Password Management
 

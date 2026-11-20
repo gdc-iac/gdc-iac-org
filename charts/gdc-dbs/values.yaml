@@ -47,7 +47,8 @@ postgresql:
 # Each item supports the same fields as `postgresql` above.
 postgresqlClusters: []
 
-# Oracle settings (`oracle.dbadmin.gdc.goog/v1` DBCluster)
+# DEPRECATED: Oracle DB (`oracle.dbadmin.gdc.goog/v1` DBCluster) is deprecated on GDCag.
+# Retained only for backward compatibility; use `postgresql` (`postgresql.dbadmin.gdc.goog/v1`) for all new deployments.
 oracle:
   enabled: false
   clusterName: my-ora-cluster

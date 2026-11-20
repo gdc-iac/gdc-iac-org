@@ -108,6 +108,7 @@
       }
     },
     "oracle": {
+      "description": "DEPRECATED: Oracle DB (oracle.dbadmin.gdc.goog/v1) is deprecated on GDCag. Use postgresql instead.",
       "type": "object",
       "properties": {
         "enabled": {

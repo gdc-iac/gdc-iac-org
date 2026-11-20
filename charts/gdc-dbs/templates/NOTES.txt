@@ -1,5 +1,7 @@
 {{- $ora := .Values.oracle | default dict -}}
 {{- if $ora.enabled }}
+WARNING: DEPRECATED - Oracle DBCluster (oracle.dbadmin.gdc.goog/v1) is deprecated on GDC air-gapped (GDCag) and retained only for backward compatibility. Migrate workloads to Managed PostgreSQL 15 (postgresql.dbadmin.gdc.goog/v1).
+
 Oracle DBCluster "{{ $ora.clusterName }}" is being deployed.
 
 To check status:

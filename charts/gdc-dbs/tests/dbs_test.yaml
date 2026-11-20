@@ -224,7 +224,7 @@ tests:
           value: vault-db
         documentIndex: 1
 
-  - it: should render Oracle DBCluster with gdc-dbs label
+  - it: should render deprecated Oracle DBCluster with gdc-dbs label for backward compatibility
     set:
       namespace: ora-prj
       oracle:

@@ -12,10 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+{{/*
+DEPRECATED: Oracle DB (oracle.dbadmin.gdc.goog/v1) is deprecated on GDC air-gapped (GDCag).
+This template is retained solely for backward compatibility; use PostgreSQL 15 (postgresql.dbadmin.gdc.goog/v1) for new deployments.
+*/}}
 {{- $ora := .Values.oracle | default dict -}}
 {{- if $ora.enabled }}
 {{- $oraName := required "oracle.clusterName is required" $ora.clusterName }}
 ---
+# DEPRECATED: Oracle DB (oracle.dbadmin.gdc.goog/v1) is deprecated on GDCag.
 apiVersion: oracle.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:

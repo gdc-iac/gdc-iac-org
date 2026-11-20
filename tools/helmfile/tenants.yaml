@@ -106,6 +106,7 @@ gdc_tenants:
                 memory: 8Gi
                 dataDiskSize: 50Gi
                 base64EncodedPassword: "WW91clNlY3VyZVBAc3N3MHJk"
+              # DEPRECATED: Oracle DB (oracle.dbadmin.gdc.goog/v1) is deprecated on GDCag
               oracle:
                 enabled: false
                 clusterName: lts-ora-cluster
