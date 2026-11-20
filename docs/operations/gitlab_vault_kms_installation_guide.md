@@ -3,25 +3,76 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 # GitLab & HashiCorp Vault Installation Guide with GDCag KMS Auto-Unseal
 
 > **Document ID:** `OPS-GUIDE-GITLAB-VAULT-KMS`  
-> **Version:** 1.0  
-> **Target Environment:** Google Distributed Cloud air-gapped (vesrion validated: `v1.16.2`) — Organization `org-12345` (`zone1`)  
+> **Version:** 1.1  
+> **Target Environment:** Google Distributed Cloud air-gapped (version validated: `v1.16.2`) - Organization `org-12345` (`zone1`)  
 > **Target Project & Cluster:** Project `iac-root` / User Cluster `iac-root-2ad0c4dd` (`argocd-cluster`)  
-> **Related Patterns:** Pattern 11 (Resilient Secret Management with HashiCorp Vault)
+> **Related Patterns & Charts:** [Pattern 11 (`p11-vault`)](../../blueprints/patterns/p11-vault/README.md), [`charts/gdc-dbs`](../../charts/gdc-dbs/README.md), and [SOPS & Helm-Secrets Integration](../../foundations/sops_implementation_plan.md)
+
+---
+
+## Table of Contents
+
+<!-- TOC_START -->
+* [1. Overview & Architecture](#1-overview--architecture)
+  * [1.1 Architectural Highlights](#11-architectural-highlights)
+  * [1.2 Architecture Diagram](#12-architecture-diagram)
+  * [1.3 Target Environment Reference](#13-target-environment-reference)
+* [2. Prerequisites & Official IAM Authentication](#2-prerequisites--official-iam-authentication)
+  * [2.1 Workstation Binary Path & `kubectl` TLS Handshake Requirement](#21-workstation-binary-path--kubectl-tls-handshake-requirement)
+  * [2.2 Configure `gdcloud` CLI & Activate Official IAM Service Account](#22-configure-gdcloud-cli--activate-official-iam-service-account)
+  * [2.3 Generate Official IAM Kubeconfigs for Global, Zonal, and User Clusters](#23-generate-official-iam-kubeconfigs-for-global-zonal-and-user-clusters)
+* [3. Air-Gap Harbor Registry & Image/Chart Prerequisites](#3-air-gap-harbor-registry--imagechart-prerequisites)
+  * [3.1 Complete Inventory of Required Harbor Artifacts](#31-complete-inventory-of-required-harbor-artifacts)
+  * [3.2 Provisioning Managed Harbor & Mirroring Images via `tools/mirror-images/`](#32-provisioning-managed-harbor--mirroring-images-via-toolsmirror-images)
+  * [3.3 Extracting & Seeding the Cloud-Native GitLab Chart (`gitlab-8.11.7.tgz`)](#33-extracting--seeding-the-cloud-native-gitlab-chart-gitlab-8117tgz)
+* [4. Step-by-Step GDCag KMS & Database IAM Provisioning](#4-step-by-step-gdcag-kms--database-iam-provisioning)
+  * [4.1 Step 1: Create `ProjectServiceAccount`, Bind KMS & Database IAM Roles (`global-api.kubeconfig`) & Verify DBS Backup Repository](#41-step-1-create-projectserviceaccount-bind-kms--database-iam-roles-global-apikubeconfig--verify-dbs-backup-repository)
+  * [4.2 Step 2: Provision the `AEADKey` on the Zone Management API (`zone-admin.kubeconfig`)](#42-step-2-provision-the-aeadkey-on-the-zone-management-api-zone-adminkubeconfig)
+  * [4.3 Step 3: Verify `AEADKey` Readiness & Test Live Encryption/Decryption via `gdcloud kms`](#43-step-3-verify-aeadkey-readiness--test-live-encryptiondecryption-via-gdcloud-kms)
+* [5. Step-by-Step HashiCorp Vault Installation & Automatic Unsealing via GDCag KMS](#5-step-by-step-hashicorp-vault-installation--automatic-unsealing-via-gdcag-kms)
+  * [5.1 How the `gdc-kms-bridge` Sidecar Bridges Vault `seal "gcpckms"` to GDCag KMS](#51-how-the-gdc-kms-bridge-sidecar-bridges-vault-seal-gcpckms-to-gdcag-kms)
+  * [5.2 Step 1: Create the `vault` Namespace & Secrets on the User Cluster](#52-step-1-create-the-vault-namespace--secrets-on-the-user-cluster)
+  * [5.3 Step 2: Create the Vault Helm Values (`vault-values.yaml` - Option A: Integrated Raft Storage Default)](#53-step-2-create-the-vault-helm-values-vault-valuesyaml---option-a-integrated-raft-storage-default)
+  * [5.4 Step 3: Deploy, Initialize & Verify Automatic Unsealing via GDCag KMS](#54-step-3-deploy-initialize--verify-automatic-unsealing-via-gdcag-kms)
+  * [5.5 Step 4: Apply User Cluster Vault `NetworkPolicy` (`5432/TCP` Managed `DBCluster` Egress)](#55-step-4-apply-user-cluster-vault-networkpolicy-5432tcp-managed-dbcluster-egress)
+  * [5.6 Alternative Architecture (Option B): Managed PostgreSQL `DBCluster` Storage Backend](#56-alternative-architecture-option-b-managed-postgresql-dbcluster-storage-backend)
+* [6. Step-by-Step GitLab 17.11.7 Installation](#6-step-by-step-gitlab-17117-installation)
+  * [6.1 Key Air-Gap & Managed Persistence Architecture](#61-key-air-gap--managed-persistence-architecture)
+  * [6.2 Step 1: Provision Zonal Managed PostgreSQL 15 (`gitlab-db`) & `BackupPlan` (`ZONE_KUBECONFIG`)](#62-step-1-provision-zonal-managed-postgresql-15-gitlab-db--backupplan-zone_kubeconfig)
+  * [6.3 Step 2: Bootstrap User Cluster Namespace, TLS CA, `NetworkPolicy` & `gitlabhq_production` Extensions (`USER_CLUSTER_KUBECONFIG`)](#63-step-2-bootstrap-user-cluster-namespace-tls-ca-networkpolicy--gitlabhq_production-extensions-user_cluster_kubeconfig)
+  * [6.4 Step 3: Create GitLab 17.11.7 Helm Values (`gitlab-values.yaml`)](#64-step-3-create-gitlab-17117-helm-values-gitlab-valuesyaml)
+  * [6.5 Step 4: Install GitLab 17.11.7 & Seed CI OIDC Signing Keys](#65-step-4-install-gitlab-17117--seed-ci-oidc-signing-keys)
+  * [6.6 Step 5: Verify GitLab Pods, PVCs, Services, Ingress & API Endpoints](#66-step-5-verify-gitlab-pods-pvcs-services-ingress--api-endpoints)
+* [7. GitLab & HashiCorp Vault Integration](#7-gitlab--hashicorp-vault-integration)
+  * [7.1 Step 1: Enable KVv2 Secrets Engine, Write Secrets & Create Vault Policy](#71-step-1-enable-kvv2-secrets-engine-write-secrets--create-vault-policy)
+  * [7.2 Step 2: Configure Vault JWT Authentication (`auth/jwt`) for GitLab CI Pipelines](#72-step-2-configure-vault-jwt-authentication-authjwt-for-gitlab-ci-pipelines)
+  * [7.3 Step 3: Configure Vault Kubernetes Auth (`auth/kubernetes`) & Sidecar Injection](#73-step-3-configure-vault-kubernetes-auth-authkubernetes--sidecar-injection)
+* [8. Consuming Vault Secrets in Applications & GitLab](#8-consuming-vault-secrets-in-applications--gitlab)
+  * [8.1 Onboarding an Application Namespace & ServiceAccount in Vault](#81-onboarding-an-application-namespace--serviceaccount-in-vault)
+  * [8.2 Pattern A: Zero-Code Consumption via Vault Agent Sidecar Injector](#82-pattern-a-zero-code-consumption-via-vault-agent-sidecar-injector)
+  * [8.3 Pattern B: Direct In-Application Consumption via Vault HTTP API / SDK (No Sidecar)](#83-pattern-b-direct-in-application-consumption-via-vault-http-api--sdk-no-sidecar)
+  * [8.4 Pattern C: Consuming Vault Secrets in GitLab CI/CD Pipelines](#84-pattern-c-consuming-vault-secrets-in-gitlab-cicd-pipelines)
+  * [8.5 Pattern D: Dynamic PostgreSQL Credentials via Vault `database/` Secrets Engine](#85-pattern-d-dynamic-postgresql-credentials-via-vault-database-secrets-engine)
+* [9. End-to-End Verification & Troubleshooting](#9-end-to-end-verification--troubleshooting)
+  * [9.1 End-to-End Cross-Namespace & Managed `DBCluster` TLS Verification](#91-end-to-end-cross-namespace--managed-dbcluster-tls-verification)
+  * [9.2 Troubleshooting Common Issues](#92-troubleshooting-common-issues)
+<!-- TOC_END -->
 
 ---
 
 ## 1. Overview & Architecture
 
-This operational guide provides end-to-end instructions for deploying **GitLab 17.11.7 (`gitlab-8.11.7`)** and **HashiCorp Vault 1.15.0 (`vault-0.32.0`)** with **automatic cryptographic unsealing via Google Distributed Cloud air-gapped (GDCag) Key Management Service (KMS)** in organization `org-12345` (`zone1`), project `iac-root`.
+This operational guide provides end-to-end instructions for deploying **GitLab 17.11.7 (`gitlab-8.11.7`)** backed by **GDCag Managed PostgreSQL 15 (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`)** and **HashiCorp Vault 1.15.0 (`vault-0.32.0`)** with **automatic cryptographic unsealing via Google Distributed Cloud air-gapped (GDCag) Key Management Service (KMS)** in organization `org-12345` (`zone1`), project `iac-root`.
 
 ### 1.1 Architectural Highlights
 
-* **Official IAM Control-Plane & Data-Plane Access**: All operations across the Global API (`global-api`), Zone Management API (`org-12345-admin`), KMS Data Plane (`kms.org-12345.zone1.google.gdch.test`), and User Cluster (`iac-root-2ad0c4dd`) authenticate strictly via official `gdcloud` CLI workflows, `gdcloud-k8s-auth-plugin`, and project IAM Service Accounts (`iac001-sa` and `vault-kms-sa`).
+* **Official IAM Control-Plane & Data-Plane Access**: All operations across the Global API (`global-api`), Zone Management API (`org-12345-admin`), KMS Data Plane (`kms.org-12345.zone1.google.gdch.test`), and User Cluster (`iac-root-2ad0c4dd`) authenticate strictly via official `gdcloud` CLI workflows, `gdcloud-k8s-auth-plugin`, and project IAM Service Accounts (`iac001-sa` with `kms-*` and `project-db-admin` roles, plus `vault-kms-sa`).
+* **Zonal HA Managed PostgreSQL (`DBCluster` + `BackupPlan`)**: GitLab's relational database tier runs on the GDCag Database Service (`postgresql.dbadmin.gdc.goog/v1` `DBCluster` `gitlab-db`, PostgreSQL `"15"`, `enableHighAvailability: true`, `enableAutoFailover: true`) with automated daily `BackupPlan` backups and verified TLS (`Secret/dbs-certificates`), eliminating single-pod database SPOFs on the User Cluster. HashiCorp Vault defaults to integrated Raft storage on `standard-rwo` (**Option A**) so no external database sits on the KMS auto-unseal critical path, while also supporting a Managed PostgreSQL `DBCluster` storage backend (**Option B**, `storage "postgresql"`) and short-lived application database leases via the **Database Secrets Engine (`database/`)**.
 * **Hardware-Backed GDCag KMS Auto-Unseal**: HashiCorp Vault's master encryption key is wrapped by an `AES_256_GCM` symmetric `AEADKey` (`namespaces/iac-root/aeadKeys/vault-unseal-key`) hosted in the GDCag KMS enclave. A lightweight, zero-dependency Go native sidecar (`gdc-kms-bridge`) translates Vault's `seal "gcpckms"` gRPC calls (`/google.cloud.kms.v1.KeyManagementService/{Encrypt,Decrypt}`) into GDCag KMS gRPC operations (`/goog.gdc.kms.v1.CryptoOperationsService/{Encrypt,Decrypt}`) authenticated via GDC STS token exchange (`urn:k8s:params:oauth:token-type:serviceaccount`).
-* **Air-Gapped Harbor Artifact Resolution**: All Helm charts and OCI container images are pulled exclusively from the partition's internal Harbor registries (`harbor.org-12345.zone1.google.gdch.test` and `harbor001-iac-root.org-12345.zone1.google.gdch.test`).
-* **Dual GitLab-to-Vault Secret Delivery**:
+* **Air-Gapped Harbor Artifact Resolution**: All Helm charts and OCI container images are pulled exclusively from the partition's internal Harbor registries (`harbor.org-12345.zone1.google.gdch.test` and `harbor001-iac-root.org-12345.zone1.google.gdch.test`), reusing the mirrored `gitlab-toolbox-ee` image for pre-install PostgreSQL extension bootstrap with zero additional images.
+* **Multi-Pattern Secret Delivery**:
   1. **GitLab CI OIDC / JWT Authentication (`auth/jwt`)**: Validates GitLab CI job ID tokens (`CI_JOB_JWT_V2` / `id_tokens`) against GitLab's in-cluster JWKS endpoint (`/oauth/discovery/keys`) with project-scoped claim enforcement (`bound_claims: {"project_id": "1"}`).
-  2. **Kubernetes ServiceAccount Authentication (`auth/kubernetes`) & Vault Agent Sidecar Injector (`vault-k8s:1.7.2`)**: Authenticates workload pods in the `gitlab` namespace via Kubernetes TokenReview and injects secrets from Vault KVv2 (`secret/data/gitlab/*`) into in-memory `tmpfs` volumes (`/vault/secrets/*`).
+  2. **Kubernetes ServiceAccount Authentication (`auth/kubernetes`) & Vault Agent Sidecar Injector (`vault-k8s:1.7.2`)**: Authenticates workload pods via Kubernetes `TokenReview` and injects static KVv2 secrets (`secret/data/*`) or dynamic PostgreSQL leases (`database/creds/*`) into in-memory `tmpfs` volumes (`/vault/secrets/*`) or direct HTTP clients.
 
 ### 1.2 Architecture Diagram
 
@@ -35,21 +86,25 @@ This operational guide provides end-to-end instructions for deploying **GitLab 1
   │                                      │          │                                                │
   │  • ProjectServiceAccount: iac001-sa  │          │  • kms.gdc.goog/v1 AEADKey: vault-unseal-key   │
   │  • ProjectServiceAccount:            │          │    (Namespace: iac-root, Alg: AES_256_GCM)     │
-  │    vault-kms-sa                      │          │  • HarborInstance: harbor001                   │
-  │  • IAMRoleBindings:                  │          └───────────────────────┬────────────────────────┘
-  │    kms-admin, kms-developer,         │                                  │
-  │    kms-viewer                        │                                  ▼
-  └──────────────────┬───────────────────┘          ┌────────────────────────────────────────────────┐
-                     │                              │   GDCag KMS Data Plane & STS Endpoint          │
-                     │ STS Token Exchange (ES256)   │  • https://kms.org-12345.zone1...              │
-                     └─────────────────────────────►│    (/goog.gdc.kms.v1.CryptoOperationsService)  │
-                                                    │  • https://service-accounts.org-12345...       │
-                                                    └───────────────────────▲────────────────────────┘
-                                                                            │
-                                                                 gRPC Encrypt / Decrypt
-                                                                 (STS-Bearer Token)
-                                                                            │
-  ┌─────────────────────────────────────────────────────────────────────────┴────────────────────────┐
+  │    vault-kms-sa                      │          │  • postgresql.dbadmin.gdc.goog/v1 DBCluster:   │
+  │  • IAMRoleBindings:                  │          │    gitlab-db (PG 15 Zonal HA + BackupPlan)     │
+  │    kms-admin, kms-developer,         │          │    [+ optional vault-db for Vault Option B]    │
+  │    kms-viewer, project-db-admin      │          │  • Secret/dbs-certificates (TLS Root CAs)      │
+  └──────────────────┬───────────────────┘          │  • HarborInstance: harbor001                   │
+                     │                              └───────┬───────────────────────────▲────────────┘
+                     │ STS Token Exchange (ES256)           │                           │
+                     ▼                                      ▼                           │
+            ┌────────────────────────────────────────────────────────┐                  │
+            │   GDCag KMS Data Plane & STS Endpoint                  │                  │
+            │  • https://kms.org-12345.zone1...                      │                  │
+            │    (/goog.gdc.kms.v1.CryptoOperationsService)          │                  │
+            │  • https://service-accounts.org-12345...               │                  │
+            └───────────────────────────────▲────────────────────────┘                  │
+                                            │                                           │
+                                 gRPC Encrypt / Decrypt                      5432/TCP Verified TLS
+                                 (STS-Bearer Token)                          (gitlabhq_production &
+                                            │                                 optional vault / app DB)
+  ┌─────────────────────────────────────────┴───────────────────────────────────────────┴────────────┐
   │ User Cluster: iac-root-2ad0c4dd (CR: argocd-cluster | StorageClass: standard-rwo)                │
   │                                                                                                  │
   │  ┌─────────────────────────────────────────────┐  ┌───────────────────────────────────────────┐  │
@@ -57,13 +112,15 @@ This operational guide provides end-to-end instructions for deploying **GitLab 1
   │  │                                             │  │                                           │  │
   │  │  ┌───────────────────────────────────────┐  │  │  • gitlab-webservice-default (2/2)        │  │
   │  │  │ Pod: vault-0 (2/2 Running)            │  │  │    └─ JWKS: /oauth/discovery/keys         │  │
-  │  │  │  ├─ Container: vault (v1.15.0, Raft)  │◄─┼──┼─────── JWT Auth (auth/jwt) ───────────────┤  │
-  │  │  │  │   seal "gcpckms" -> 127.0.0.1:443  │  │  │    └─ API: /api/v4/version (17.11.7-ee)   │  │
-  │  │  │  └─ Sidecar: gdc-kms-bridge (v1.0.0)  │  │  │  • gitlab-toolbox / sidekiq / gitaly /    │  │
-  │  │  │      Translates gcpckms -> GDCag KMS  │  │  │    gitlab-shell / kas / redis-master      │  │
-  │  │  └───────────────────────────────────────┘  │  │  • gitlab-postgresql (PostgreSQL 17)      │  │
-  │  │                                             │  │  • gitlab-nginx-ingress-controller        │  │
-  │  │  ┌───────────────────────────────────────┐  │  │    (LoadBalancer IP: 10.136.68.48)        │  │
+  │  │  │  ├─ Container: vault (v1.15.0)        │◄─┼──┼─────── JWT Auth (auth/jwt) ───────────────┤  │
+  │  │  │  │   Option A: Raft (default)         │  │  │    └─ API: /api/v4/version (17.11.7-ee)   │  │
+  │  │  │  │   Option B: PG DBCluster (5432/TCP)│  │  │  • gitlab-toolbox / sidekiq /             │  │
+  │  │  │  │   seal "gcpckms" -> 127.0.0.1:443  │  │  │    gitlab-shell / kas                     │  │
+  │  │  │  └─ Sidecar: gdc-kms-bridge (v1.0.0)  │  │  │  • gitaly & redis-master (standard-rwo)   │  │
+  │  │  │      Translates gcpckms -> GDCag KMS  │  │  │  • Outbound 5432/TCP TLS -> gitlab-db     │  │
+  │  │  └───────────────────────────────────────┘  │  │  • gitlab-nginx-ingress-controller        │  │
+  │  │                                             │  │    (LoadBalancer IP: 10.136.68.48)        │  │
+  │  │  ┌───────────────────────────────────────┐  │  │                                           │  │
   │  │  │ Pod: vault-agent-injector (1/1)       │◄─┼──┼─────── K8s Auth & Mutating Webhook ───────┘  │
   │  │  │  Mutating Webhook (vault-k8s:1.7.2)   │  │  │        (Injects /vault/secrets/*)            │
   │  │  └───────────────────────────────────────┘  │  └───────────────────────────────────────────┘  │
@@ -87,6 +144,8 @@ This operational guide provides end-to-end instructions for deploying **GitLab 1
 | **System Harbor Registry** | `harbor.org-12345.zone1.google.gdch.test` |
 | **Project Managed Harbor Registry** | `harbor001-iac-root.org-12345.zone1.google.gdch.test` |
 | **Default Block StorageClass** | `standard-rwo` (`csi.kubevirt.io`, `ReadWriteOnce`, `allowVolumeExpansion: true`) |
+| **GitLab Managed PostgreSQL (`DBCluster`)** | `gitlab-db` (`postgresql.dbadmin.gdc.goog/v1`, PostgreSQL `"15"`, Zonal HA + Auto-Failover, `4 CPU / 16Gi / 50Gi DataDisk` + daily `BackupPlan`; GitLab `17.11` supports PG `14–16`, whereas GitLab `18.0+` requires PG `16+`) |
+| **Zonal DBS Backup Repository** | `BackupRepository/org-12345-backup-repository` (Zone Management API `backuprepositories.backup.gdc.goog`, referenced on `BackupPlan` via `fleet.dbadmin.goog/backup-repository`) |
 | **GitLab FQDN & LoadBalancer IP** | `https://gitlab.org-12345.zone1.google.gdch.test` (`10.136.68.48`) |
 | **Vault Internal Service URL** | `http://vault.vault.svc.cluster.local:8200` |
 
@@ -170,7 +229,7 @@ gdcloud config set core/zone ""
 KUBECONFIG="${GLOBAL_API_KUBECONFIG}" gdcloud clusters get-credentials global-api
 kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" auth whoami
 
-# 2. Zone Management API Kubeconfig (KMS AEADKeys, HarborInstances, Clusters)
+# 2. Zone Management API Kubeconfig (KMS AEADKeys, PostgreSQL DBClusters & BackupPlans, HarborInstances, Clusters)
 rm -f "${ZONE_KUBECONFIG}"
 gdcloud config set core/zone "${GDCH_ZONE}"
 KUBECONFIG="${ZONE_KUBECONFIG}" gdcloud clusters get-credentials "${ORG_NAME}-admin" --zone "${GDCH_ZONE}"
@@ -208,10 +267,11 @@ Two Harbor registries serve artifacts in the `org-12345` (`zone1`) environment. 
 | **Vault K8s Mutating Webhook** | Container Image | `harbor.org-12345.zone1.google.gdch.test/library/hashicorp/vault-k8s:1.7.2` |
 | **GDCag KMS Auto-Unseal Bridge** | Container Image | `harbor001-iac-root.org-12345.zone1.google.gdch.test/iac/gdc-kms-bridge:1.0.0` |
 | **GitLab 17.11.7 Helm Chart** | OCI Helm Chart | `oci://harbor001-iac-root.org-12345.zone1.google.gdch.test/charts/gitlab` (`8.11.7`) |
-| **GitLab CNG 17.11.7 Suite** | Container Images | `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-build-cng-*-17-11-7:v1.16.2-iac-1800e51e18` (`webservice-ee`, `workhorse-ee`, `sidekiq-ee`, `gitaly`, `gitlab-shell`, `gitlab-kas`, `gitlab-toolbox-ee`, `gitlab-exporter`, `certificates`, `kubectl`, `gitlab-base`, `cfssl-self-sign`) |
+| **GitLab CNG 17.11.7 Suite** | Container Images | `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-build-cng-*-17-11-7:v1.16.2-iac-1800e51e18` (`webservice-ee`, `workhorse-ee`, `sidekiq-ee`, `gitaly`, `gitlab-shell`, `gitlab-kas`, `gitlab-toolbox-ee` *(also reused for `psql` DB bootstrap)*, `gitlab-exporter`, `certificates`, `kubectl`, `gitlab-base`, `cfssl-self-sign`) |
 | **GitLab Ingress Controller** | Container Image | `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-cloud-native-mirror-images-ingress-nginx-controller-17-11-7:v1.16.2-iac-1800e51e18` |
 | **GitLab Redis 17.11.7** | Container Image | `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-bitnamilegacy-redis-17-11-7:v1.16.2-iac-1800e51e18` |
-| **PostgreSQL 17 Database** | Container Image | `harbor.org-12345.zone1.google.gdch.test/library/tenable/postgres:17` |
+| **GDCag Database Service Chart** | Local Helm Chart | [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) (`v0.2.0` - optional Helm wrapper for Zonal `DBCluster` + `BackupPlan` CRDs) |
+| **Self-Managed PostgreSQL 17** *(Optional Lab Fallback Only)* | Container Image | `harbor.org-12345.zone1.google.gdch.test/library/tenable/postgres:17` *(Not used in production Managed `DBCluster` deployments; retained only for the optional stepping-stone lab fallback in Section 6.3)* |
 
 ### 3.2 Provisioning Managed Harbor & Mirroring Images via [`tools/mirror-images/`](../../tools/mirror-images/)
 
@@ -270,19 +330,19 @@ GODEBUG=tlsmlkem=0 helm push "${WORK_DIR}/charts/gitlab-8.11.7.tgz" \
 
 ---
 
-## 4. Step-by-Step GDCag KMS Provisioning
+## 4. Step-by-Step GDCag KMS & Database IAM Provisioning
 
 > [!IMPORTANT]
 > **GDCag v1.16.2 KMS Architecture Note (`AEADKey` vs. `KeyRing`):**
 > In GDCag there is **no `KeyRing` CustomResourceDefinition**, and `gdcloud kms` does not use `key-rings create`. Instead, symmetric encryption keys are provisioned declaratively as `AEADKey` (`kms.gdc.goog/v1`) resources directly inside the project namespace (`iac-root`) on the **Zone Management API** (`zone-admin.kubeconfig`).
 > On the KMS data plane (`https://kms.org-12345.zone1.google.gdch.test`), keys are addressed by the camelCase resource path `namespaces/<project>/aeadKeys/<key-name>` (e.g., `namespaces/iac-root/aeadKeys/vault-unseal-key`). Using lowercase `aeadkeys` will fail with `InvalidArgument: does not match expected format namespaces/<namespace>/aeadKeys/<name>`.
 
-### 4.1 Step 1: Create `ProjectServiceAccount` & Bind KMS IAM Roles (`global-api.kubeconfig`)
+### 4.1 Step 1: Create `ProjectServiceAccount`, Bind KMS & Database IAM Roles (`global-api.kubeconfig`) & Verify DBS Backup Repository
 
-Grant `kms-admin`, `kms-developer`, and `kms-viewer` in project `iac-root` to `iac001-sa` (for operator verification) and create a dedicated `vault-kms-sa` `ProjectServiceAccount` with `kms-developer` and `kms-viewer` privileges for Vault auto-unseal:
+Grant `kms-admin`, `kms-developer`, `kms-viewer`, and **`project-db-admin`** (required to provision `postgresql.dbadmin.gdc.goog/v1` `DBCluster` and `BackupPlan` resources) in project `iac-root` to `iac001-sa`, create a dedicated `vault-kms-sa` `ProjectServiceAccount` with `kms-developer` and `kms-viewer` privileges for Vault auto-unseal, and discover the organization's Zonal Database Service `BackupRepository` (`backuprepositories.backup.gdc.goog`):
 
 ```bash
-# 1. Create KMS IAMRoleBindings for iac001-sa on the Global API server
+# 1. Create KMS and Database Service IAMRoleBindings for iac001-sa on the Global API server
 cat <<'EOF' | kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" apply -f -
 apiVersion: iam.global.gdc.goog/v1
 kind: IAMRoleBinding
@@ -334,9 +394,32 @@ spec:
   - kind: ServiceAccount
     name: iac001-sa
     namespace: iac-root
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: iac001-sa--project-db-admin
+  namespace: iac-root
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-db-admin
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-db-admin
+  subjects:
+  - kind: ServiceAccount
+    name: iac001-sa
+    namespace: iac-root
 EOF
 
-# 2. Create the dedicated vault-kms-sa ProjectServiceAccount and export its credentials JSON
+# 2. Pre-flight check: discover the Zonal DBS BackupRepository name (required for BackupPlan annotation to avoid DBSE0062)
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog
+export BACKUP_REPO="${BACKUP_REPO:-org-12345-backup-repository}"
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog "${BACKUP_REPO}" || \
+  echo "WARNING: BackupRepository ${BACKUP_REPO} not found on ZONE_KUBECONFIG; set BACKUP_REPO from the list above or ask the Infrastructure Operator to configure DBS backup storage before applying BackupPlan resources."
+
+# 3. Create the dedicated vault-kms-sa ProjectServiceAccount and export its credentials JSON
 gdcloud iam service-accounts create vault-kms-sa --project=iac-root || true
 
 # Export the GDCH login CA bundle and create the service account JSON key
@@ -349,7 +432,7 @@ gdcloud iam service-accounts keys create "${WORK_DIR}/vault-kms-sa.json" \
   --project=iac-root \
   --ca-cert-path="${WORK_DIR}/gdc-login-ca.crt"
 
-# 3. Bind kms-developer (Encrypt/Decrypt) and kms-viewer to vault-kms-sa
+# 4. Bind kms-developer (Encrypt/Decrypt) and kms-viewer to vault-kms-sa
 gdcloud projects add-iam-policy-binding iac-root \
   --role=roles/kms-developer \
   --member="serviceAccount:iac-root:vault-kms-sa"
@@ -960,11 +1043,11 @@ kubectl -n vault create secret generic harbor-creds \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### 5.3 Step 2: Create the Vault Helm Values (`vault-values.yaml`)
+### 5.3 Step 2: Create the Vault Helm Values (`vault-values.yaml` - Option A: Integrated Raft Storage Default)
 
 > [!TIP]
-> **Critical GDCag Vault Values Adjustments:**
-> * **`storageClass: "standard-rwo"`**: Replaces the default `standard` StorageClass (which does not exist on GDCag user clusters).
+> **Option A (Recommended Default - Integrated Raft Storage on `standard-rwo`) vs. Option B (Managed PostgreSQL):**
+> * **Why Option A is the Default**: Storing Vault's encrypted state on integrated Raft (`storageClass: "standard-rwo"`, `replicas: 1` for single-node validation or `replicas: 3` for multi-node HA) keeps Vault's startup and GDCag KMS auto-unseal path 100% self-contained on the User Cluster, with zero external database hop or bootstrap credential circularity. If your organization requires all stateful persistence on GDCag Managed PostgreSQL (`DBCluster`), use **Option B (`storage "postgresql"`)** in [Section 5.6](#56-alternative-architecture-option-b-managed-postgresql-dbcluster-storage-backend).
 > * **`livenessProbe.path: "/v1/sys/health?standbyok=true&uninitok=true&sealedcode=204"`**: Prevents kubelet from restarting `vault-0` with HTTP `501 Not Initialized` prior to running `vault operator init`.
 
 Create `${WORK_DIR}/vault-values.yaml`:
@@ -1173,20 +1256,434 @@ Raft Applied Index       58
 2026/11/16 11:52:19 GDCag KMS Decrypt succeeded for projects/iac-root/locations/zone1/keyRings/iac-root/cryptoKeys/vault-unseal-key -> namespaces/iac-root/aeadKeys/vault-unseal-key (plaintext=32 bytes)
 ```
 
+### 5.5 Step 4: Apply User Cluster Vault `NetworkPolicy` (`5432/TCP` Managed `DBCluster` Egress)
+
+Harden the `vault` namespace with a least-privilege Kubernetes `NetworkPolicy` (matching [`blueprints/patterns/p11-vault/manifests/security/network-policy.yaml`](../../blueprints/patterns/p11-vault/manifests/security/network-policy.yaml)) that restricts Raft peer traffic (`8201/TCP`) strictly to Vault pods, allows cross-namespace application pods to reach Vault API port `8200/TCP`, permits outbound KMS/STS/OIDC/Kubernetes `TokenReview` calls, and scopes outbound PostgreSQL `5432/TCP` egress to your Zonal `DBCluster` VIP/subnet CIDR (required for **Option B** in [Section 5.6](#56-alternative-architecture-option-b-managed-postgresql-dbcluster-storage-backend) and the **Dynamic Database Secrets Engine (`database/`)** in [Section 8.5](#85-pattern-d-dynamic-postgresql-credentials-via-vault-database-secrets-engine)):
+
+```bash
+# Set DBCLUSTER_SUBNET_CIDR to your GDCag Zonal Managed Database VIP/subnet CIDR (e.g., 10.200.0.0/16)
+export DBCLUSTER_SUBNET_CIDR="${DBCLUSTER_SUBNET_CIDR:-10.200.0.0/16}"
+
+cat <<EOF | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-internal-policy
+  namespace: vault
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8200
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+      ports:
+        - protocol: TCP
+          port: 8201
+  egress:
+    # 1. Cluster DNS resolution (kube-dns / CoreDNS)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 2. Vault Raft / HA peer communication
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    # 3. In-cluster OIDC JWKS discovery (GitLab / Keycloak)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+    # 4. GDCag KMS Data Plane, STS Token Exchange & K8s API TokenReview
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # 5. GDCag Managed PostgreSQL (DBCluster) egress for Option B storage or database/ engine
+    - to:
+        - ipBlock:
+            cidr: ${DBCLUSTER_SUBNET_CIDR}
+      ports:
+        - protocol: TCP
+          port: 5432
+EOF
+```
+*(If deploying Vault via the [`p11-vault` Helm wrapper chart](../../blueprints/patterns/p11-vault/chart/values.yaml), set `vault.networkPolicy.allowPostgresEgress: true` and `vault.networkPolicy.postgresCidrs: ["<DBCLUSTER_SUBNET_CIDR>"]`.)*
+
+### 5.6 Alternative Architecture (Option B): Managed PostgreSQL `DBCluster` Storage Backend
+
+Use **Option B (`storage "postgresql"`)** when platform governance mandates storing all stateful control-plane data in GDCag Managed PostgreSQL (`postgresql.dbadmin.gdc.goog/v1` `DBCluster` + `BackupPlan`) rather than User Cluster `standard-rwo` PVCs.
+
+> [!IMPORTANT]
+> **Option B Design & Security Guardrails:**
+> 1. **Bootstrap Secret Circularity (SOPS Pattern E)**: Because Vault requires `VAULT_PG_CONNECTION_URL` before unsealing, Vault cannot fetch its own storage backend credentials from Vault. Store the User Cluster `Secret/vault-pg-conn` encrypted at rest in Git using Mozilla SOPS (`helm-secrets`) as documented in the [SOPS & Helm-Secrets Integration Guide](../../foundations/sops_implementation_plan.md).
+> 2. **Bypassing `gdc-kms-bridge` `SSL_CERT_FILE` Override**: `gdc-kms-bridge` sets `SSL_CERT_FILE="/vault/kms-bridge/ca-certificates.crt"` (`main.go` bundles system CAs plus the localhost KMS certificate, not Zonal `dbs-certificates`). Always mount `Secret/vault-db-ca` via `server.extraVolumes` and pass explicit `?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt` in `VAULT_PG_CONNECTION_URL`.
+> 3. **Mandatory `COLLATE "C"` & Upstream Chart Keys**: Vault does not auto-create PostgreSQL tables, and text columns in `vault_kv_store` and `vault_ha_locks` **must** use `COLLATE "C"` so byte-order prefix scans work reliably. In `vault-0.32.0`, set `server.dataStorage.enabled: false`, **`server.ha.raft.enabled: false`**, and move HCL to **`server.ha.config`** (leaving HCL under `server.ha.raft.config` is ignored when Raft is disabled).
+
+#### Step B1: Provision Zonal `DBCluster/vault-db` & `BackupPlan` (`ZONE_KUBECONFIG`)
+
+```bash
+export VAULT_DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+export VAULT_DB_ADMIN_B64=$(printf '%s' "${VAULT_DB_ADMIN_PASSWORD}" | base64 -w0)
+export BACKUP_REPO="${BACKUP_REPO:-org-12345-backup-repository}"
+
+# 1. Provision Secret/db-pw-vault-db (Secret name MUST be 'db-pw-vault-db' and data key MUST match 'vault-db') and DBCluster on ZONE_KUBECONFIG
+cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-vault-db
+  namespace: iac-root
+type: Opaque
+data:
+  vault-db: "${VAULT_DB_ADMIN_B64}"
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: vault-db
+  namespace: iac-root
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-vault-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
+EOF
+
+# Optional: Attach automated daily BackupPlan (annotate with BACKUP_REPO from Section 4.1 to avoid DBSE0062)
+if kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog "${BACKUP_REPO}" >/dev/null 2>&1; then
+  cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: BackupPlan
+metadata:
+  name: vault-db-backup
+  namespace: iac-root
+  annotations:
+    fleet.dbadmin.goog/backup-repository: "${BACKUP_REPO}"
+spec:
+  dbclusterRef: vault-db
+  backupRetainDays: 14
+  paused: false
+  PITREnabled: false
+EOF
+fi
+
+# 2. Wait for DBCluster/vault-db .status.phase=DBClusterReady, strip ':5432' from primary URL, and export TLS Root CA
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady \
+  dbcluster.postgresql.dbadmin.gdc.goog/vault-db -n iac-root --timeout=20m
+
+VAULT_DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog vault-db \
+  -n iac-root -o jsonpath='{.status.primary.url}')
+export VAULT_DB_HOST="${VAULT_DB_URL%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n iac-root -o jsonpath='{.data.dbs-pg-cert-vault-db}' | base64 -d > "${WORK_DIR}/vault-db-ca.crt"
+```
+
+#### Step B2: Initialize `vault` Role, Database & `COLLATE "C"` Schema as `dbsadmin`
+
+Connect to `vault-db` as `dbsadmin` (`cloudsqlsuperuser`) over verified TLS (for example, using `psql` from an operator bastion with Zonal DB routing or a short-lived User Cluster bootstrap job reusing `gitlab-toolbox-ee` as shown in [Section 6.3](#63-step-2-bootstrap-user-cluster-namespace-tls-ca-networkpolicy--gitlabhq_production-extensions-user_cluster_kubeconfig)):
+
+```bash
+export VAULT_DB_PASSWORD="<strong-vault-storage-password>"
+
+# 1. Create dedicated 'vault' role, grant membership to dbsadmin (required for cloudsqlsuperuser OWNER assignment),
+#    and create database 'vault' owned by 'vault'
+PGPASSWORD="${VAULT_DB_ADMIN_PASSWORD}" PGSSLMODE=verify-full PGSSLROOTCERT="${WORK_DIR}/vault-db-ca.crt" \
+  psql -h "${VAULT_DB_HOST}" -p 5432 -U dbsadmin -d postgres -v vault_pw="${VAULT_DB_PASSWORD}" <<'SQL'
+SELECT format('CREATE ROLE vault WITH LOGIN PASSWORD %L', :'vault_pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'vault') \gexec
+ALTER ROLE vault WITH PASSWORD :'vault_pw';
+GRANT vault TO dbsadmin;
+SELECT 'CREATE DATABASE vault OWNER vault'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'vault') \gexec
+SQL
+
+# 2. Connect to '-d vault' to transfer PostgreSQL 15 public schema ownership and create Vault HA tables with COLLATE "C"
+PGPASSWORD="${VAULT_DB_ADMIN_PASSWORD}" PGSSLMODE=verify-full PGSSLROOTCERT="${WORK_DIR}/vault-db-ca.crt" \
+  psql -h "${VAULT_DB_HOST}" -p 5432 -U dbsadmin -d vault <<'SQL'
+GRANT ALL ON SCHEMA public TO vault;
+ALTER SCHEMA public OWNER TO vault;
+
+CREATE TABLE IF NOT EXISTS vault_kv_store (
+  parent_path TEXT COLLATE "C" NOT NULL,
+  path        TEXT COLLATE "C",
+  key         TEXT COLLATE "C",
+  value       BYTEA,
+  CONSTRAINT pkey PRIMARY KEY (path, key)
+);
+
+CREATE INDEX IF NOT EXISTS parent_path_idx ON vault_kv_store (parent_path);
+
+CREATE TABLE IF NOT EXISTS vault_ha_locks (
+  ha_key      TEXT COLLATE "C" NOT NULL,
+  ha_identity TEXT COLLATE "C" NOT NULL,
+  ha_value    TEXT COLLATE "C",
+  valid_until TIMESTAMP WITH TIME ZONE NOT NULL,
+  CONSTRAINT ha_key PRIMARY KEY (ha_key)
+);
+
+ALTER TABLE vault_kv_store OWNER TO vault;
+ALTER TABLE vault_ha_locks OWNER TO vault;
+GRANT ALL PRIVILEGES ON TABLE vault_kv_store, vault_ha_locks TO vault;
+SQL
+```
+
+#### Step B3: Create User Cluster TLS CA & Connection Secrets (`USER_CLUSTER_KUBECONFIG`)
+
+```bash
+# URL-encode special characters in VAULT_DB_PASSWORD before embedding in a PostgreSQL URI
+VAULT_DB_PASSWORD_URLENC=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["VAULT_DB_PASSWORD"], safe=""))')
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" -n vault create secret generic vault-db-ca \
+  --from-file=ca.crt="${WORK_DIR}/vault-db-ca.crt" \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+
+# In GitOps workflows, encrypt this Secret manifest in Git with Mozilla SOPS (see foundations/sops_implementation_plan.md)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" -n vault create secret generic vault-pg-conn \
+  --from-literal=connection_url="postgresql://vault:${VAULT_DB_PASSWORD_URLENC}@${VAULT_DB_HOST}:5432/vault?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt" \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+```
+*(Note: If connecting via a raw LoadBalancer IP or custom alias absent from the certificate's `subjectAltName`, replace `sslmode=verify-full` with `sslmode=verify-ca`.)*
+
+#### Step B4: Deploy Vault with `vault-values-pg.yaml` (`ha.raft.enabled: false`)
+
+Create `${WORK_DIR}/vault-values-pg.yaml` overriding the storage layer of `${WORK_DIR}/vault-values.yaml` (note that Vault's Go `postgresql` backend reads `VAULT_PG_CONNECTION_URL` natively from the environment - never place Consul Template `{{env ...}}` syntax inside Vault Server HCL):
+
+```yaml
+server:
+  dataStorage:
+    enabled: false
+
+  extraEnvironmentVars:
+    GOOGLE_REGION: "zone1"
+    GOOGLE_PROJECT: "iac-root"
+    GOOGLE_APPLICATION_CREDENTIALS: "/vault/kms-bridge/gcp-credentials.json"
+    SSL_CERT_FILE: "/vault/kms-bridge/ca-certificates.crt"
+    # Advertise individual pod IP for HA standby client redirects (POD_IP is injected by vault-0.32.0 StatefulSet)
+    VAULT_API_ADDR: "http://$(POD_IP):8200"
+
+  extraSecretEnvironmentVars:
+    - envName: VAULT_PG_CONNECTION_URL
+      secretName: vault-pg-conn
+      secretKey: connection_url
+
+  extraVolumes:
+    - type: secret
+      name: gdc-kms-sa
+    - type: secret
+      name: vault-db-ca
+
+  ha:
+    enabled: true
+    replicas: 2
+    raft:
+      enabled: false
+    config: |
+      ui = true
+      api_addr = "http://POD_IP:8200"
+
+      listener "tcp" {
+        tls_disable = 1
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+      }
+
+      storage "postgresql" {
+        table      = "vault_kv_store"
+        ha_enabled = "true"
+        ha_table   = "vault_ha_locks"
+      }
+
+      seal "gcpckms" {
+        project     = "iac-root"
+        region      = "zone1"
+        key_ring    = "iac-root"
+        crypto_key  = "vault-unseal-key"
+      }
+
+      service_registration "kubernetes" {}
+```
+
+Install with both files layered (`-f vault-values.yaml -f vault-values-pg.yaml`) and run `vault operator init` as in Section 5.4 (`vault status` will report `Storage Type: postgresql` and `HA Enabled: true`).
+
 ---
 
 ## 6. Step-by-Step GitLab 17.11.7 Installation
 
-### 6.1 Key Air-Gap Requirements
+### 6.1 Key Air-Gap & Managed Persistence Architecture
 
 1. **Explicit System Harbor Image Paths**: User cluster nodes (`vm-9eeae553`) do not have containerd mirror rules for `gcr.io/private-cloud-staging/*`. Every GitLab CNG image in `gitlab-values.yaml` must reference `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/...:v1.16.2-iac-1800e51e18` with `imagePullSecrets: [{name: harbor-creds}]`.
-2. **Dedicated PostgreSQL 17 Deployment**: The upstream Bitnami PostgreSQL subchart in `gitlab-8.11.7` defaults to `docker.io/bitnami/postgresql:14.8.0` (not mirrored in Harbor). Instead, deploy a dedicated `gitlab-postgresql` instance in `-n gitlab` using the mirrored `harbor.org-12345.zone1.google.gdch.test/library/tenable/postgres:17` image backed by a `10Gi` `standard-rwo` PVC and initialized with `pg_trgm`, `btree_gist`, and `plpgsql` extensions.
+2. **Zonal HA Managed PostgreSQL 15 (`DBCluster/gitlab-db` + `BackupPlan`)**: The upstream Bitnami PostgreSQL subchart in `gitlab-8.11.7` defaults to un-mirrored `docker.io/bitnami/postgresql:14.8.0` (`postgresql.install: false`). For production resilience on GDCag, provision a Zonal HA `postgresql.dbadmin.gdc.goog/v1` `DBCluster` (`gitlab-db`, `version: "15"`, `enableHighAvailability: true`, `enableAutoFailover: true`, `4 CPU / 16Gi / 50Gi DataDisk`) with an automated daily `BackupPlan` on `ZONE_KUBECONFIG`, and run a one-time pre-install bootstrap `Job` reusing `gitlab-toolbox-ee` (`/usr/bin/psql`) as `dbsadmin` (`cloudsqlsuperuser`) to create the `gitlab` role, `gitlabhq_production` database, and required `pg_trgm` and `btree_gist` extensions prior to `helm upgrade --install gitlab`.
+   * *PostgreSQL Version Compatibility Note*: GitLab `17.11.7` officially supports PostgreSQL `14`, `15`, and `16`. Because GitLab `18.0+` raises the minimum PostgreSQL version to `16+` while GDCag `postgresql.dbadmin.gdc.goog/v1` currently provisions PostgreSQL `"15"`, keep GitLab pinned to the `17.11.x` release line until GDCag DBS adds PostgreSQL `16+`.
+3. **Why Redis & Gitaly Remain on User Cluster `standard-rwo` PVCs**: GDCag Database Service manages relational PostgreSQL engines only (with Oracle Database Service deprecated on GDCag, and no platform-managed Redis service), and Gitaly persists raw Git packfiles over gRPC directly on low-latency POSIX block storage (`standard-rwo`). With `registry.enabled: false` and single-node `gitaly` (`praefect` disabled), only the single `gitlabhq_production` database is required (shared automatically by GitLab `17.11`'s `main` and `ci` logical Rails connections).
 
-### 6.2 Step 1: Deploy Namespace, Secrets & PostgreSQL 17 (`gitlab-prereqs.yaml`)
+### 6.2 Step 1: Provision Zonal Managed PostgreSQL 15 (`gitlab-db`) & `BackupPlan` (`ZONE_KUBECONFIG`)
 
-Create and apply `${WORK_DIR}/gitlab-prereqs.yaml`:
+Provision `Secret/db-pw-gitlab-db` (the `vdbcluster.postgresql.dbadmin.gdc.goog` webhook enforces both `metadata.name: db-pw-<clusterName>` and `data.<clusterName>`, so use `db-pw-gitlab-db` with key `gitlab-db`), `DBCluster/gitlab-db`, and `BackupPlan/gitlab-db-backup` in namespace `iac-root` on the Zone Management API (`ZONE_KUBECONFIG`). You can apply raw KRM manifests (**Option A**) or install the repository's [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) (`v0.2.0`) Helm chart (**Option B**):
 
-```yaml
+```bash
+export GITLAB_DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+export GITLAB_DB_ADMIN_B64=$(printf '%s' "${GITLAB_DB_ADMIN_PASSWORD}" | base64 -w0)
+export BACKUP_REPO="${BACKUP_REPO:-org-12345-backup-repository}"
+
+# Option A: Declarative KRM Manifests on ZONE_KUBECONFIG
+cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-gitlab-db
+  namespace: iac-root
+type: Opaque
+data:
+  gitlab-db: "${GITLAB_DB_ADMIN_B64}"
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: gitlab-db
+  namespace: iac-root
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-gitlab-db
+    version: "15"
+    parameters:
+      max_connections: "200"
+    resources:
+      cpu: 4
+      memory: 16Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
+EOF
+
+# Attach automated daily BackupPlan (annotate with BACKUP_REPO verified in Section 4.1 to avoid DBSE0062)
+if kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog "${BACKUP_REPO}" >/dev/null 2>&1; then
+  cat <<EOF | kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f -
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: BackupPlan
+metadata:
+  name: gitlab-db-backup
+  namespace: iac-root
+  annotations:
+    fleet.dbadmin.goog/backup-repository: "${BACKUP_REPO}"
+spec:
+  dbclusterRef: gitlab-db
+  backupRetainDays: 14
+  paused: false
+  PITREnabled: false
+EOF
+fi
+```
+
+**Option B - via [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md) (`v0.2.0`)**:
+Argo CD GitOps deploys `DBCluster` and `BackupPlan` in a single sync via `argocd.argoproj.io/sync-wave: "1"`. When installing directly from the `helm` CLI (which sorts Custom Resources alphabetically and submits `BackupPlan` before `DBCluster`), run a two-step `helm upgrade --install` so `vbackupplan.postgresql.dbadmin.gdc.goog` verifies that `DBCluster/gitlab-db` already exists before admitting an unpaused `BackupPlan`:
+
+```bash
+# Step 1: Provision Secret/db-pw-gitlab-db and Zonal HA PostgreSQL 15 DBCluster/gitlab-db
+GODEBUG=tlsmlkem=0 helm upgrade --install gitlab-db ./charts/gdc-dbs \
+  -n iac-root \
+  --kubeconfig="${ZONE_KUBECONFIG}" \
+  --set namespace=iac-root \
+  --set postgresql.enabled=true \
+  --set postgresql.clusterName=gitlab-db \
+  --set postgresql.base64EncodedPassword="${GITLAB_DB_ADMIN_B64}" \
+  --set postgresql.cpu=4 \
+  --set postgresql.memory=16Gi \
+  --set postgresql.dataDiskSize=50Gi \
+  --set-string postgresql.parameters.max_connections=200
+
+# Step 2: Enable automated BackupPlan once DBCluster/gitlab-db exists
+GODEBUG=tlsmlkem=0 helm upgrade --install gitlab-db ./charts/gdc-dbs \
+  -n iac-root \
+  --kubeconfig="${ZONE_KUBECONFIG}" \
+  --reuse-values \
+  --set postgresql.backupPlan.enabled=true \
+  --set postgresql.backupPlan.name=gitlab-db-backup \
+  --set postgresql.backupPlan.backupRepository="${BACKUP_REPO}"
+```
+
+> [!NOTE]
+> **GDCag `DBCluster` Deletion Protection (`spec.isDeleted: true`):**
+> The `vdbcluster.postgresql.dbadmin.gdc.goog` admission webhook blocks `DELETE` operations (`kubectl delete dbcluster` and `helm uninstall`) while `spec.isDeleted` is `false` (`Cannot delete a DBCluster if spec.isDeleted is false`). Before decommissioning a test or retired `DBCluster`, first mark `spec.isDeleted: true` via `kubectl --kubeconfig="${ZONE_KUBECONFIG}" patch dbcluster.postgresql.dbadmin.gdc.goog/gitlab-db -n iac-root --type=merge -p '{"spec":{"isDeleted":true}}'` (or `helm upgrade gitlab-db ./charts/gdc-dbs -n iac-root --kubeconfig="${ZONE_KUBECONFIG}" --reuse-values --set postgresql.isDeleted=true` before `helm uninstall`).
+
+Wait for `DBCluster/gitlab-db` to reach `.status.phase=DBClusterReady` on `ZONE_KUBECONFIG` (`DBCluster.status.conditions` reports `Provisioned`, `AdminPasswordReady`, and `DNSReady` rather than a `Ready` condition), strip `:5432` from `.status.primary.url`, and extract the Zonal server TLS Root CA from `Secret/dbs-certificates`:
+
+```bash
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady \
+  dbcluster.postgresql.dbadmin.gdc.goog/gitlab-db -n iac-root --timeout=20m
+
+# .status.primary.url includes ':5432' (e.g., gitlab-db.pg.iac-root.dbs.org-12345.zone1.google.gdch.test:5432); strip port for global.psql.host
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gitlab-db \
+  -n iac-root -o jsonpath='{.status.primary.url}')
+export DB_HOST="${DB_URL%:5432}"
+echo "Resolved GitLab DB_HOST=${DB_HOST}"
+
+# Extract the DBCluster server Root CA from ZONE_KUBECONFIG (not auto-projected to User Clusters)
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n iac-root -o jsonpath='{.data.dbs-pg-cert-gitlab-db}' | base64 -d > "${WORK_DIR}/gitlab-db-ca.crt"
+
+# Optional SAN pre-flight check (verifies leaf certificate DNS SAN matches ${DB_HOST} for PGSSLMODE=verify-full)
+openssl s_client -starttls postgres -connect "${DB_HOST}:5432" \
+  -CAfile "${WORK_DIR}/gitlab-db-ca.crt" </dev/null 2>/dev/null | openssl x509 -noout -ext subjectAltName || true
+```
+
+### 6.3 Step 2: Bootstrap User Cluster Namespace, TLS CA, `NetworkPolicy` & `gitlabhq_production` Extensions (`USER_CLUSTER_KUBECONFIG`)
+
+Switch to the User Cluster (`USER_CLUSTER_KUBECONFIG`), create the `gitlab` namespace, Harbor pull secret, object-storage backup secret, GitLab application database password secret (`gitlab-postgres-secret`), and cross-plane TLS CA secret (`gitlab-db-ca` - the key **must** end in `.crt` so GitLab's `certificates` initContainer bundles it via `update-ca-certificates`):
+
+```bash
+export KUBECONFIG="${USER_CLUSTER_KUBECONFIG}"
+export GITLAB_APP_DB_PASSWORD="<strong-gitlab-app-db-password>"
+
+# 1. Create namespace, Harbor pull secret, S3 backup config, and GitLab DB credentials + TLS CA secrets
+cat <<EOF > "${WORK_DIR}/gitlab-prereqs.yaml"
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -1199,8 +1696,7 @@ metadata:
   namespace: gitlab
 type: Opaque
 stringData:
-  postgresql-password: "GitLabPgPassword2026!"
-  postgresql-postgres-password: "GitLabPgPassword2026!"
+  postgresql-password: "${GITLAB_APP_DB_PASSWORD}"
 ---
 apiVersion: v1
 kind: Secret
@@ -1224,7 +1720,160 @@ stringData:
     aws_secret_access_key: gitlab-secret-key
     endpoint: https://s3.org-12345.zone1.google.gdch.test
     path_style: true
----
+EOF
+
+kubectl apply -f "${WORK_DIR}/gitlab-prereqs.yaml"
+
+# Secret key MUST end with '.crt' for GitLab global.certificates.customCAs (update-ca-certificates)
+kubectl create secret generic gitlab-db-ca \
+  --from-file=gitlab-db-ca.crt="${WORK_DIR}/gitlab-db-ca.crt" \
+  -n gitlab --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl create secret generic harbor-creds \
+  --from-file=.dockerconfigjson="${HOME}/.docker/config.json" \
+  --type=kubernetes.io/dockerconfigjson \
+  -n gitlab --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl patch serviceaccount default -n gitlab \
+  -p '{"imagePullSecrets": [{"name": "harbor-creds"}]}'
+```
+
+If your User Cluster enforces project-wide default-deny egress policies, permit outbound `5432/TCP` from the `gitlab` namespace to your Zonal `DBCluster` VIP/subnet CIDR (`DBCLUSTER_SUBNET_CIDR`, plus cluster DNS and intra-cluster traffic):
+
+```bash
+export DBCLUSTER_SUBNET_CIDR="${DBCLUSTER_SUBNET_CIDR:-10.200.0.0/16}"
+
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gitlab-postgres-egress
+  namespace: gitlab
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector: {}
+    - to:
+        - ipBlock:
+            cidr: ${DBCLUSTER_SUBNET_CIDR}
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+EOF
+```
+
+Next, run a pre-install `Job` (`gitlab-db-bootstrap`) reusing `/usr/bin/psql` inside the already-mirrored `gitlab-toolbox-ee-17-11-7` image to create the `gitlab` role, transfer PostgreSQL 15 `public` schema ownership (`GRANT gitlab TO dbsadmin` is mandatory before `dbsadmin` can assign `OWNER gitlab` under `cloudsqlsuperuser`), and install `pg_trgm` and `btree_gist` inside `gitlabhq_production` **before** running `helm upgrade --install gitlab`:
+
+> [!WARNING]
+> **Why `command: ["/bin/bash", "-ec"]` Is Mandatory on `gitlab-toolbox-ee`:**
+> The upstream `gitlab-toolbox-ee` image sets `ENTRYPOINT ["/scripts/entrypoint.sh"]`, which attempts to render Ruby `.erb` templates from GitLab ConfigMaps/Secrets that do not exist prior to `helm upgrade --install gitlab`. Always override `command:` (not just `args:`) in the pre-install bootstrap `Job`, and delete the temporary `gitlab-dbsadmin-bootstrap` Secret immediately after completion.
+
+```bash
+# 1. Create a short-lived dbsadmin credential Secret strictly for the one-shot bootstrap Job
+kubectl create secret generic gitlab-dbsadmin-bootstrap \
+  --from-literal=dbsadmin-password="${GITLAB_DB_ADMIN_PASSWORD}" \
+  -n gitlab --dry-run=client -o yaml | kubectl apply -f -
+
+# 2. Run idempotent pre-install bootstrap Job over verified TLS
+kubectl delete job gitlab-db-bootstrap -n gitlab --ignore-not-found
+cat <<EOF | kubectl apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitlab-db-bootstrap
+  namespace: gitlab
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: harbor-creds
+      containers:
+        - name: psql-bootstrap
+          image: harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-build-cng-gitlab-toolbox-ee-17-11-7:v1.16.2-iac-1800e51e18
+          command: ["/bin/bash", "-ec"]
+          args:
+            - |
+              echo "Bootstrapping role 'gitlab' and database 'gitlabhq_production' on ${DB_HOST}:5432..."
+              psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres -v gitlab_pw="\${GITLAB_APP_PASSWORD}" <<'SQL'
+              SELECT format('CREATE ROLE gitlab WITH LOGIN PASSWORD %L', :'gitlab_pw')
+              WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gitlab') \gexec
+              ALTER ROLE gitlab WITH PASSWORD :'gitlab_pw';
+              GRANT gitlab TO dbsadmin;
+              SELECT 'CREATE DATABASE gitlabhq_production OWNER gitlab'
+              WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'gitlabhq_production') \gexec
+              SQL
+
+              echo "Installing required GitLab extensions and PG 15 schema grants in gitlabhq_production..."
+              psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d gitlabhq_production <<'SQL'
+              CREATE EXTENSION IF NOT EXISTS pg_trgm;
+              CREATE EXTENSION IF NOT EXISTS btree_gist;
+              GRANT ALL PRIVILEGES ON DATABASE gitlabhq_production TO gitlab;
+              GRANT ALL ON SCHEMA public TO gitlab;
+              ALTER SCHEMA public OWNER TO gitlab;
+              SQL
+              echo "GitLab Managed PostgreSQL bootstrap complete."
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-dbsadmin-bootstrap
+                  key: dbsadmin-password
+            - name: GITLAB_APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-postgres-secret
+                  key: postgresql-password
+            - name: PGSSLMODE
+              value: "verify-full"
+            - name: PGSSLROOTCERT
+              value: "/etc/gitlab-db-ca/gitlab-db-ca.crt"
+          volumeMounts:
+            - name: gitlab-db-ca
+              mountPath: /etc/gitlab-db-ca
+              readOnly: true
+      volumes:
+        - name: gitlab-db-ca
+          secret:
+            secretName: gitlab-db-ca
+EOF
+
+kubectl wait --for=condition=complete job/gitlab-db-bootstrap -n gitlab --timeout=120s
+kubectl logs job/gitlab-db-bootstrap -n gitlab
+
+# 3. Remove temporary dbsadmin credentials from the User Cluster immediately after bootstrap
+kubectl delete secret gitlab-dbsadmin-bootstrap -n gitlab
+kubectl delete job gitlab-db-bootstrap -n gitlab
+```
+
+<details>
+<summary><strong>Alternative (Dev / Lab Stepping-Stone Only): In-Cluster Self-Managed PostgreSQL (<code>tenable/postgres:17</code>)</strong></summary>
+
+In disconnected development or lab environments where Zonal DBS bare-metal VM capacity or a cluster-scoped `BackupRepository` is not yet provisioned, you can deploy a single-replica self-managed PostgreSQL container (`harbor.org-12345.zone1.google.gdch.test/library/tenable/postgres:17`, no HA, manual backups) inside `-n gitlab` instead of Sections 6.2 to 6.3 above. When using this lab fallback, set `global.psql.host: gitlab-postgresql.gitlab.svc.cluster.local` and omit `global.certificates.customCAs` and `global.extraEnv` (`PGSSLMODE` / `PGSSLROOTCERT`) in `gitlab-values.yaml`:
+
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -1332,25 +1981,17 @@ spec:
     app: gitlab-postgresql
 ```
 
-Apply the prerequisites and configure the `harbor-creds` pull secret in namespace `gitlab`:
+</details>
 
-```bash
-kubectl apply -f "${WORK_DIR}/gitlab-prereqs.yaml"
+### 6.4 Step 3: Create GitLab 17.11.7 Helm Values (`gitlab-values.yaml`)
 
-kubectl create secret generic harbor-creds \
-  --from-file=.dockerconfigjson="${HOME}/.docker/config.json" \
-  --type=kubernetes.io/dockerconfigjson \
-  -n gitlab --dry-run=client -o yaml | kubectl apply -f -
+> [!IMPORTANT]
+> **Server-Only TLS Configuration (`customCAs` + `global.extraEnv` vs. `global.psql.ssl`):**
+> * **Do NOT set `global.psql.ssl`**: In `gitlab-8.11.7`, `global.psql.ssl` enforces mutual TLS (mTLS) and requires `clientCertificate` and `clientKey` alongside `serverCA`, whereas GDCag Managed PostgreSQL (`DBCluster`) uses server TLS + password authentication.
+> * **Pair `global.certificates.customCAs` with `PGSSLROOTCERT`**: `global.certificates.customCAs` mounts `Secret/gitlab-db-ca` (`gitlab-db-ca.crt`) and merges it into `/etc/ssl/certs/ca-certificates.crt` via the `certificates` initContainer. However, Debian's `libpq5` inside CNG `17.11.7` looks for `~/.postgresql/root.crt` unless **`PGSSLROOTCERT: "/etc/ssl/certs/ca-certificates.crt"`** is explicitly exported under `global.extraEnv`.
+> * **`PGSSLMODE` Hostname Verification**: `PGSSLMODE: "verify-full"` validates both the CA signature and the `.status.primary.url` DNS `subjectAltName` (`${DB_HOST}`). If connecting via a raw LoadBalancer IP or split-horizon alias absent from the certificate SANs, set `PGSSLMODE: "verify-ca"`.
 
-kubectl patch serviceaccount default -n gitlab \
-  -p '{"imagePullSecrets": [{"name": "harbor-creds"}]}'
-
-kubectl rollout status deployment/gitlab-postgresql -n gitlab --timeout=90s
-```
-
-### 6.3 Step 2: Create GitLab 17.11.7 Helm Values (`gitlab-values.yaml`)
-
-Create `${WORK_DIR}/gitlab-values.yaml`:
+Create `${WORK_DIR}/gitlab-values.yaml` (substituting `${DB_HOST}` resolved in Section 6.2):
 
 ```yaml
 global:
@@ -1373,7 +2014,8 @@ global:
   minio:
     enabled: false
   psql:
-    host: gitlab-postgresql.gitlab.svc.cluster.local
+    # Set to ${DB_HOST} from Section 6.2 (stripped of ':5432')
+    host: "<DB_HOST_FROM_SECTION_6_2>"
     port: 5432
     username: gitlab
     database: gitlabhq_production
@@ -1381,6 +2023,15 @@ global:
       useSecret: true
       secret: gitlab-postgres-secret
       key: postgresql-password
+  certificates:
+    image:
+      repository: harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-build-cng-certificates-17-11-7
+      tag: v1.16.2-iac-1800e51e18
+    customCAs:
+      - secret: gitlab-db-ca
+  extraEnv:
+    PGSSLMODE: "verify-full"
+    PGSSLROOTCERT: "/etc/ssl/certs/ca-certificates.crt"
   redis:
     auth:
       enabled: true
@@ -1392,10 +2043,6 @@ global:
   kubectl:
     image:
       repository: harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-build-cng-kubectl-17-11-7
-      tag: v1.16.2-iac-1800e51e18
-  certificates:
-    image:
-      repository: harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/gitlab-operator-gitlab-org-build-cng-certificates-17-11-7
       tag: v1.16.2-iac-1800e51e18
   gitlabBase:
     image:
@@ -1559,17 +2206,25 @@ gitlab:
         memory: 1536Mi
 ```
 
-### 6.4 Step 3: Install GitLab 17.11.7 & Seed CI OIDC Signing Keys
+> [!NOTE]
+> **Day-2 Disaster Recovery Scope (`BackupPlan` + Gitaly + `gitlab-rails-secret`):**
+> `BackupPlan/gitlab-db-backup` on `ZONE_KUBECONFIG` backs up only the Managed PostgreSQL `gitlab-db` cluster. A complete GitLab disaster recovery posture requires three coordinated artifacts:
+> 1. **Relational State (`gitlab-db`)**: Automated daily Zonal `BackupPlan` (`postgresql.dbadmin.gdc.goog/v1`).
+> 2. **Git Repositories & Assets (`gitaly`)**: Periodic `kubectl exec -n gitlab deploy/gitlab-toolbox -c toolbox -- backup-utility --skip db` (uploading tarballs to `gitlab-storage` S3) or User Cluster PVC snapshots for `repo-data-gitlab-gitaly-0`.
+> 3. **Application Encryption Keys (`gitlab-rails-secret`)**: Securely archive `kubectl get secret -n gitlab gitlab-rails-secret -o yaml` (encrypted via SOPS); without `db_key_base` and `otp_key_base`, encrypted columns inside a restored `gitlabhq_production` backup cannot be decrypted.
 
-Install the GitLab Helm chart and ensure the database is seeded and `ci_jwt_signing_key` is populated so GitLab exposes its OIDC discovery keys at `/oauth/discovery/keys`:
+### 6.5 Step 4: Install GitLab 17.11.7 & Seed CI OIDC Signing Keys
+
+Install the GitLab Helm chart (passing `--set global.psql.host="${DB_HOST}"` to inject the Zonal `DBCluster` primary hostname) and ensure the database is seeded and `ci_jwt_signing_key` is populated so GitLab exposes its OIDC discovery keys at `/oauth/discovery/keys`:
 
 ```bash
-# 1. Install GitLab 17.11.7 from Project Harbor
+# 1. Install GitLab 17.11.7 from Project Harbor against Managed PostgreSQL (${DB_HOST})
 GODEBUG=tlsmlkem=0 helm upgrade --install gitlab \
   "oci://harbor001-iac-root.org-12345.zone1.google.gdch.test/charts/gitlab" \
   --version 8.11.7 \
   -n gitlab \
   -f "${WORK_DIR}/gitlab-values.yaml" \
+  --set global.psql.host="${DB_HOST}" \
   --insecure-skip-tls-verify \
   --timeout 10m
 
@@ -1588,13 +2243,13 @@ kubectl exec -n gitlab deploy/gitlab-toolbox -c toolbox -- /srv/gitlab/bin/rails
 '
 ```
 
-### 6.5 Step 4: Verify GitLab Pods, PVCs, Services, Ingress & API Endpoints
+### 6.6 Step 5: Verify GitLab Pods, PVCs, Services, Ingress & API Endpoints
 
 ```bash
 kubectl get pods,pvc,svc,ingress -n gitlab -o wide
 ```
 
-**Verified Output:**
+**Expected User Cluster Output (with PostgreSQL hosted externally on Zonal `DBCluster/gitlab-db`):**
 ```text
 NAME                                                  READY   STATUS      RESTARTS        AGE   IP             NODE
 pod/gitlab-gitaly-0                                   1/1     Running     0               14m   10.99.25.110   vm-9eeae553
@@ -1603,20 +2258,17 @@ pod/gitlab-kas-74c7f59c46-c6ftp                       1/1     Running     5 (11m
 pod/gitlab-kas-74c7f59c46-gwbh2                       1/1     Running     5 (12m ago)     14m   10.99.25.6     vm-9eeae553
 pod/gitlab-migrations-8aa9b56-nnbd7                   0/1     Completed   3               14m   10.99.25.5     vm-9eeae553
 pod/gitlab-nginx-ingress-controller-7d64c4c4f-q4snc   1/1     Running     0               14m   10.99.25.8     vm-9eeae553
-pod/gitlab-postgresql-7bd6965cf4-pd4p7                1/1     Running     0               28m   10.99.25.31    vm-9eeae553
 pod/gitlab-redis-master-0                             1/1     Running     0               14m   10.99.25.97    vm-9eeae553
 pod/gitlab-sidekiq-all-in-1-v2-d978886fc-swlxv        1/1     Running     1 (10m ago)     14m   10.99.25.245   vm-9eeae553
 pod/gitlab-toolbox-76d9b44f57-rnpkm                   1/1     Running     0               14m   10.99.25.159   vm-9eeae553
 pod/gitlab-webservice-default-689bd9d6cc-ljj49        2/2     Running     2 (8m51s ago)   14m   10.99.25.63    vm-9eeae553
 
 NAME                                                     STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS
-persistentvolumeclaim/gitlab-postgresql-pvc              Bound    pvc-06c40927-3af6-4234-ba2d-060ce35b0e96   10Gi       RWO            standard-rwo
-persistentvolumeclaim/redis-data-gitlab-redis-master-0   Bound    pvc-c03808aa-02b0-4b7e-be0a-d3279260496d   5Gi        RWO            standard-rwo
-persistentvolumeclaim/repo-data-gitlab-gitaly-0          Bound    pvc-34a26467-562c-4f66-966e-a46e97f57916   10Gi       RWO            standard-rwo
+persistentvolumeclaim/redis-data-gitlab-redis-master-0   Bound    pvc-c03808aa-02b0-4b7e-be0a-d3279260496d   5Gi       RWO            standard-rwo
+persistentvolumeclaim/repo-data-gitlab-gitaly-0          Bound    pvc-34a26467-562c-4f66-966e-a46e97f57916   10Gi      RWO            standard-rwo
 
 NAME                                              TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)
 service/gitlab-nginx-ingress-controller           LoadBalancer   10.99.16.69    10.136.68.48   80:31591/TCP,443:32453/TCP,22:30503/TCP
-service/gitlab-postgresql                         ClusterIP      10.99.17.41    <none>         5432/TCP
 service/gitlab-redis-master                       ClusterIP      10.99.16.163   <none>         6379/TCP
 service/gitlab-webservice-default                 ClusterIP      10.99.17.192   <none>         8080/TCP,8181/TCP,8083/TCP
 
@@ -1821,11 +2473,12 @@ export DB_PASS="GdcVaultKms2026!"
 
 ## 8. Consuming Vault Secrets in Applications & GitLab
 
-Once HashiCorp Vault is running and auto-unsealed via GDCag KMS, application workloads deployed on the User Cluster (`iac-root-2ad0c4dd`) and CI/CD pipelines running in GitLab can consume secrets directly from Vault using three production patterns:
+Once HashiCorp Vault is running and auto-unsealed via GDCag KMS, application workloads deployed on the User Cluster (`iac-root-2ad0c4dd`) and CI/CD pipelines running in GitLab can consume secrets directly from Vault using four production patterns:
 
-* **Pattern A — Zero-Code Consumption via Vault Agent Sidecar Injector**: The `vault-agent-injector` mutating webhook injects an init/sidecar container that renders Vault secrets onto an in-memory `tmpfs` volume (`/vault/secrets/*`) as environment files or JSON/YAML configuration files.
-* **Pattern B — Direct In-Application Consumption via Vault HTTP API / SDK (No Sidecar)**: The application authenticates directly to `http://vault.vault.svc.cluster.local:8200/v1/auth/kubernetes/login` using its mounted Kubernetes `ServiceAccount` JWT and fetches secrets over HTTP without sidecar containers or external library dependencies.
-* **Pattern C — Consuming Vault Secrets in GitLab CI/CD Pipelines**: GitLab CI jobs authenticate via short-lived OIDC `id_tokens` (`auth/jwt`) using either GitLab Runner's native `secrets:` keyword or direct Vault CLI / HTTP API calls.
+* **Pattern A - Zero-Code Consumption via Vault Agent Sidecar Injector**: The `vault-agent-injector` mutating webhook injects an init/sidecar container that renders Vault secrets onto an in-memory `tmpfs` volume (`/vault/secrets/*`) as environment files or JSON/YAML configuration files.
+* **Pattern B - Direct In-Application Consumption via Vault HTTP API / SDK (No Sidecar)**: The application authenticates directly to `http://vault.vault.svc.cluster.local:8200/v1/auth/kubernetes/login` using its mounted Kubernetes `ServiceAccount` JWT and fetches secrets over HTTP without sidecar containers or external library dependencies.
+* **Pattern C - Consuming Vault Secrets in GitLab CI/CD Pipelines**: GitLab CI jobs authenticate via short-lived OIDC `id_tokens` (`auth/jwt`) using either GitLab Runner's native `secrets:` keyword or direct Vault CLI / HTTP API calls.
+* **Pattern D - Dynamic Short-Lived PostgreSQL Credentials (`database/` Secrets Engine)**: Vault connects over verified TLS (`5432/TCP`) to a GDCag Managed PostgreSQL `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`), dynamically minting per-pod PostgreSQL roles that expire and revoke automatically when the pod's lease ends.
 
 ### 8.1 Onboarding an Application Namespace & ServiceAccount in Vault
 
@@ -1848,9 +2501,9 @@ kubectl patch serviceaccount my-app-sa -n my-app-ns \
 export VAULT_ROOT_TOKEN=$(jq -r '.root_token' "${WORK_DIR}/vault-init.json")
 
 kubectl -n vault exec -i vault-0 -c vault -- env VAULT_TOKEN="${VAULT_ROOT_TOKEN}" sh -c '
-  # Write application secrets to KVv2 (mounted at secret/)
+  # Write application secrets to KVv2 (mounted at secret/, pointing at the tenant Managed DBCluster host)
   vault kv put secret/apps/my-app/config \
-    DB_HOST="gitlab-postgresql.gitlab.svc.cluster.local" \
+    DB_HOST="my-app-db.pg.iac-root.dbs.org-12345.zone1.google.gdch.test" \
     DB_PORT="5432" \
     DB_USER="my_app_user" \
     DB_PASSWORD="AppVaultSecretPassword2026!" \
@@ -2265,13 +2918,136 @@ deploy_with_vault_http_api:
     - echo "Retrieved secrets for DB_USER=${DB_USER} from Vault KVv2"
 ```
 
+### 8.5 Pattern D: Dynamic PostgreSQL Credentials via Vault `database/` Secrets Engine
+
+To eliminate static long-lived database passwords altogether, configure HashiCorp Vault's **Database Secrets Engine (`database/`)** against a tenant GDCag Managed PostgreSQL `DBCluster` (for example, `my-app-db`, provisioned on `ZONE_KUBECONFIG` via [`./charts/gdc-dbs`](../../charts/gdc-dbs/README.md)). Vault creates unique, time-bounded PostgreSQL login roles (`v-k8s-my-app-...`) on demand and automatically revokes them upon lease expiration.
+
+> [!IMPORTANT]
+> **Three Prerequisites for Dynamic Credentials Against GDCag Managed PostgreSQL 15:**
+> 1. **Outbound `5432/TCP` Egress**: Ensure `vault-internal-policy` in `-n vault` allows `5432/TCP` egress to the Zonal `DBCluster` CIDR ([Section 5.5](#55-step-4-apply-user-cluster-vault-networkpolicy-5432tcp-managed-dbcluster-egress)).
+> 2. **Explicit `sslrootcert=` Mount in `vault-0`**: Because `gdc-kms-bridge` overrides `SSL_CERT_FILE="/vault/kms-bridge/ca-certificates.crt"`, copy `dbs-pg-cert-<dbcluster>` from `Secret/dbs-certificates` (`ZONE_KUBECONFIG`) into a Secret in `-n vault` (e.g., `vault-db-ca` mounted at `/vault/userconfig/vault-db-ca/ca.crt` via `server.extraVolumes`) and pass `?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt` in `connection_url`.
+> 3. **Pre-Created `NOLOGIN` Group Role (`app_rw`), `GRANT "{{name}}" TO vault_db_admin` & PG 15 `DROP OWNED BY` Revocation**: Do not place table-level `GRANT` statements directly inside Vault's `creation_statements` - on PostgreSQL 15, direct ACL dependencies block `DROP ROLE` when leases expire (`cannot be dropped because some objects depend on it`). Instead, grant schema/table privileges once to a `NOLOGIN` group role (`app_rw`), issue dynamic child roles with `IN ROLE app_rw` plus **`GRANT "{{name}}" TO vault_db_admin;`** (required on PostgreSQL 15 so non-superuser `vault_db_admin` holds membership in both the source and target roles during `REASSIGN OWNED BY`), and run `REASSIGN OWNED BY "{{name}}" TO app_rw; DROP OWNED BY "{{name}}"; DROP ROLE IF EXISTS "{{name}}";` in `revocation_statements`.
+
+#### Step 1: Prepare `app_rw` Group Role & `vault_db_admin` Role on the Target `DBCluster`
+
+After provisioning `DBCluster/my-app-db` on `ZONE_KUBECONFIG`, extracting `APP_DB_HOST="${APP_DB_URL%:5432}"`, and mounting `Secret/vault-db-ca` into `vault-0` (`server.extraVolumes: [{type: secret, name: vault-db-ca}]`), connect once as `dbsadmin` to create the `app_db` database, the `NOLOGIN` permission group role (`app_rw`), and a dedicated `vault_db_admin` role with `CREATEROLE`:
+
+```bash
+export APP_DB_ADMIN_PASSWORD="<dbsadmin-password-for-my-app-db>"
+export VAULT_DB_ENGINE_PASSWORD="<initial-vault-db-admin-password>"
+
+# 1. Extract CA from ZONE_KUBECONFIG and sync to -n vault on USER_CLUSTER_KUBECONFIG (mount via server.extraVolumes)
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n iac-root -o jsonpath='{.data.dbs-pg-cert-my-app-db}' | base64 -d > "${WORK_DIR}/my-app-db-ca.crt"
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" -n vault create secret generic vault-db-ca \
+  --from-file=ca.crt="${WORK_DIR}/my-app-db-ca.crt" \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+
+# 2. Initialize 'app_db', NOLOGIN group role 'app_rw', and 'vault_db_admin' as dbsadmin
+PGPASSWORD="${APP_DB_ADMIN_PASSWORD}" PGSSLMODE=verify-full PGSSLROOTCERT="${WORK_DIR}/my-app-db-ca.crt" \
+  psql -h "${APP_DB_HOST}" -p 5432 -U dbsadmin -d postgres -v vault_adm_pw="${VAULT_DB_ENGINE_PASSWORD}" <<'SQL'
+SELECT 'CREATE ROLE app_rw NOLOGIN'
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_rw') \gexec
+
+SELECT format('CREATE ROLE vault_db_admin WITH LOGIN CREATEROLE PASSWORD %L', :'vault_adm_pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'vault_db_admin') \gexec
+ALTER ROLE vault_db_admin WITH PASSWORD :'vault_adm_pw';
+
+GRANT app_rw TO vault_db_admin WITH ADMIN OPTION;
+GRANT app_rw TO dbsadmin;
+
+SELECT 'CREATE DATABASE app_db OWNER app_rw'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'app_db') \gexec
+SQL
+
+PGPASSWORD="${APP_DB_ADMIN_PASSWORD}" PGSSLMODE=verify-full PGSSLROOTCERT="${WORK_DIR}/my-app-db-ca.crt" \
+  psql -h "${APP_DB_HOST}" -p 5432 -U dbsadmin -d app_db <<'SQL'
+GRANT CONNECT ON DATABASE app_db TO app_rw;
+GRANT USAGE, CREATE ON SCHEMA public TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_rw;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_rw;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO app_rw;
+SQL
+```
+
+#### Step 2: Configure Vault `database/` Engine, Rotate Root Password & Issue Dynamic Leases
+
+```bash
+export VAULT_ROOT_TOKEN=$(jq -r '.root_token' "${WORK_DIR}/vault-init.json")
+
+kubectl -n vault exec -i vault-0 -c vault -- env \
+  VAULT_TOKEN="${VAULT_ROOT_TOKEN}" \
+  APP_DB_HOST="${APP_DB_HOST}" \
+  VAULT_DB_ENGINE_PASSWORD="${VAULT_DB_ENGINE_PASSWORD}" sh -c '
+  # 1. Enable the Database Secrets Engine
+  vault secrets enable database || true
+
+  # 2. Configure verified TLS connection to GDCag Managed PostgreSQL (explicit sslrootcert bypasses SSL_CERT_FILE)
+  vault write database/config/my-app-postgres \
+    plugin_name="postgresql-database-plugin" \
+    allowed_roles="my-app-dynamic" \
+    connection_url="postgresql://{{username}}:{{password}}@${APP_DB_HOST}:5432/app_db?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt" \
+    username="vault_db_admin" \
+    password="${VAULT_DB_ENGINE_PASSWORD}"
+
+  # 3. Immediately rotate vault_db_admin password so only Vault knows it
+  vault write -force database/rotate-root/my-app-postgres
+
+  # 4. Define dynamic role inheriting from app_rw with PG 15 non-superuser safe revocation statements
+  vault write database/roles/my-app-dynamic \
+    db_name="my-app-postgres" \
+    creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '\''{{password}}'\'' VALID UNTIL '\''{{expiration}}'\'' IN ROLE app_rw; GRANT \"{{name}}\" TO vault_db_admin;" \
+    revocation_statements="REASSIGN OWNED BY \"{{name}}\" TO app_rw; DROP OWNED BY \"{{name}}\"; DROP ROLE IF EXISTS \"{{name}}\";" \
+    default_ttl="1h" \
+    max_ttl="24h"
+
+  # 5. Grant read access on dynamic credentials to my-app-policy
+  vault policy write my-app-policy - <<EOF
+path "secret/data/apps/my-app/*" {
+  capabilities = ["read"]
+}
+path "secret/metadata/apps/my-app/*" {
+  capabilities = ["read", "list"]
+}
+path "database/creds/my-app-dynamic" {
+  capabilities = ["read"]
+}
+EOF
+
+  # 6. Test minting a short-lived PostgreSQL credential lease
+  vault read database/creds/my-app-dynamic
+'
+```
+
+Workloads using **Pattern A** (`vault-agent-injector`) can render dynamic credentials directly into `/vault/secrets/db.env` via `vault.hashicorp.com/agent-inject-secret-db.env: "database/creds/my-app-dynamic"` (`{{ .Data.username }}` / `{{ .Data.password }}`), with `vault-agent` automatically renewing the lease and rotating credentials prior to `max_ttl`.
+
 ---
 
 ## 9. End-to-End Verification & Troubleshooting
 
-### 9.1 End-to-End Cross-Namespace Verification (`gitlab` -> `vault` -> `GDCag KMS`)
+### 9.1 End-to-End Cross-Namespace & Managed `DBCluster` TLS Verification
 
-Run the following verification commands from the `gitlab-toolbox` pod in namespace `gitlab` to verify both **GitLab JWT Auth** and **Kubernetes ServiceAccount Auth** against Vault (`http://vault.vault.svc.cluster.local:8200`):
+First, verify Zonal `DBCluster` + `BackupPlan` health on `ZONE_KUBECONFIG` and confirm that GitLab's live ActiveRecord connection in `-n gitlab` is encrypted over TLS (`pg_stat_ssl`):
+
+```bash
+# 1. Verify Zonal DBCluster (.status.phase=DBClusterReady) and BackupPlan status on ZONE_KUBECONFIG
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog,backupplan.postgresql.dbadmin.gdc.goog -n iac-root
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady \
+  dbcluster.postgresql.dbadmin.gdc.goog/gitlab-db -n iac-root --timeout=60s
+
+# 2. Confirm GitLab Rails is connected to PostgreSQL 15 over verified TLS
+kubectl exec -n gitlab deploy/gitlab-toolbox -c toolbox -- /srv/gitlab/bin/rails runner '
+  row = ActiveRecord::Base.connection.select_one(
+    "SELECT current_database() AS db, current_user AS usr, version() AS ver, ssl, tls.version AS tls_ver " \
+    "FROM pg_stat_ssl tls WHERE tls.pid = pg_backend_pid()"
+  )
+  puts row.inspect
+'
+```
+
+Next, run the cross-namespace verification commands from `gitlab-toolbox` in namespace `gitlab` to verify both **GitLab JWT Auth** and **Kubernetes ServiceAccount Auth** against Vault (`http://vault.vault.svc.cluster.local:8200`):
 
 ```bash
 # 1. Mint a genuine RS256 GitLab CI JWT signed by GitLab's ci_jwt_signing_key and authenticate to Vault
@@ -2359,4 +3135,15 @@ EOF
 | `PersistentVolumeClaim is pending: storageclass.storage.k8s.io "standard" not found` | Blueprint default `storageClass: "standard"` does not exist on GDCag user clusters. | Set `storageClass: "standard-rwo"` in both Vault and GitLab Helm values. |
 | `InvalidArgument: resource name ... does not match expected format namespaces/<namespace>/aeadKeys/<name>` | Using lowercase `aeadkeys` or GCP `projects/.../keyRings/...` path against GDCag KMS. | Use camelCase `namespaces/iac-root/aeadKeys/vault-unseal-key` in `gdcloud kms keys` and run `gdc-kms-bridge` for Vault's `seal "gcpckms"`. |
 | `failed to pull and unpack image "gcr.io/private-cloud-staging/...": unexpected media type text/html` | User cluster containerd does not have mirror rules for `gcr.io/private-cloud-staging/*`. | Reference `harbor.org-12345.zone1.google.gdch.test/gpc-system-container-images/private-cloud-staging/...` explicitly in `gitlab-values.yaml`. |
-| GitLab `/oauth/discovery/keys` returns `{"keys":[]}` | `ApplicationSetting.current.ci_jwt_signing_key` was not initialized during first-boot migration restart. | Run `/srv/gitlab/bin/rake db:seed_fu` and generate `ci_jwt_signing_key` via `rails runner` in `deploy/gitlab-toolbox` (see Section 6.4). |
+| GitLab `/oauth/discovery/keys` returns `{"keys":[]}` | `ApplicationSetting.current.ci_jwt_signing_key` was not initialized during first-boot migration restart. | Run `/srv/gitlab/bin/rake db:seed_fu` and generate `ci_jwt_signing_key` via `rails runner` in `deploy/gitlab-toolbox` (see Section 6.5). |
+| `dial tcp <db-vip>:5432: i/o timeout` from `gitlab` or `vault` pods | User Cluster `NetworkPolicy` (`vault-internal-policy` or `gitlab-postgres-egress`) blocks outbound `5432/TCP` to the Zonal `DBCluster` subnet. | Permit `5432/TCP` egress to `${DBCLUSTER_SUBNET_CIDR}` in `vault-internal-policy` (Section 5.5) and `gitlab-postgres-egress` (Section 6.3). |
+| `PG::InsufficientPrivilege: ERROR: permission denied for extension "btree_gist"` or `permission denied for schema public` | Pre-install `gitlab-db-bootstrap` `Job` was skipped, extensions were created in `-d postgres` instead of `-d gitlabhq_production`, or `GRANT gitlab TO dbsadmin` + PG 15 `GRANT ALL ON SCHEMA public TO gitlab` was omitted. | Run `Job/gitlab-db-bootstrap` as `dbsadmin` against `-d gitlabhq_production` (Section 6.3) before `helm upgrade --install gitlab`. |
+| `PG::ConnectionBad: root certificate file "/home/git/.postgresql/root.crt" does not exist` | `PGSSLMODE=verify-full` (or `verify-ca`) was set without `PGSSLROOTCERT`, or `Secret/gitlab-db-ca` key did not end in `.crt`. | Ensure `Secret/gitlab-db-ca` uses a `.crt` key (`gitlab-db-ca.crt`), set `global.certificates.customCAs: [{secret: gitlab-db-ca}]`, and set `PGSSLROOTCERT: "/etc/ssl/certs/ca-certificates.crt"` under `global.extraEnv` (Section 6.4). |
+| `invalid port ":5432:5432"` or `could not translate host name "<host>:5432"` | `DBCluster` `.status.primary.url` includes `:5432` and was passed raw into `global.psql.host` or `psql -h`. | Strip the port suffix via `DB_HOST="${DB_URL%:5432}"` before passing to `global.psql.host` or `psql -h` (Section 6.2). |
+| `DBCluster` rejected at admission or stuck reconciling `adminUser.passwordRef` (`Secret/db-pw-<name>`) | `vdbcluster.postgresql.dbadmin.gdc.goog` enforces `passwordRef.name == "db-pw-<clusterName>"` and `data.<clusterName>`, or operator lacks `project-db-admin`. | Name the Secret `db-pw-<clusterName>` with key `data.<clusterName>` (e.g., `Secret/db-pw-gitlab-db` key `gitlab-db`) on `ZONE_KUBECONFIG` and bind `IAMRole` `project-db-admin` on `GLOBAL_API_KUBECONFIG` (Sections 4.1 & 6.2). |
+| `kubectl wait --for=condition=Ready dbcluster/...` times out even when database is running | GDCag `DBCluster.status.conditions` exposes `Provisioned`, `AdminPasswordReady`, and `DNSReady` (no `Ready` condition); readiness is `.status.phase=DBClusterReady`. | Wait on `.status.phase` via `kubectl --kubeconfig="${ZONE_KUBECONFIG}" wait --for=jsonpath='{.status.phase}'=DBClusterReady dbcluster.postgresql.dbadmin.gdc.goog/<name> -n iac-root --timeout=20m` (Sections 5.6, 6.2 & 9.1). |
+| `BackupPlan` reports critical incident `DBSE0062: BackupRepository.backup.gdc.goog "dbs-backup-repository" not found` | Organization's cluster-scoped `BackupRepository` uses a custom or org-prefixed name (e.g., `org-12345-backup-repository`) and `BackupPlan` omitted the repository annotation. | List `kubectl --kubeconfig="${ZONE_KUBECONFIG}" get backuprepositories.backup.gdc.goog` and set `metadata.annotations["fleet.dbadmin.goog/backup-repository"]: "<repo-name>"` (or `--set postgresql.backupPlan.backupRepository=<repo-name>` in `./charts/gdc-dbs`; Sections 4.1, 5.6 & 6.2). |
+| `helm upgrade --install` of `./charts/gdc-dbs` fails with `dbcluster must exist for unpaused backupplan` | Helm 3 sorts unknown CRDs alphabetically and submits `BackupPlan` before `DBCluster` on initial CLI install (whereas Argo CD uses `sync-wave: "1"`). | Run `./charts/gdc-dbs` in two CLI steps: first install `DBCluster` (`backupPlan.enabled=false`), then run `helm upgrade --reuse-values --set postgresql.backupPlan.enabled=true` (Section 6.2). |
+| `kubectl delete dbcluster` or `helm uninstall` denied with `Cannot delete a DBCluster if spec.isDeleted is false` | GDCag `vdbcluster.postgresql.dbadmin.gdc.goog` enforces deletion protection while `spec.isDeleted` is `false`. | Patch `spec.isDeleted: true` (`kubectl --kubeconfig="${ZONE_KUBECONFIG}" patch dbcluster.postgresql.dbadmin.gdc.goog/<name> -n iac-root --type=merge -p '{"spec":{"isDeleted":true}}'` or `--set postgresql.isDeleted=true`) before deleting or uninstalling (Section 6.2). |
+| Vault `x509: certificate signed by unknown authority` when connecting to `DBCluster` (Option B or `database/`) | `gdc-kms-bridge` sets `SSL_CERT_FILE="/vault/kms-bridge/ca-certificates.crt"`, which excludes Zonal `Secret/dbs-certificates`. | Mount `Secret/vault-db-ca` via `server.extraVolumes` and pass explicit `?sslmode=verify-full&sslrootcert=/vault/userconfig/vault-db-ca/ca.crt` (or `sslmode=verify-ca` if connecting by raw IP; see Sections 5.6 & 8.5). |
+| Vault `database/` lease revocation fails with `ERROR: permission denied to reassign objects` | On PostgreSQL 15, non-superuser `vault_db_admin` must be a member of both the dynamic role and `app_rw` to run `REASSIGN OWNED BY "{{name}}" TO app_rw`. | Append `GRANT "{{name}}" TO vault_db_admin;` to `creation_statements` alongside `IN ROLE app_rw` (Section 8.5). |
