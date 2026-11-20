@@ -235,15 +235,15 @@ spec:
    * **GDC Platform Service:** Deployed as a containerized application (e.g., Java Spring Boot, Python Flask, Go) on the same **GDC GKE Cluster**.  
    * **Resilience:** GKE Deployments manage multiple replicas of the application pods. Horizontal Pod Autoscaling (HPA) can be used (if GDC MHS provides the metrics) to scale pods based on CPU/memory. Communication with the web tier and database tier is managed via GKE Services.  
 3. **Data Tier:**  
-   * **GDC Platform Service:** A stateful workload using the **GDC Database Service**. For this pattern, a high-availability **PostgreSQL** cluster is provisioned.  
-   * **Resilience:** The GDC Database Service manages the cluster's replication (e.g., primary-standby) . The [High availability configuration](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdch/application/ao-user/db-configure-ha) allows manual failover to the standby replica  
+   * **GDC Platform Service:** A stateful workload using the **GDC Database Service**. For this pattern, a high-availability **PostgreSQL 15** cluster (`postgresql.dbadmin.gdc.goog/v1`) is provisioned on `ZONE_KUBECONFIG`.  
+   * **Resilience:** The GDC Database Service manages primary-standby replication. In GDCag `v1.15.1+`, the [High availability configuration](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha) (`spec.availability.enableHighAvailability: true`) enables automatic failover (`enableAutoFailover: true`) by default upon primary failure, while also supporting operator-triggered switchovers (`gdcloud database clusters failover` or `fleet.dbadmin.gdc.goog/v1` `Failover`).  
 4. **Storage (Static Assets):**  
    * **GDC Platform Service:** Static assets (images, CSS, JS) are stored in a **GDC Storage** bucket (Object Storage).  
    * **Resilience:** GDC Object Storage provides built-in data durability and redundancy within the GDC instance.  
 5. **Security:**  
    * **GDC Platform Service:** Application secrets (API keys, DB credentials) are stored and managed by the **GDC KMS**. The GDC Database Service integrates with KMS for encryption at rest
 
-Resilience: Database manual failover (Zonal HA); Web tier stateless scaling.
+Resilience: Database Zonal HA (`enableHighAvailability: true`, `enableAutoFailover: true`) with optional manual switchover; Web tier stateless scaling.
 
 ### **Required IAM Permissions**
 
@@ -252,47 +252,60 @@ To deploy the resources for this pattern, your user account will need the follow
 *   **Database Admin:** To provision the PostgreSQL HA cluster.
     *   `roles/db.cluster.creator`
 *   **GKE Developer:** To deploy applications, services, and load balancers to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 ### **Step 1: Provision Data Tier (HA Database)**
 
 **Option A: Manual (CLI)**
 
-Bash
-
-```
+```bash
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
 
 gdcloud database clusters create tier3-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi
-
 ```
 
-**Option B: GitOps** \-\> manifests/db/tier3-db.yaml
+**Option B: GitOps (`ZONE_KUBECONFIG`)** \-\> `manifests/gdc/db/tier3-db.yaml`
 
-YAML
-
-```
-
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-tier3-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  tier3-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: tier3-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "2", memory: "8Gi" }
-  storage: { size: "50Gi" }
-
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-tier3-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
 ```
 
 ### **Step 2: Deploy Application Tier (Business Logic)**
 
-Prerequisite: Database must be READY so the secret tier3-db-credentials exists.
+Prerequisite: Once `DBCluster/tier3-db` is `READY` on `ZONE_KUBECONFIG`, query `.status.primary.url` (stripping the `:5432` port suffix via `DB_HOST="${DB_URL%:5432}"`), extract the server CA from `Secret/dbs-certificates` (`dbs-pg-cert-tier3-db`), initialize the schema/role as `dbsadmin`, and create `Secret/tier3-db-credentials` on the User Cluster (`USER_CLUSTER_KUBECONFIG`).
 
 This tier connects to the DB and exposes an internal API only.
 
@@ -333,8 +346,12 @@ spec:
         env:
         - name: DB_HOST
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_USER
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
+        - name: DB_NAME
+          value: "postgres"
 ---
 apiVersion: v1
 kind: Service
@@ -376,7 +393,9 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: harbor.gdc.local/library/nginx:latest
+        image: harbor.gdc.local/my-org/p1-frontend:v1
+        ports:
+        - containerPort: 8080
         env:
         # Points to the internal K8s DNS of the logic tier service
         - name: API_UPSTREAM
@@ -390,7 +409,7 @@ metadata:
 spec:
   type: LoadBalancer
   selector: { app: web }
-  ports: [ { protocol: TCP, port: 80, targetPort: 80 } ]
+  ports: [ { protocol: TCP, port: 80, targetPort: 8080 } ]
 
 ```
 
@@ -417,7 +436,7 @@ Use Case: Serving ML models with guaranteed uptime even if a node fails.
 To deploy the resources for this pattern, your user account will need the following GDC IAM roles granted in your target project:
 
 *   **Storage Admin:** To create GDC Storage buckets and upload model artifacts.
-    *   `roles/storage.objectAdmin`
+    *   `project-bucket-object-admin`
 *   **AI Developer:** To create, upload, and deploy models and endpoints on Vertex AI.
     *   `roles/ai.developer` (or a combination of `roles/ai.endpoint.creator`, `roles/ai.model.uploader`, and `roles/ai.endpoint.deployer`)
 
@@ -448,7 +467,7 @@ metadata:
   name: ml-models
   namespace: my-gdc-project
 spec:
-  storageClass: standard
+  storageClass: Standard
 
 ```
 
@@ -526,8 +545,8 @@ Use Case: Lift-and-shift legacy apps that can't be containerized but need a mode
 1. **Legacy Application VM:**  
    * **GDC Platform Service:** The legacy application (e.g., a Windows Server-based application or a monolithic Linux binary) is deployed onto a virtual machine using the **GDC VM Runtime**.  
    * **Resilience:** The VM Runtime provides basic infrastructure-level availability. For application-level resilience, you would rely on traditional methods like in-guest clustering or load balancing between multiple VMs (if the app supports it).  
-   * **GDC Platform Service:** A high-availability **PostgreSQL** cluster is provisioned using the **GDC Database Service**. This serves as the high-throughput, resilient database for both modern and legacy applications.  
-   * **Resilience:** PostgreSQL is designed for high availability with zonal standby replicas, requiring a manual trigger for failover.  
+   * **GDC Platform Service:** A high-availability **PostgreSQL 15** cluster is provisioned using the **GDC Database Service** (`postgresql.dbadmin.gdc.goog/v1`). This serves as the high-throughput, resilient database for both modern and legacy applications.  
+   * **Resilience:** PostgreSQL is configured for Zonal HA (`enableHighAvailability: true`) with automatic failover (`enableAutoFailover: true`) by default in GDCag `v1.15.1+`, plus operator-triggered switchovers (`Failover` CR / CLI).  
 3. **VM Data Storage:**  
    * **GDC Platform Service:** Virtual machine disks are provisioned using **GDC Storage (Block Storage)**. Shared filesystems for clustered VMs can use **GDC Storage (File Storage)**.  
    * **Resilience:** GDC Block and File Storage provide resilient, persistent storage for the GDC VMs.  
@@ -539,19 +558,18 @@ Use Case: Lift-and-shift legacy apps that can't be containerized but need a mode
 To deploy the resources for this pattern, your user account will need the following GDC IAM roles granted in your target project:
 
 *   **Network Admin:** To create VPC networks and subnets for the VM.
-    *   `roles/compute.networkAdmin`
+    *   `project-networkpolicy-admin`
 *   **Database Admin:** To provision the PostgreSQL HA cluster.
     *   `roles/db.cluster.creator`
 *   **Compute Admin:** To create the virtual machine instance.
-    *   `roles/compute.instanceAdmin.v1`
+    *   `project-vm-admin`
 
 ### **Step 1: Create Infrastructure**
 
 **Option A: Manual (CLI)**
 
-Bash
-
-```
+```bash
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
 
 # Network for the VM
 gdcloud compute networks create vm-net --project=my-gdc-project --subnet-mode=custom
@@ -560,23 +578,29 @@ gdcloud compute networks subnets create vm-subnet --network=vm-net --range=10.1.
 # High Performance HA Database
 gdcloud database clusters create legacy-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=4 --memory=16Gi --storage-size=100Gi
-
 ```
 
-**Option B: GitOps** \-\> manifests/infra/legacy-infra.yaml
+**Option B: GitOps (`ZONE_KUBECONFIG`)** \-\> `manifests/gdc/infra/legacy-infra.yaml`
 
-YAML
-
-```
-
+```yaml
 apiVersion: networking.gdc.goog/v1
 kind: Network
 metadata:
   name: vm-net
   namespace: my-gdc-project
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-legacy-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  legacy-db: "<base64-admin-password>"
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
@@ -584,12 +608,20 @@ metadata:
   name: legacy-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "4", memory: "16Gi" }
-  storage: { size: "100G" }
-
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-legacy-db
+    version: "15"
+    resources:
+      cpu: 4
+      memory: 16Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ```
 
 ### **Step 2: Provision VM**
@@ -663,20 +695,23 @@ To deploy the resources for this pattern, your user account will need the follow
 
 *   **Database Admin:** To provision the PostgreSQL HA cluster for results.
     *   `roles/db.cluster.creator`
-*   **GKE Admin/Developer:** To deploy the Kafka Helm chart (which includes StatefulSets and PersistentVolumeClaims) and the consumer application. A more privileged role like `roles/gke.admin` may be required for the initial Helm installation of stateful services.
-    *   `roles/gke.admin` or `roles/gke.developer`
+*   **GKE Admin/Developer:** To deploy the Kafka Helm chart (which includes StatefulSets and PersistentVolumeClaims) and the consumer application. A more privileged role like `standard-cluster-admin` may be required for the initial Helm installation of stateful services.
+    *   `standard-cluster-admin` or `namespace-admin` / `cluster-developer`
 
 ### **Step 1: Deploy Kafka & Persistence**
 
 **Option A: Manual (CLI/Helm)**
 
-Bash
-
-```
+```bash
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
 
 # 1. Durable storage for final results
 gdcloud database clusters create event-db \
-  --project=my-gdc-project --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
+  --project=my-gdc-project \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=2 --memory=8Gi --storage-size=50Gi
 
 # 2. Kafka Cluster (Helm)
 # Ensure you point to your INTERNAL registry for the chart and images
@@ -687,26 +722,42 @@ helm install kafka oci://harbor.gdc.local/charts/kafka \
   --set persistence.enabled=true \
   --set image.registry=harbor.gdc.local \
   --set image.repository=bitnami/kafka
-
 ```
 
-Option B: GitOps \-\> manifests/db/event-db.yaml
+**Option B: GitOps (`ZONE_KUBECONFIG`)** \-\> `manifests/gdc/db/event-db.yaml`
 
-(Deploy DB via GitOps. Recommend deploying Kafka via Manual Helm above to avoid complex air-gapped Helm-controller setup).
+(Deploy DB via GitOps on `ZONE_KUBECONFIG`, then initialize as `dbsadmin` and create `Secret/event-db-credentials` on `USER_CLUSTER_KUBECONFIG`. Recommend deploying Kafka via Helm or KRaft `StatefulSet` above).
 
-YAML
-
-```
-
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-event-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  event-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: event-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-event-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
 ```
 
 ### **Step 2: Deploy Consumers**
@@ -770,7 +821,7 @@ spec:
 To deploy the resources for this pattern, your user account will need the following GDC IAM roles granted in your target project:
 
 *   **GKE Developer:** To deploy the gateway application, service, and configmap to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 *   **AI Invoker:** The service account used by the gateway pods will need permission to call the Vertex AI endpoints. While not a user permission, it's a critical part of the setup.
     *   `roles/ai.invoker`
 
@@ -873,10 +924,10 @@ This pattern requires permissions for both the **user** deploying the applicatio
 To deploy the resources, your user account will need the following GDC IAM roles:
 
 *   **IAM Admin:** To create a new service account (`rag-sa`) and grant it project-level roles.
-    *   `roles/iam.serviceAccountAdmin`
-    *   `roles/project.iamAdmin`
+    *   `project-iam-admin`
+    *   `project-iam-admin`
 *   **GKE Developer:** To deploy the CronJob and ServiceAccount to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 **2. Service Account Permissions:**
 The `rag-sa` service account itself will be granted the following roles by the user during setup, which it uses at runtime to call other GDC services:
@@ -953,10 +1004,18 @@ spec:
           serviceAccountName: rag-sa  # Must match Step 1
           containers:
           - name: ingest
-            image: harbor.gdc.local/my-org/rag-ingest:v1
+            image: harbor.gdc.local/my-org/rag-ingest:v7
             env:
             - name: INPUT_BUCKET
               value: "gs://raw-docs"
+            - name: DB_HOST
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: host } }
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: username } }
+            - name: DB_PASS
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: password } }
+            - name: DB_NAME
+              valueFrom: { secretKeyRef: { name: rag-db-credentials, key: database } }
           restartPolicy: OnFailure
 
 ```
@@ -992,7 +1051,7 @@ As ADK, A2A, and MCP are open-source components, they must be ingested into the 
 To deploy the resources for this pattern, your user account will need the following GDC IAM roles granted in your target project:
 
 *   **GKE Developer:** To deploy the agent's Deployment and Secret to the GKE cluster.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 **2. Agent Runtime Permissions:**
 The service account used by the `sql-agent` pods will need permissions to access the resources it queries. This includes:
@@ -1012,6 +1071,8 @@ Bash
 
 kubectl create secret generic db-ro-creds \
   --namespace=my-gdc-project \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=database="postgres" \
   --from-literal=username=analyst_ro \
   --from-literal=password='<SECURE_PASSWORD>'
 
@@ -1031,6 +1092,8 @@ metadata:
 type: Opaque
 # Values must be base64 encoded: echo -n 'my-password' | base64
 data:
+  host: cG9zdGdyZXMtZGI=
+  database: cG9zdGdyZXM=
   username: YW5hbHlzdF9ybw==
   password: U2VjdXJlUGFzc3dvcmQ=
 
@@ -1064,6 +1127,10 @@ spec:
       - name: langchain
         image: harbor.gdc.local/my-org/sql-agent-adk:v1
         env:
+        - name: DB_HOST
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: host } }
+        - name: DB_NAME
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: database } }
         - name: DB_USER
           valueFrom: { secretKeyRef: { name: db-ro-creds, key: username } }
         - name: DB_PASS
@@ -1106,17 +1173,17 @@ This pattern involves cluster-wide tooling and a CI/CD pipeline, requiring disti
 To deploy cluster-wide tools like Prometheus and Argo Rollouts, your user account will need administrative permissions on the GKE cluster:
 
 *   **GKE Cluster Admin:** To install Helm charts that create Custom Resource Definitions (CRDs) and manage resources across all namespaces.
-    *   `roles/gke.clusterAdmin`
+    *   `standard-cluster-admin` / `user-cluster-admin`
 
 **2. CI/CD Pipeline Permissions:**
 The service principal or service account used by your CI/CD system (e.g., GitLab) will need the following roles to execute the retraining pipeline:
 
 *   **Storage Reader:** To pull the latest training data.
-    *   `roles/storage.objectViewer`
+    *   `project-bucket-object-viewer`
 *   **Storage Writer:** To push newly trained model artifacts.
-    *   `roles/storage.objectCreator`
+    *   `project-bucket-object-admin`
 *   **GKE Developer:** To trigger the Argo Rollouts canary deployment by updating the image.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 ### **Step 1: Deploy Toolchain**
 
@@ -1187,7 +1254,7 @@ To deploy this pattern:
 *   **Database Admin:** To create the sovereign DBCluster.
     *   `roles/db.cluster.creator`
 *   **GKE Developer:** To deploy the application and NetworkPolicies.
-    *   `roles/gke.developer`
+    *   `namespace-admin` / `cluster-developer`
 
 ### **Step 1: Deploy Sovereign Infra**
 
@@ -1227,25 +1294,21 @@ Use Case: A centralized, high-availability, and secure enclave for managing secr
 4. **Integration Options:** Works elegantly via Sidecar Injection (Vault Agent Mutating Webhook) or External Secrets.
 
 ### **Required IAM Permissions**
-*   **KMS Admin:** `roles/cloudkms.admin`
+*   **KMS Roles (`iam.global.gdc.goog/v1` `IAMRole`)**: `kms-admin` (operator), `kms-developer` & `kms-viewer` (`vault-kms-sa`)
+*   **Cluster Role**: `namespace-admin` / `cluster-developer`
 
-### **Step 1: Create Core GDC Infrastructure**
-
-**Manual (gdcloud CLI)**
+### **Step 1: Provision Global `vault-kms-sa` & Zonal `AEADKey`**
 
 ```bash
-gdcloud kms key-rings create vault-ring --location=zone-1
-gdcloud kms keys create vault-unseal-key --key-ring=vault-ring --purpose=encryption
-gdcloud kms keys add-iam-policy-binding vault-unseal-key \
-    --key-ring=vault-ring --location=zone-1 \
-    --member="serviceAccount:my-gdc-project.svc.id.goog/my-gdc-project/vault-kms-sa" \
-    --role="roles/cloudkms.encrypterDecrypter"
+kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" apply -f p11-vault/manifests/gdc/kms/global-iam.yaml
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" apply -f p11-vault/manifests/gdc/kms/zonal-aeadkey.yaml
+# Verify KMS key via camelCase resource URI: namespaces/my-gdc-project/aeadKeys/vault-unseal-key
 ```
 
-### **Step 2: Deploy Vault via Helm**
+### **Step 2: Deploy Vault & `gdc-kms-bridge` via Helm**
 
 ```bash
-helm install vault hashicorp/vault -f manifests/helm/values.yaml
+GODEBUG=tlsmlkem=0 helm upgrade --install vault ./charts/vault -n vault -f p11-vault/manifests/helm/values.yaml
 ```
 
 ---
@@ -1261,20 +1324,56 @@ Use Case: Centralized authentication, SSO, and RBAC proxying for applications in
 
 ### **Required IAM Permissions**
 *   **Database Admin:** `roles/db.cluster.creator`
-*   **GKE Developer:** `roles/gke.developer`
+*   **GKE Developer:** `namespace-admin` / `cluster-developer`
 
 ### **Step 1: Create Database Backend**
 
 ```bash
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create keycloak-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=100Gi
 ```
 
-### **Step 2: Deploy Keycloak via Helm**
-*(Requires fetching DB connection details from the namespace secret first)*
+Or declaratively via GitOps on `ZONE_KUBECONFIG` (`manifests/gdc/db/db-cluster.yaml`):
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-keycloak-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  keycloak-db: "<base64-admin-password>"
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: keycloak-db
+  namespace: my-gdc-project
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-keycloak-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
+```
+
+### **Step 2: Initialize `keycloak` Database & Deploy Keycloak**
+*(Query `.status.primary.url` and strip its `:5432` port suffix via `DB_HOST="${DB_URL%:5432}"`, extract `Secret/dbs-certificates` on `ZONE_KUBECONFIG`, connect as `dbsadmin` to run `CREATE DATABASE keycloak;` and create the `keycloak` role, and populate `Secret/keycloak-db-credentials` on `USER_CLUSTER_KUBECONFIG` prior to rollout)*
 
 ```bash
 helm upgrade --install keycloak oci://harbor.gdc.local/charts/keycloak \
@@ -1302,7 +1401,7 @@ Use Case: Provisioning dynamic, containerized cloud developer environment worksp
 5. **Air-Gapped Developer Persistence:** Developer repositories and workspace configurations permanently retained on GDC block storage PVCs across pod reboots and scale-to-zero idle hibernations.
 
 ### **Required IAM & RBAC Permissions**
-* **GDC IAM Role:** `roles/container.developer` or `roles/gke.developer`
+* **GDC IAM Role:** `cluster-developer` or `namespace-admin` / `cluster-developer`
 * **Kubernetes RBAC:** ServiceAccount `gdc-dev-operator-sa` with Role/ClusterRole granting operations on `pods`, `services`, `deployments`, `configmaps`, `secrets`, and `httproutes` (`gateway.networking.k8s.io`).
 
 ### **Deployment Command Sequence (Production / Default)**
@@ -1342,7 +1441,7 @@ Use Case: Unifying interactive software/infrastructure engineering (`/ide/`) and
 5. **Keycloak OIDC & Dual-Port Sovereign Admin Isolation:** Authenticates developers (`https://dev.gdc.local`, Port `8080`, `dev_auth_user`) and platform admins (`https://admin.dev.gdc.local`, Port `8081`, `admin_auth_user`) via Keycloak OIDC (`p12-keycloak` `gdc-dev-realm`).
 
 ### **Required IAM & RBAC Permissions**
-* **GDC IAM Role:** `roles/container.developer` or `roles/gke.developer`
+* **GDC IAM Role:** `cluster-developer` or `namespace-admin` / `cluster-developer`
 * **Kubernetes RBAC:** ServiceAccount `gdc-dev-operator-sa` with Role/ClusterRole granting operations on `pods`, `services`, `deployments`, `configmaps`, `secrets`, and `httproutes` (`gateway.networking.k8s.io`).
 
 ### **Deployment Command Sequence (Production / Default)**

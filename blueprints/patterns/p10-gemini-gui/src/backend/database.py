@@ -19,6 +19,15 @@ from typing import Optional
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres-svc:5432/postgres")
 
+
+def _resolve_dsn(dsn: str) -> str:
+    default_ca = os.getenv("PGSSLROOTCERT", "/etc/db-tls/ca.crt")
+    if "sslmode=" in dsn and "sslrootcert=" not in dsn and os.path.isfile(default_ca):
+        sep = "&" if "?" in dsn else "?"
+        return f"{dsn}{sep}sslrootcert={default_ca}"
+    return dsn
+
+
 def _parse_args(args):
     parsed = []
     for arg in args:
@@ -40,7 +49,7 @@ class Database:
 
     async def connect(self):
         if not self.pool:
-            self.pool = await asyncpg.create_pool(DATABASE_URL)
+            self.pool = await asyncpg.create_pool(_resolve_dsn(DATABASE_URL))
 
     async def disconnect(self):
         if self.pool:

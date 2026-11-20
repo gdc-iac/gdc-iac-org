@@ -85,3 +85,11 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    # 5. Optional: Uncomment and replace <POSTGRES_SUBNET_CIDR>/32 when using GDCag DBCluster
+    #    (e.g., for Vault Dynamic Database Secrets Engine `database/` or PostgreSQL storage backend)
+    # - to:
+    #     - ipBlock:
+    #         cidr: <POSTGRES_SUBNET_CIDR>/32
+    #   ports:
+    #     - protocol: TCP
+    #       port: 5432

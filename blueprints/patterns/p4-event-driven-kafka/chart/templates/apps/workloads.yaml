@@ -41,11 +41,14 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: worker
         image: {{ $registry }}/p4-consumer:v1
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop:
             - ALL
@@ -78,6 +81,12 @@ spec:
             - /tmp/ready
           initialDelaySeconds: 5
           periodSeconds: 5
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -101,19 +110,78 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: volume-permissions
         image: {{ $registry }}/busybox:1.36
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
         command:
         - sh
         - -c
-        - chown -R 1000:1000 /mnt/kafka
+        - mkdir -p /mnt/kafka/data
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+      - name: init-kafka-config
+        image: {{ $registry }}/kafka:3.9.0
+        command:
+        - sh
+        - -c
+        - cp -a /opt/kafka/config/. /work-config/
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        volumeMounts:
+        - name: kafka-config
+          mountPath: /work-config
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: kafka
         image: {{ $registry }}/kafka:3.9.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 9092
           name: client
@@ -149,6 +217,19 @@ spec:
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+        - name: tmp
+          mountPath: /tmp
+        - name: kafka-logs
+          mountPath: /opt/kafka/logs
+        - name: kafka-config
+          mountPath: /opt/kafka/config
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: kafka-logs
+        emptyDir: {}
+      - name: kafka-config
+        emptyDir: {}
   volumeClaimTemplates:
   - metadata:
       name: kafka-data

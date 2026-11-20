@@ -21,7 +21,7 @@ To prevent browser CORS violations and Cookie preview blocks, the frontend React
               │ (/auth)                   │ (/api)                    │ (/)
               ▼                           ▼                           ▼
          [ Keycloak ]             [ gemma-client Backend ] ◄── [ gemma-client Frontend ]
-                                    (FastAPI, Port 8000)          (React+Vite, Port 80)
+                                    (FastAPI, Port 8000)          (React+Vite, Port 8080)
                                           │
                     ┌─────────────────────┼─────────────────────┐
                     │                     │                     │
@@ -138,21 +138,29 @@ CREATE TABLE IF NOT EXISTS files (
     is_shared BOOLEAN DEFAULT FALSE
 );
 
-CREATE INDEX idx_chats_user_id ON chats(user_id);
-CREATE INDEX idx_messages_chat_id ON messages(chat_id);
-CREATE INDEX idx_files_user_id ON files(user_id);
+CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
 ```
 
 ## 2.2 Kubernetes DB Secret Creation
 
-Create a Kubernetes generic secret containing the pre-authenticated connection string parameters for database initialization:
+Retrieve the primary endpoint (`.status.primary.url`, stripping the `:5432` port suffix) and server TLS CA certificate (`Secret/dbs-certificates`) from `ZONE_KUBECONFIG`, then create `Secret/gemma-client-db-credentials` on the User Cluster with `ca.crt` mounted at `/etc/db-tls/ca.crt`:
 
 ```shell
-kubectl create secret generic gemini-gui-db-credentials \
-  --from-literal=username=postgres \
-  --from-literal=password=db_secure_password_123 \
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gemma-client-db \
+  -n gemma-inference -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n gemma-inference -o jsonpath="{.data['dbs-pg-cert-gemma-client-db']}" | base64 -d > gemma-client-db-ca.crt
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemma-client-db-credentials \
+  --from-literal=username=dbsadmin \
+  --from-literal=password="${DB_ADMIN_PASSWORD}" \
   --from-literal=db_name=postgres \
-  --from-literal=connection_string="postgresql://postgres:db_secure_password_123@postgres-service.gemma-inference.svc.cluster.local:5432/postgres" \
+  --from-file=ca.crt=./gemma-client-db-ca.crt \
+  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/db-tls/ca.crt" \
   -n gemma-inference
 ```
 
@@ -329,20 +337,20 @@ kubectl --kubeconfig="${GLOBAL_API_KUBECONFIG}" apply -f iam-policy-binding.yaml
 
 Build and push the frontend and backend images:
 ```shell
-docker build -t harbor.shared-services.gdc.local/gemma-project/p10-backend:latest ./gemma-client/src/backend/
-docker build -t harbor.shared-services.gdc.local/gemma-project/p10-frontend:latest ./gemma-client/src/frontend/
+docker build -t harbor.shared-services.gdc.local/gemma-project/gemma-client-backend:latest ./gemma-client/src/backend/
+docker build -t harbor.shared-services.gdc.local/gemma-project/gemma-client-frontend:latest ./gemma-client/src/frontend/
 
-docker push harbor.shared-services.gdc.local/gemma-project/p10-backend:latest
-docker push harbor.shared-services.gdc.local/gemma-project/p10-frontend:latest
+docker push harbor.shared-services.gdc.local/gemma-project/gemma-client-backend:latest
+docker push harbor.shared-services.gdc.local/gemma-project/gemma-client-frontend:latest
 ```
 
-Create `client-deployments.yaml` containing GDC database connection secrets:
+Create `client-deployments.yaml` referencing `gemma-client-sa` and mounting the optional database TLS CA secret at `/etc/db-tls`:
 
 ```yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: gemini-gui-sa
+  name: gemma-client-sa
   namespace: gemma-inference
 ---
 apiVersion: apps/v1
@@ -364,17 +372,30 @@ spec:
     spec:
       nodeSelector:
         pool: cpu
-      serviceAccountName: gemini-gui-sa
+      serviceAccountName: gemma-client-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
-        image: harbor.shared-services.gdc.local/gemma-project/p10-backend:latest
+        image: harbor.shared-services.gdc.local/gemma-project/gemma-client-backend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8000
         env:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: gemini-gui-db-credentials
+              name: gemma-client-db-credentials
               key: connection_string
         - name: INPUT_BUCKET
           value: "gs://gemma-client-files-bucket"
@@ -384,6 +405,12 @@ spec:
           value: "true"
         - name: KEYCLOAK_URL
           value: "https://app.gdc.local/auth/realms/gdc-rag-realm"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
         resources:
           requests:
             cpu: "200m"
@@ -391,6 +418,16 @@ spec:
           limits:
             cpu: "1"
             memory: "1Gi"
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: gemma-client-db-credentials
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
       imagePullSecrets:
       - name: client-pull-secret
 ---
@@ -426,14 +463,34 @@ spec:
     spec:
       nodeSelector:
         pool: cpu
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: frontend
-        image: harbor.shared-services.gdc.local/gemma-project/p10-frontend:latest
+        image: harbor.shared-services.gdc.local/gemma-project/gemma-client-frontend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         env:
         - name: VITE_API_URL
           value: "/api"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
         resources:
           requests:
             cpu: "100m"
@@ -441,6 +498,13 @@ spec:
           limits:
             cpu: "500m"
             memory: "256Mi"
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
       imagePullSecrets:
       - name: client-pull-secret
 ---
@@ -452,7 +516,7 @@ metadata:
 spec:
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
     protocol: TCP
   selector:
     app: frontend

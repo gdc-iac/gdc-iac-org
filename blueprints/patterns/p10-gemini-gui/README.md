@@ -181,22 +181,35 @@ Sync the `manifests/gdc/iam/` files (if available) to your cluster.
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
 
-# 1. Create Managed Database Cluster
+# 1. Create Managed Database Cluster (PostgreSQL 15 HA)
 gdcloud database clusters create gemini-db \
-  --project=$PROJECT_ID --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=2 --memory=8Gi --storage-size=50Gi
 
-# 2. Create Connection Secret
-# Retrieve the IP address of your new DB instance and create the secret
-# DB_HOST=$(gdcloud database clusters describe gemini-db --project=$PROJECT_ID --format="value(primaryInstance.ipAddress)")
-# kubectl create secret generic gemini-gui-db-credentials \
-#   --namespace=$PROJECT_ID \
-#   --from-literal=connection_string="postgresql://postgres:password@$DB_HOST:5432/postgres"
+# 2. Retrieve Primary Endpoint & Server TLS CA from ZONE_KUBECONFIG
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gemini-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-gemini-db}' | base64 -d > /tmp/gemini-db-ca.crt
+
+# 3. Create Connection Secret on the User Cluster
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemini-gui-db-credentials \
+  --namespace="${PROJECT_ID}" \
+  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres?sslmode=verify-ca&sslrootcert=/etc/db-tls/ca.crt" \
+  --from-file=ca.crt=/tmp/gemini-db-ca.crt \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
 ```
 
-**Option B: GitOps**
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Sync the `manifests/gdc/db/postgres.yaml` file to your cluster.
+Replace the base64 placeholder in `Secret/db-pw-gemini-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/postgres.yaml` (`Secret/db-pw-gemini-db` + `DBCluster/gemini-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`), then create `gemini-gui-db-credentials` on the User Cluster as shown above.
 
 ### Step 3: Initialize Database Schema
 
@@ -206,10 +219,7 @@ The application requires a specific database schema to store chat history and fi
 The schema includes three tables: `chats`, `messages`, and `files`. It also requires the `uuid-ossp` extension. You can find the reference SQL definition in `manifests/gcp/postgres-configmap.yaml`.
 
 **For GDC Production (PostgreSQL HA):**
-You must manually apply the schema to your GDC Database Service instance.
-
-1.  Connect to your PostgreSQL instance using `psql`.
-2.  Run the following SQL commands:
+Connect to your GDC Database Service instance as `dbsadmin` (`PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/gemini-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres`) and run the following SQL commands:
 
     ```sql
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -241,10 +251,12 @@ You must manually apply the schema to your GDC Database Service instance.
         is_shared BOOLEAN DEFAULT FALSE
     );
 
-    CREATE INDEX idx_chats_user_id ON chats(user_id);
-    CREATE INDEX idx_messages_chat_id ON messages(chat_id);
-    CREATE INDEX idx_files_user_id ON files(user_id);
+    CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+    CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
     ```
+
+> **Note (PostgreSQL 15 Schema Privileges):** If you create a dedicated least-privilege application role (e.g., `gemini_app`) instead of connecting as `dbsadmin`, grant `GRANT USAGE, CREATE ON SCHEMA public TO gemini_app;` and `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chats, messages, files TO gemini_app;` because PostgreSQL 15 revokes default `CREATE` privileges on schema `public` from `PUBLIC`.
 
 ### Step 4: Deploy Application
 
@@ -303,9 +315,9 @@ If you need to wipe all data and start fresh (e.g., to clear old chat history or
 # Ensure BUCKET_NAME is set
 gcloud storage rm -r ${BUCKET_NAME}/**
 
-# 2. Clear Database Tables (WARNING: Deletes all chat history and users)
+# 2. Clear Database Tables (WARNING: Deletes all chat history and uploaded file metadata)
 # Connect to your GDC Database Service instance and run:
-# TRUNCATE users, chats, messages, documents;
+# TRUNCATE chats, messages, files CASCADE;
 
 # 3. Restart Pods (to reset any in-memory state if applicable)
 kubectl delete pod -n <YOUR_NAMESPACE> -l app=backend

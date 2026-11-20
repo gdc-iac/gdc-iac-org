@@ -371,10 +371,13 @@ Securely store `${WORK_DIR}/vault-init.json` (`recovery_keys_b64` and `root_toke
 
 ## **Section 5: Network Policy Hardening**
 
-Apply `manifests/security/network-policy.yaml` so:
+Apply `manifests/security/network-policy.yaml` (`vault-internal-policy`) so:
 * Cross-namespace application pods and `vault-agent` sidecars can reach Vault API port `8200/TCP` (`namespaceSelector: {}`).
 * Raft replication port `8201/TCP` (and peer `8200/TCP`) is restricted strictly to `app.kubernetes.io/name: vault` pods on both ingress and egress.
 * Egress permits `kube-system` DNS (`53/UDP` and `53/TCP`), in-cluster OIDC JWKS providers (`80/443/8080` TCP for GitLab/Keycloak JWT auth), and GDCag KMS/STS (`443/TCP`) plus Kubernetes API `TokenReview` (`443/TCP` and post-DNAT `6443/TCP`).
+* **PostgreSQL `5432/TCP` Egress & TLS Root CA Mount (Rule 5 / Optional Managed `DBCluster` Connectivity)**: When Vault connects to GDCag Managed PostgreSQL (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) to issue dynamic database credentials via the **Database Secrets Engine (`database/`)** or use a PostgreSQL storage backend, egress on port `5432/TCP` and the `DBCluster` TLS CA certificate (`Secret/dbs-certificates` copied from `ZONE_KUBECONFIG` into a User Cluster Secret) must be configured:
+  * **Raw Manifest (`manifests/security/network-policy.yaml`)**: Rule `# 5` (`5432/TCP`) is commented out by default so standalone `kubectl apply` does not open `0.0.0.0/0:5432`. Uncomment Rule `# 5` and replace `<POSTGRES_SUBNET_CIDR>/32` with your Zonal `DBCluster` VIP/subnet CIDR.
+  * **Helm Wrapper Chart (`chart/values.yaml`)**: Enable `vault.networkPolicy.allowPostgresEgress: true` (defaults to `false`), restrict `vault.networkPolicy.postgresCidrs` to your Zonal `DBCluster` VIP/subnet CIDR(s) (e.g., `["10.200.16.0/24"]`), and mount the TLS CA Secret via `vault.extraVolumes` (`[{name: db-tls-ca, secret: {secretName: db-tls-ca}}]`) and `vault.extraVolumeMounts` (`[{name: db-tls-ca, mountPath: /vault/userconfig/db-tls-ca, readOnly: true}]`).
 
 ```bash
 kubectl -n "${NAMESPACE}" apply -f ./blueprints/patterns/p11-vault/manifests/security/network-policy.yaml
@@ -424,6 +427,7 @@ kubectl run p11-verify --rm -i --restart=Never -n "${NAMESPACE}" \
 | `license check failed: no autoloaded license provided` | Pulling `vault-enterprise` without an Enterprise license. | Use OSS `${PROJECT_HARBOR}/iac/vault:1.15.0` for `server.image` and `injector.agentImage`. |
 | `storageclass.storage.k8s.io "standard" not found` | Default `standard` StorageClass does not exist on GDCag user clusters. | Set `storageClass: "standard-rwo"`. |
 | `InvalidArgument: ... expected format namespaces/<namespace>/aeadKeys/<name>` | Using lowercase `aeadkeys` or GCP `projects/.../keyRings/...` URI directly against GDCag KMS. | Use camelCase `namespaces/<project>/aeadKeys/vault-unseal-key` in `gdcloud kms keys` and run `gdc-kms-bridge` for Vault `seal "gcpckms"`. |
+| `error creating database object: dial tcp <db-vip>:5432: i/o timeout` | `vault-internal-policy` blocks outbound `5432/TCP` when enabling the Dynamic Database Secrets Engine (`database/`) against GDCag Managed PostgreSQL (`DBCluster`). | Set `vault.networkPolicy.allowPostgresEgress: true` and `vault.networkPolicy.postgresCidrs` (plus `vault.extraVolumes` / `vault.extraVolumeMounts` for the `DBCluster` TLS CA) in `chart/values.yaml`, or uncomment Rule `# 5` with `<POSTGRES_SUBNET_CIDR>/32` in `manifests/security/network-policy.yaml`. |
 
 ---
 
@@ -449,5 +453,9 @@ After restoration, Vault restarts, unwraps its master key via `gdc-kms-bridge` -
 ## **IaC Framework Integration (Helm & Helmfile)**
 
 This pattern ships a production Helm chart (`chart/`, version `0.2.0`) supporting dual-mode deployment:
-1. **Upstream HashiCorp Chart + Overlay (`manifests/`)**: Apply `manifests/gdc/kms/` across `GLOBAL_API_KUBECONFIG` and `ZONE_KUBECONFIG`, install upstream `vault-0.32.0` with `manifests/helm/values.yaml`, and apply `manifests/security/network-policy.yaml`.
-2. **Self-Contained Stage 5 Wrapper Chart (`chart/` & `foundations/releases/5-workload-factory`)**: Directly renders the Vault HA `StatefulSet`, `gdc-kms-bridge` native sidecar, RBAC, headless/client `Service`s, Raft `ConfigMap`, and `NetworkPolicy` (`apps.enabled=true`, `gdc.enabled=false`), while optionally rendering Global `ProjectServiceAccount`/`IAMRoleBinding` and Zonal `AEADKey` manifests when `gdc.enabled=true` (`gdc.globalIam.enabled` / `gdc.zonalKms.enabled`).
+1. **Upstream HashiCorp Chart + Overlay (`manifests/`)**: Apply `manifests/gdc/kms/` across `GLOBAL_API_KUBECONFIG` and `ZONE_KUBECONFIG`, install upstream `vault-0.32.0` with `manifests/helm/values.yaml`, and apply `manifests/security/network-policy.yaml` (uncommenting Rule `# 5` `5432/TCP` egress with `<POSTGRES_SUBNET_CIDR>/32` if connecting Vault to GDCag Managed PostgreSQL).
+2. **Self-Contained Stage 5 Wrapper Chart (`chart/` & `foundations/releases/5-workload-factory`)**: Directly renders the Vault HA `StatefulSet`, `gdc-kms-bridge` native sidecar, RBAC, headless/client `Service`s, Raft `ConfigMap`, and `NetworkPolicy` (`apps.enabled=true`, `gdc.enabled=false`), while optionally rendering Global `ProjectServiceAccount`/`IAMRoleBinding` and Zonal `AEADKey` manifests when `gdc.enabled=true` (`gdc.globalIam.enabled` / `gdc.zonalKms.enabled`). Key storage, TLS mount, and `NetworkPolicy` Helm values:
+   * `vault.extraVolumes` / `vault.extraVolumeMounts`: Optional Kubernetes `Volume` and `VolumeMount` lists on the `vault` StatefulSet (e.g., mounting a GDCag `DBCluster` TLS CA secret for `sslmode=verify-ca`).
+   * `vault.networkPolicy.controlPlaneCidrs`: CIDR list for GDCag KMS/STS (`443/TCP`) and Kubernetes API `TokenReview` (`443/6443` TCP).
+   * `vault.networkPolicy.allowPostgresEgress`: Boolean (`true`/`false`, defaults to `false`) enabling outbound `5432/TCP` egress from Vault pods to GDCag Managed PostgreSQL (`DBCluster`) for the Dynamic Database Secrets Engine (`database/`) or PostgreSQL storage backend.
+   * `vault.networkPolicy.postgresCidrs`: CIDR list scoping `5432/TCP` PostgreSQL egress to your Zonal `DBCluster` subnet(s).

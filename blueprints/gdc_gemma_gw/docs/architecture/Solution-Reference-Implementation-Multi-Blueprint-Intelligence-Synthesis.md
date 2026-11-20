@@ -173,25 +173,39 @@ docker push "${PROJECT_HARBOR}/gemma-proxy:latest"
 ### **Phase 3: Provision GDC Managed Platform Services (`ZONE_KUBECONFIG`)**
 
 #### 1. Provision GDC Managed PostgreSQL `DBCluster`
-Deploy a Zonal High-Availability PostgreSQL cluster (`postgresql.dbadmin.gdc.goog/v1` on `ZONE_KUBECONFIG`):
+Deploy the prerequisite admin password `Secret` and a Zonal High-Availability PostgreSQL 15 cluster (`postgresql.dbadmin.gdc.goog/v1` on `ZONE_KUBECONFIG`):
 
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-operational-readiness-db
+  namespace: intel-operations
+type: Opaque
+data:
+  # Key must match DBCluster metadata.name; replace with base64-encoded dbsadmin password before applying on ZONE_KUBECONFIG
+  operational-readiness-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: operational-readiness-db
   namespace: intel-operations
 spec:
-  version: POSTGRESQL_15
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: "8"
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-operational-readiness-db
+    version: "15"
+    resources:
+      cpu: 8
       memory: 32Gi
-  storage:
-    size: 200G
-  dbFlags:
-    shared_preload_libraries: "vector"
+      disks:
+        - name: DataDisk
+          size: 200Gi
 ```
 
 #### 2. Provision GDC KMS `AEADKey` & Native Object Storage `Bucket`

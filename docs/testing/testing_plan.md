@@ -701,7 +701,7 @@ kubectl get sqlinstance blueprint-db -n config-connector-system -o jsonpath='{.m
 ### 6.14. Pattern 1: Web Tier "Permission denied" on /run/nginx.pid
 **Issue**: Nginx fails to start with `open() "/run/nginx.pid" failed (13: Permission denied)`.
 **Cause**: The container runs as a non-root user (uid 101), but the default Nginx config tries to write the PID file to `/run/` which is root-owned.
-**Fix**: Update the `nginx.conf` and `Dockerfile` to use a writable directory for the PID file (e.g., `/tmp/nginx/nginx.pid`).
+**Fix**: Update `nginx.conf` and `Dockerfile` to write the PID file directly in `/tmp` (`pid /tmp/nginx.pid;`, never inside a subdirectory under `/tmp` that would be wiped when an `emptyDir` volume is mounted at `/tmp` under `readOnlyRootFilesystem: true`).
 
 ### 6.15. Pattern 4: Consumer App "Connection refused" to DB
 **Issue**: `kafka-consumer` logs show connection attempts to `localhost` failing.

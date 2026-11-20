@@ -28,9 +28,54 @@ spec:
       labels:
         app: keycloak
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: init-keycloak-quarkus
+        image: REGISTRY_HOST_PLACEHOLDER/keycloak/keycloak:24.0.4
+        command: ["sh", "-c", "cp -a /opt/keycloak/lib/quarkus/. /quarkus-work/"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: keycloak-quarkus
+          mountPath: /quarkus-work
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: keycloak
         image: REGISTRY_HOST_PLACEHOLDER/keycloak/keycloak:24.0.4
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
         args: ["start-dev"]
         env:
         - name: KC_DB
@@ -70,6 +115,20 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 5
           failureThreshold: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+        - name: keycloak-quarkus
+          mountPath: /opt/keycloak/lib/quarkus
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: keycloak-data
+        emptyDir: {}
+      - name: keycloak-quarkus
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

@@ -30,6 +30,33 @@ tests:
       - isKind:
           of: Deployment
         documentIndex: 0
+      - isKind:
+          of: StatefulSet
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: init-kafka-config
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].image
+          value: harbor.corp.local/blueprints/kafka:3.9.0
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].securityContext.readOnlyRootFilesystem
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].securityContext.runAsNonRoot
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].name
+          value: kafka-config
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[3].mountPath
+          value: /opt/kafka/config
+        documentIndex: 1
   - it: should not render User Cluster workloads when apps.enabled is false
     set:
       apps:
@@ -52,10 +79,33 @@ tests:
     template: templates/gdc/resources.yaml
     asserts:
       - hasDocuments:
-          count: 1
+          count: 2
+      - isKind:
+          of: Secret
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: db-pw-event-db
+        documentIndex: 0
       - isKind:
           of: DBCluster
-        documentIndex: 0
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: event-db
+        documentIndex: 1
+      - equal:
+          path: spec.availability.enableHighAvailability
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.primarySpec.version
+          value: "15"
+        documentIndex: 1
+      - equal:
+          path: spec.primarySpec.adminUser.passwordRef.name
+          value: db-pw-event-db
+        documentIndex: 1
   - it: should keep Day-2 Failover disabled even when gdc.enabled is true unless explicitly triggered
     set:
       gdc:

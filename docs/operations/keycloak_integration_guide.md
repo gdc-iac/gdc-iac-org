@@ -387,7 +387,7 @@ spec:
       urlRewrite:
         path:
           type: ReplacePrefixMatch
-          value: /
+          replacePrefixMatch: /
     backendRefs:
     - name: backend-svc
       port: 8000

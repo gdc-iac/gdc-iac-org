@@ -76,26 +76,41 @@ def validate_readonly_sql(raw_sql: str):
 
 
 def get_db_connection():
-    return psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS
-    )
+    conn_kwargs = {
+        "host": os.environ.get('DB_HOST', DB_HOST),
+        "database": os.environ.get('DB_NAME', DB_NAME),
+        "user": os.environ.get('DB_USER', DB_USER),
+        "password": os.environ.get('DB_PASS', DB_PASS),
+    }
+    ca_path = os.environ.get('DB_SSLROOTCERT', '/etc/db-tls/ca.crt')
+    sslmode = os.environ.get('DB_SSLMODE')
+    if os.path.isfile(ca_path) and os.path.getsize(ca_path) > 0:
+        conn_kwargs["sslmode"] = sslmode or "verify-ca"
+        conn_kwargs["sslrootcert"] = ca_path
+    elif sslmode:
+        conn_kwargs["sslmode"] = sslmode
+    return psycopg2.connect(**conn_kwargs)
 
 
 def init_db():
+    conn = None
+    cur = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY,
-                date DATE,
-                amount DECIMAL
-            );
-        """)
-        # Seed data if empty
+        # Check whether dbsadmin already bootstrapped public.sales (e.g. GDCag PG 15
+        # where sql-agent connects as least-privilege analyst_ro without CREATE).
+        cur.execute("SELECT to_regclass('public.sales');")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS sales (
+                    id SERIAL PRIMARY KEY,
+                    date DATE,
+                    amount DECIMAL
+                );
+            """)
+        # Seed data if empty (when running in privileged emulation mode)
         cur.execute("SELECT count(*) FROM sales")
         if cur.fetchone()[0] == 0:
             print("Seeding data...")
@@ -104,12 +119,20 @@ def init_db():
                 ('2023-01-01', 100), ('2023-01-02', 150), ('2023-01-03', 200),
                 ('2023-01-04', 130), ('2023-01-05', 170);
             """)
-            conn.commit()
-        cur.close()
-        conn.close()
+        conn.commit()
         print("Database initialized.")
     except Exception as e:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         print(f"DB Init Error: {e}")
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
 
 
 def ask_llm(prompt):

@@ -104,6 +104,18 @@
         "resources": {
           "type": "object"
         },
+        "extraVolumes": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "extraVolumeMounts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
         "kms": {
           "type": "object",
           "properties": {
@@ -159,6 +171,15 @@
           "type": "object",
           "properties": {
             "controlPlaneCidrs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowPostgresEgress": {
+              "type": "boolean"
+            },
+            "postgresCidrs": {
               "type": "array",
               "items": {
                 "type": "string"

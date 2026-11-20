@@ -12,17 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-keycloak-db
+  namespace: my-gdc-project # kpt-set: ${namespace}
+type: Opaque
+data:
+  keycloak-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: keycloak-db
-  namespace: my-gdc-project
+  namespace: my-gdc-project # kpt-set: ${namespace}
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: "2"
-      memory: "8Gi"
-  storage:
-    size: "100Gi"
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-keycloak-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi

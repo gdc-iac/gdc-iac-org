@@ -240,68 +240,123 @@ spec:
 
 ### 2.1 Provision PostgreSQL DBCluster
 
-Deploy the database which the analyst agent will inspect.
+Deploy the managed PostgreSQL 15 database (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`) which the analyst agent will inspect.
 
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create postgres-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/postgres.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/db/postgres.yaml` on `ZONE_KUBECONFIG`)
+Apply both the `dbsadmin` password `Secret` (`db-pw-postgres-db`, key `postgres-db`) and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-postgres-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  postgres-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: postgres-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "2", memory: "8Gi" }
-  storage: { size: "50G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-postgres-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
 ```
 
-### 2.2 Create Read-Only User & Schema Setup
+### 2.2 Endpoint Discovery, TLS Root CA & `dbsadmin` Read-Only Role Setup
 
-Wait for the database to report a status of `READY`. Fetch the credentials from GDC's `postgres-db-credentials` secret and connect as administrator using `psql`. Run the following schema initialization:
-
-```sql
--- Create read-only user
-CREATE USER analyst_ro WITH PASSWORD 'secure_readonly_pass_123';
-
--- Create sample reporting tables
-CREATE TABLE IF NOT EXISTS product_sales (
-    id SERIAL PRIMARY KEY,
-    product_name VARCHAR(100),
-    units_sold INT,
-    revenue NUMERIC(10,2),
-    quarter VARCHAR(10)
-);
-
-INSERT INTO product_sales (product_name, units_sold, revenue, quarter) VALUES
-('Standard License', 1500, 75000.00, '2026-Q1'),
-('Pro Add-on', 450, 45000.00, '2026-Q1');
-
--- Grant read-only access to new tables
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst_ro;
-```
-
-### 2.3 Deploy Agent Secret
-
-Now, configure a Kubernetes secret holding the credentials of this read-only user (`db-ro-creds`):
+GDCag Managed PostgreSQL does **not** automatically create a `postgres-db-credentials` Secret on the User Cluster. Once `DBCluster/postgres-db` reaches `READY` on `ZONE_KUBECONFIG`, query its primary DNS endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, and connect as `dbsadmin` (`cloudsqlsuperuser`) over verified TLS to create the dedicated read-only `analyst_ro` role and sample reporting schema:
 
 ```shell
-export DB_HOST=$(kubectl get secret postgres-db-credentials -n my-gdc-project -o jsonpath='{.data.host}' | base64 --decode)
+# 1. Discover primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog postgres-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
 
-kubectl create secret generic db-ro-creds \
-  --from-literal=username=analyst_ro \
-  --from-literal=password=secure_readonly_pass_123 \
-  --from-literal=host=${DB_HOST} \
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-postgres-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin over verified TLS to create the read-only analyst_ro role and sample tables
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export ANALYST_RO_PASSWORD="<strong-readonly-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
+-- 1. Create dedicated read-only role
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'analyst_ro') THEN
+    CREATE ROLE analyst_ro WITH LOGIN PASSWORD '${ANALYST_RO_PASSWORD}';
+  END IF;
+END
+\$\$;
+
+-- 2. Create sales table matching example-app/agent/app.py schema
+CREATE TABLE IF NOT EXISTS sales (
+    id SERIAL PRIMARY KEY,
+    date DATE,
+    amount DECIMAL
+);
+
+-- 3. Seed sample sales records (idempotent; total amount = 750)
+INSERT INTO sales (date, amount)
+SELECT v.date, v.amount
+FROM (VALUES
+    (DATE '2023-01-01', 100.00),
+    (DATE '2023-01-02', 150.00),
+    (DATE '2023-01-03', 200.00),
+    (DATE '2023-01-04', 130.00),
+    (DATE '2023-01-05', 170.00)
+) AS v(date, amount)
+WHERE NOT EXISTS (SELECT 1 FROM sales);
+
+-- 4. Grant strictly read-only PostgreSQL 15 access to reporting tables
+GRANT CONNECT ON DATABASE postgres TO analyst_ro;
+GRANT USAGE ON SCHEMA public TO analyst_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO analyst_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO analyst_ro;
+SQL
+```
+
+### 2.3 Deploy Agent Read-Only & TLS CA Secrets on User Cluster
+
+Create the Kubernetes `Secret`s holding the read-only `analyst_ro` credentials (`db-ro-creds`) and server TLS CA certificate (`postgres-db-ca`) on the User Cluster (`USER_CLUSTER_KUBECONFIG`):
+
+```shell
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic db-ro-creds \
+  --from-literal=username="analyst_ro" \
+  --from-literal=password="${ANALYST_RO_PASSWORD}" \
+  --from-literal=host="${DB_HOST}" \
+  --from-file=ca.crt=./ca.crt \
+  -n my-gdc-project
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic postgres-db-ca \
+  --from-file=ca.crt=./ca.crt \
   -n my-gdc-project
 ```
 
@@ -403,7 +458,7 @@ kubectl run p7-verify --rm -i --restart=Never -n my-gdc-project \
   --overrides='{"spec":{"imagePullSecrets":[{"name":"harbor-creds"}]}}' \
   --image="${PROJECT_HARBOR}/iac/curl:8.12.1" --command -- sh -ec '
     sleep 2 && \
-    curl -s -X POST http://sql-agent/query -d "{\"question\": \"How many total units of Standard License were sold?\"}" -H "Content-Type: application/json" && \
+    curl -s -X POST http://sql-agent/query -d "{\"question\": \"What is the total sales amount?\"}" -H "Content-Type: application/json" && \
     echo "" && \
     echo "===============================================" && \
     echo "✅ PASS: Pattern 7 Agentic Data Analyst verified!" && \
@@ -413,11 +468,11 @@ kubectl run p7-verify --rm -i --restart=Never -n my-gdc-project \
 ```
 **Expected Production Output:**
 ```text
+{"answer":[{"sum":"750.00"}],"sql":"SELECT SUM(amount) FROM sales"}
 ===============================================
 ✅ PASS: Pattern 7 Agentic Data Analyst verified!
 ✅ SUCCESS: Natural language SQL query agent reachable
 ===============================================
-{"result":"1500"}
 ```
 *(Note: Prepending `sleep 2` ensures `kubectl -i` completes its SPDY interactive connection handshake cleanly without `warning: couldn't attach to pod...` errors, giving you an immediate, zero-warning confirmation check).*
 
@@ -428,13 +483,13 @@ export AGENT_IP=$(kubectl get service sql-agent -n my-gdc-project -o jsonpath='{
 
 curl -X POST http://${AGENT_IP}/query \
   -H "Content-Type: application/json" \
-  -d '{"question": "How many total units of Standard License were sold?"}'
+  -d '{"question": "What is the total sales amount?"}'
 ```
 Check the agent's logic flow from its logs:
 ```shell
 kubectl logs -l app=sql-agent -n my-gdc-project --tail=20
 ```
-Ensure you see the agent calling the LLM Gateway, planning the select statement `SELECT SUM(units_sold) FROM product_sales WHERE product_name = 'Standard License';`, executing it, and returning the parsed response value (`1500`).
+Ensure you see the agent calling the LLM Gateway, planning the select statement `SELECT SUM(amount) FROM sales;`, executing it inside a read-only session, and returning the aggregated total (`750.00`).
 
 ### 4.3 Live Operational Log Inspection
 To validate live system execution and verify LLM gateway routing, inspect pod logs across key components:
@@ -454,18 +509,18 @@ kubectl logs postgres-0 -n my-gdc-project --tail=50 -f
 
 ## **Section 5: Operations & Troubleshooting**
 
-### 5.1 Database High Availability & Manual Failover
+### 5.1 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover postgres-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover

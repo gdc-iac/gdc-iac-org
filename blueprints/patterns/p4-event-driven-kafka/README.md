@@ -92,46 +92,64 @@ To deploy the resources for this pattern, your user account will need the follow
 
 ### Step 1: Deploy Kafka & Persistence
 
-**Option A: Manual (CLI/Helm)**
+**Option A: Manual (CLI/kubectl)**
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
 export REGISTRY_HOST=<YOUR_REGISTRY_URL>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
 
-# 1. Durable storage for final results
+# 1. Durable storage for final results (Zonal Management API)
 gdcloud database clusters create event-db \
-  --project=$PROJECT_ID --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=2 --memory=8Gi --storage-size=50Gi
 
-# 2. Kafka Cluster (KRaft StatefulSet)
+# 2. Kafka Cluster (KRaft StatefulSet on User Cluster)
 # Execute the native, offline-friendly Kubernetes manifests
-kubectl apply -f manifests/gdc/kafka/kafka.yaml
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f manifests/gdc/kafka/kafka.yaml
 ```
 
 **Option B: GitOps**
 
-Sync the `manifests/gdc/db/event-db.yaml` and `manifests/gdc/kafka/kafka.yaml` files to your cluster.
+Replace the base64 placeholder in `Secret/db-pw-event-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/event-db.yaml` (`Secret/db-pw-event-db` + `DBCluster/event-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`), and sync `manifests/gdc/kafka/kafka.yaml` to the **User Cluster** (`USER_CLUSTER_KUBECONFIG`).
 
 > **Note on Storage:** GDC Block Storage for Kafka is provisioned dynamically. The StatefulSet creates PersistentVolumeClaims (PVCs) requesting the `standard-rwo` StorageClass (default), which the GDC platform automatically fulfills with block storage volumes.
 
-### Step 2: Initialize Database Schema
+### Step 2: Retrieve Database Endpoint, Create Credentials & Initialize Schema
 
-The consumer application requires a specific database schema to store processed orders.
+Retrieve `.status.primary.url` and the server TLS CA (`Secret/dbs-certificates` key `dbs-pg-cert-event-db`) from `ZONE_KUBECONFIG`, create `event-db-credentials` on the User Cluster, and initialize the `events` schema as `dbsadmin`:
 
-**For GDC Production (PostgreSQL HA):**
-You must manually apply the schema to your GDC Database Service instance.
+```bash
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog event-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
 
-1.  Connect to your database instance using `psql`.
-2.  Run the following SQL commands:
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-event-db}' | base64 -d > /tmp/event-db-ca.crt
 
-    ```sql
-    CREATE TABLE IF NOT EXISTS processed_orders (
-        id SERIAL PRIMARY KEY,
-        order_id INT,
-        item TEXT,
-        amount INT,
-        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ```
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic event-db-credentials \
+  -n "${PROJECT_ID}" \
+  --from-literal=connection_string="postgresql://dbsadmin:${DB_ADMIN_PASSWORD}@${DB_HOST}:5432/postgres" \
+  --from-file=ca.crt=/tmp/event-db-ca.crt \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+```
+
+Connect using `PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/event-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres` and run:
+
+```sql
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    event_id VARCHAR(50),
+    data VARCHAR(255),
+    timestamp BIGINT,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+> **PostgreSQL 15 Least-Privilege Role Note:** If configuring a dedicated non-admin database role (such as `event_consumer`) instead of `dbsadmin`, grant PostgreSQL 15 `public` schema and sequence privileges as `dbsadmin` (`GRANT USAGE, CREATE ON SCHEMA public TO event_consumer; GRANT SELECT, INSERT, UPDATE ON TABLE events TO event_consumer; GRANT USAGE, SELECT ON SEQUENCE events_id_seq TO event_consumer;`).
 
 ### Step 3: Deploy Consumers
 
@@ -215,8 +233,8 @@ Ensure you transfer **all** of the following exact items to your air-gapped envi
     *   `p4-event-driven-kafka-BOM.txt` and `p4-event-driven-kafka-manifest.txt` (Integrity checksums)
     *   `p4-event-driven-kafka-README.md` (Standalone deployment instructions)
 *   **Global Dependencies (Generated in the `artifacts/` directory):**
-    *   `artifacts/external-dependencies/images/docker.io_apache_kafka_3.7.0.tar` (The Kafka broker container)
-    *   `artifacts/external-dependencies/images/busybox_latest.tar` (InitContainers for storage provisioning)
+    *   `artifacts/external-dependencies/images/docker.io_apache_kafka_3.9.0.tar` (The Kafka broker container)
+    *   `artifacts/external-dependencies/images/busybox_1.36.tar` (InitContainers for storage provisioning)
 ### 4. Unpack and Deploy
 Once transferred to your secure GDC environment, you must unpack and deploy the assets logically:
 
@@ -254,14 +272,14 @@ Once transferred to your secure GDC environment, you must unpack and deploy the 
 
 3. **Load and Push Kafka Weights:** The Kafka KRaft dependencies were mirrored autonomously and need to be loaded from the external images directory:
    ```bash
-   docker load -i artifacts/external-dependencies/images/docker.io_apache_kafka_3.7.0.tar
-   docker load -i artifacts/external-dependencies/images/busybox_latest.tar
+   docker load -i artifacts/external-dependencies/images/docker.io_apache_kafka_3.9.0.tar
+   docker load -i artifacts/external-dependencies/images/busybox_1.36.tar
    
-   docker tag apache/kafka:3.7.0 harbor.gdc.local/iac/kafka:3.9.0
-   docker tag busybox:latest harbor.gdc.local/iac/busybox:latest
+   docker tag apache/kafka:3.9.0 harbor.gdc.local/iac/kafka:3.9.0
+   docker tag busybox:1.36 harbor.gdc.local/iac/busybox:1.36
    
    docker push harbor.gdc.local/iac/kafka:3.9.0
-   docker push harbor.gdc.local/iac/busybox:latest
+   docker push harbor.gdc.local/iac/busybox:1.36
    ```
 
 4. **Extract Kubernetes Manifests:** Extract the tailored blueprints:

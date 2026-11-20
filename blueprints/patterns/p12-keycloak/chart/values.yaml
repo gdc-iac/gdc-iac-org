@@ -31,9 +31,24 @@ registry: ""
 # - Set gdc.enabled=true only when deploying GDC CRDs directly from this wrapper chart to a Zonal context.
 gdc:
   enabled: false
+  db:
+    base64EncodedPassword: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
   failover:
     enabled: false # Day-2 manual failover trigger; must remain false during normal sync
 
 # User Cluster workload execution gate (Stage 5: 5-workload-factory)
 apps:
   enabled: true
+
+# Keycloak workload & PostgreSQL connection configuration
+keycloak:
+  db:
+    url: "jdbc:postgresql://keycloak-postgresql:5432/keycloak"
+    username: "postgres"
+    password: "postgres_password"
+    existingSecret: ""
+    urlKey: "jdbc_url"
+    usernameKey: "username"
+    passwordKey: "password"
+  extraVolumes: []
+  extraVolumeMounts: []

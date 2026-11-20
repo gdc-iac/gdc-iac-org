@@ -14,6 +14,7 @@
 
 import time
 import os
+import sys
 import boto3
 import psycopg2
 import hashlib
@@ -53,61 +54,115 @@ def get_embedding(text):
         return [0.0] * 768
 
 def get_db_connection():
-    return psycopg2.connect(
-        host=os.environ.get('DB_HOST', 'localhost'),
-        database=os.environ.get('DB_NAME', 'rag_db'),
-        user=os.environ.get('DB_USER', 'postgres'),
-        password=os.environ.get('DB_PASS', 'password')
-    )
+    conn_kwargs = {
+        "host": os.environ.get('DB_HOST', 'localhost'),
+        "database": os.environ.get('DB_NAME', 'rag_db'),
+        "user": os.environ.get('DB_USER', 'postgres'),
+        "password": os.environ.get('DB_PASS', 'password'),
+    }
+    ca_path = os.environ.get('DB_SSLROOTCERT', '/etc/db-tls/ca.crt')
+    sslmode = os.environ.get('DB_SSLMODE')
+    if os.path.isfile(ca_path) and os.path.getsize(ca_path) > 0:
+        conn_kwargs["sslmode"] = sslmode or "verify-ca"
+        conn_kwargs["sslrootcert"] = ca_path
+    elif sslmode:
+        conn_kwargs["sslmode"] = sslmode
+    return psycopg2.connect(**conn_kwargs)
 
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    # Note: We are using 768 dimensions for text-embedding-004
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS documents (
-            id SERIAL PRIMARY KEY,
-            filename TEXT UNIQUE,
-            content TEXT,
-            embedding vector(768),
-            owner_id TEXT DEFAULT NULL,
-            source_path TEXT
-        );
-    """)
-    
-    # Migration for existing documents table (idempotent)
     try:
-        cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS owner_id TEXT DEFAULT NULL;")
-        cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_path TEXT;")
-    except Exception as e:
-        print(f"Migration warning (documents): {e}")
-        conn.rollback()
+        # In GDCag Managed PostgreSQL 15, CREATE EXTENSION vector requires dbsadmin
+        # privileges. Check pg_extension first so least-privilege app roles succeed
+        # when dbsadmin has already bootstrapped pgvector.
+        cur.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector';")
+        if cur.fetchone() is None:
+            insufficient_priv_cls = getattr(
+                getattr(psycopg2, "errors", None), "InsufficientPrivilege", None
+            )
+            catch_types = (
+                (insufficient_priv_cls, Exception)
+                if isinstance(insufficient_priv_cls, type)
+                and issubclass(insufficient_priv_cls, BaseException)
+                else (Exception,)
+            )
+            try:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            except catch_types as exc:
+                conn.rollback()
+                msg = (
+                    "pgvector extension ('vector') is not installed and the current database role "
+                    "lacks privileges to create extensions. Connect to the PostgreSQL cluster as "
+                    "'dbsadmin' and run: CREATE EXTENSION IF NOT EXISTS vector;"
+                )
+                print(f"Database initialization error: {msg} ({exc})")
+                raise RuntimeError(msg) from exc
 
-    # Chats Table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS chats (
-            id SERIAL PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
+        # Create tables if missing (or skip DDL when pre-initialized by dbsadmin)
+        cur.execute("SELECT to_regclass('public.documents');")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            # Note: We are using 768 dimensions for text-embedding-004
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS documents (
+                    id SERIAL PRIMARY KEY,
+                    filename TEXT UNIQUE,
+                    content TEXT,
+                    embedding vector(768),
+                    owner_id TEXT DEFAULT NULL,
+                    source_path TEXT
+                );
+            """)
+        else:
+            # Idempotent migration for pre-existing documents table only if columns are missing
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'documents';
+            """)
+            existing_cols = {r[0] for r in cur.fetchall()}
+            if 'owner_id' not in existing_cols or 'source_path' not in existing_cols:
+                conn.commit()
+                try:
+                    if 'owner_id' not in existing_cols:
+                        cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS owner_id TEXT DEFAULT NULL;")
+                    if 'source_path' not in existing_cols:
+                        cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS source_path TEXT;")
+                except Exception as e:
+                    print(f"Migration warning (documents): {e}")
+                    conn.rollback()
 
-    # Messages Table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id SERIAL PRIMARY KEY,
-            chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
+        # Chats Table
+        cur.execute("SELECT to_regclass('public.chats');")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chats (
+                    id SERIAL PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    title TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        # Messages Table
+        cur.execute("SELECT to_regclass('public.messages');")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id SERIAL PRIMARY KEY,
+                    chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 
 def get_s3_client():
     return boto3.client('s3',
@@ -150,10 +205,11 @@ def call_gemini_api(prompt, content_bytes=None, mime_type=None):
         except Exception as ex:
             print(f"Failed to append content string for gateway: {ex}")
 
-    is_gateway = provider == 'gemma' or 'gemma' in endpoint or 'llm-gateway' in endpoint or '/v1' in endpoint
+    has_openai_v1 = endpoint.rstrip('/').endswith('/v1') or '/v1/chat/completions' in endpoint
+    is_gateway = provider == 'gemma' or 'gemma' in endpoint or 'llm-gateway' in endpoint or has_openai_v1
 
     if is_gateway:
-        url = endpoint if endpoint.endswith('/chat/completions') else f"{endpoint.rstrip('/')}/chat/completions" if '/v1' in endpoint else endpoint
+        url = endpoint if endpoint.endswith('/chat/completions') else f"{endpoint.rstrip('/')}/chat/completions" if has_openai_v1 else endpoint
         headers = {"Content-Type": "application/json"}
         token = get_auth_token()
         if token:
@@ -386,3 +442,4 @@ if __name__ == "__main__":
         process_files()
     except Exception as e:
         print(f"Fatal error: {e}")
+        sys.exit(1)

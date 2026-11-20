@@ -232,42 +232,92 @@ spec:
 
 ### 2.1 Provision Database Service
 
+Deploy the managed PostgreSQL 15 database (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`).
+
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create gemini-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/postgres.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/db/postgres.yaml` on `ZONE_KUBECONFIG`)
+Apply both the `dbsadmin` password `Secret` (`db-pw-gemini-db`, key `gemini-db`) and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-gemini-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  gemini-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: gemini-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "2", memory: "8Gi" }
-  storage: { size: "50G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-gemini-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
 ```
 
-### 2.2 Schema Initialization
+### 2.2 Endpoint Discovery, TLS Root CA & `dbsadmin` Schema Initialization
 
-Connect to the database using `psql` and run:
+GDCag Managed PostgreSQL does **not** automatically create a `gemini-db-credentials` Secret on the User Cluster. Once `DBCluster/gemini-db` reaches `READY` on `ZONE_KUBECONFIG`, query its primary DNS endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, and connect as `dbsadmin` (`cloudsqlsuperuser`) over verified TLS to enable `uuid-ossp`, create a dedicated `gemini_app` role, and initialize the chat tables:
 
-```sql
+```shell
+# 1. Discover primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog gemini-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-gemini-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin over verified TLS to initialize extensions, application role, and tables
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export APP_DB_PASSWORD="<strong-gemini-db-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'gemini_app') THEN
+    CREATE ROLE gemini_app WITH LOGIN PASSWORD '${APP_DB_PASSWORD}';
+  END IF;
+END
+\$\$;
+
+-- PostgreSQL 15 revokes default CREATE on schema public from PUBLIC
+GRANT USAGE, CREATE ON SCHEMA public TO gemini_app;
 
 CREATE TABLE IF NOT EXISTS chats (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id VARCHAR(255) NOT NULL,
     title TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -284,18 +334,32 @@ CREATE TABLE IF NOT EXISTS files (
     filename VARCHAR(255) NOT NULL,
     gcs_path TEXT NOT NULL,
     file_size_bytes BIGINT,
-    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    content_type VARCHAR(100),
+    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_shared BOOLEAN DEFAULT FALSE
 );
+
+CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
+CREATE INDEX IF NOT EXISTS idx_files_user_id ON files(user_id);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chats, messages, files TO gemini_app;
+SQL
 ```
 
-### 2.3 Create connection Secret
+### 2.3 Create Workload Connection & TLS CA Secrets on User Cluster
 
-Create the generic secret containing connection credentials:
+Create `gemini-gui-db-credentials` and `gemini-db-ca` on the User Cluster (`USER_CLUSTER_KUBECONFIG`):
 ```shell
-export DB_HOST=$(kubectl get secret gemini-db-credentials -n my-gdc-project -o jsonpath='{.data.host}' | base64 --decode)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemini-gui-db-credentials \
+  --from-literal=connection_string="postgresql://gemini_app:${APP_DB_PASSWORD}@${DB_HOST}:5432/postgres" \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="gemini_app" \
+  --from-literal=password="${APP_DB_PASSWORD}" \
+  -n my-gdc-project
 
-kubectl create secret generic gemini-gui-db-credentials \
-  --from-literal=connection_string="postgresql://postgres:password@${DB_HOST}:5432/postgres" \
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic gemini-db-ca \
+  --from-file=ca.crt=./ca.crt \
   -n my-gdc-project
 ```
 
@@ -362,9 +426,22 @@ spec:
         app: backend
     spec:
       serviceAccountName: gemini-gui-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
         image: harbor.shared-services.gdc.local/my-org/p10-backend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8000
         env:
@@ -381,6 +458,12 @@ spec:
           value: "us-central1"
         - name: GEMINI_MODEL
           value: "gemini-2.5-flash"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -410,14 +493,53 @@ spec:
       labels:
         app: frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: frontend
         image: harbor.shared-services.gdc.local/my-org/p10-frontend:latest
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         env:
         - name: VITE_API_URL
           value: "/api"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -429,7 +551,7 @@ spec:
     app: frontend
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
   type: ClusterIP
 ```
 
@@ -532,18 +654,18 @@ Verify the chatbot correctly grounds its reasoning using the uploaded text conte
 
 ## **Section 6: Operations & Troubleshooting**
 
-### 6.1 Database High Availability & Manual Failover
+### 6.1 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover gemini-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover

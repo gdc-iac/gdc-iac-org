@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -29,12 +31,51 @@ spec:
       labels:
         app: frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: frontend
         image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-frontend:v7
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -49,7 +90,7 @@ spec:
   ports:
   - protocol: TCP
     port: 80
-    targetPort: 80
+    targetPort: 8080
   type: LoadBalancer
 ---
 apiVersion: batch/v1
@@ -73,12 +114,15 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
             fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
           - name: ingest
             image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-ingest:v7
             imagePullPolicy: Always
             securityContext:
               allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
               capabilities:
                 drop:
                 - ALL
@@ -105,7 +149,7 @@ spec:
             - name: EMBEDDING_MODEL
               value: text-embedding-004
             - name: PROJECT_ID
-              value: your-project-id
+              value: {{ include "p6-resilient-rag-agent.projectId" . }}
             - name: AO_PROJECT_ID
               value: projects/{{ include "p6-resilient-rag-agent.projectId" . }}
             - name: GEMINI_API_KEY
@@ -129,6 +173,22 @@ spec:
                 secretKeyRef:
                   name: rag-db-credentials
                   key: password
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/db-tls
+              readOnly: true
+          volumes:
+          - name: tmp
+            emptyDir: {}
+          - name: db-ca
+            secret:
+              secretName: rag-db-credentials
+              optional: true
+              items:
+              - key: ca.crt
+                path: ca.crt
           restartPolicy: OnFailure
 ---
 apiVersion: apps/v1
@@ -149,10 +209,22 @@ spec:
         app: query-service
     spec:
       serviceAccountName: rag-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: query-service
         image: {{ include "p6-resilient-rag-agent.registry" . }}/rag-query:v7
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8080
         env:
@@ -184,11 +256,27 @@ spec:
         - name: EMBEDDING_MODEL
           value: text-embedding-004
         - name: PROJECT_ID
-          value: your-project-id
+          value: {{ include "p6-resilient-rag-agent.projectId" . }}
         - name: AO_PROJECT_ID
           value: projects/{{ include "p6-resilient-rag-agent.projectId" . }}
         - name: INPUT_BUCKET
           value: gs://raw-docs-{{ include "p6-resilient-rag-agent.projectId" . }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: rag-db-credentials
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service

@@ -36,7 +36,7 @@ The solution consists of three main components:
 * **Decoupled Workloads**: Event buffer isolation prevents producer traffic spikes from overwhelming downstream databases.
 * **KRaft (ZooKeeperless) Architecture**: Eliminates ZooKeeper dependencies, reducing cluster management complexity.
 * **Stateful Set Persistence**: Kafka brokers use Kubernetes `StatefulSets` with `volumeClaimTemplates` to request block storage directly from GDC's `standard-rwo` StorageClass.
-* **Database Durability**: Consumers record outputs to a managed high-availability database cluster with manual failover.
+* **Database Durability**: Consumers record outputs to a managed high-availability PostgreSQL 15 database cluster (`zonal_ha`) with automatic failover (`enableAutoFailover: true`) and operator-triggered switchovers.
 
 ---
 
@@ -47,7 +47,7 @@ Ensure the following prerequisites are met:
 * GDC air-gapped version 1.15.1 or higher.
 * A healthy User GKE Cluster provisioned and assigned to your project.
 * A Harbor container registry instance available and accessible.
-* All required container images (`apache/kafka:3.7.0`, `busybox`, consumer workers) sideloaded into Harbor.
+* All required container images (`apache/kafka:3.9.0`, `busybox:1.36`, consumer workers) sideloaded into Harbor.
 * `kubectl` and `gdcloud` CLIs configured on your developer workstation.
 * Necessary project-level IAM roles:
   * **Database Admin**: `roles/db.cluster.creator` (to provision PostgreSQL HA).
@@ -212,30 +212,107 @@ spec:
 
 ### 2.1 Provision PostgreSQL DBCluster
 
-Deploy the database to persist processed event records.
+Deploy the managed PostgreSQL 15 database (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`) to persist processed event records.
 
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create event-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/event-db.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/db/event-db.yaml` on `ZONE_KUBECONFIG`)
+Apply both the `dbsadmin` password `Secret` (`db-pw-event-db`, key `event-db`) and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-event-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  event-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: event-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "2", memory: "8Gi" }
-  storage: { size: "50G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-event-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi
+```
+
+### 2.2 Endpoint Discovery, TLS Root CA, `dbsadmin` Initialization & User Cluster Secret Creation
+
+GDCag Managed PostgreSQL does **not** automatically create an `event-db-credentials` Secret on the User Cluster. Once `DBCluster/event-db` reaches `READY` on `ZONE_KUBECONFIG`, query its DNS endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, initialize the schema and consumer role as `dbsadmin` (`cloudsqlsuperuser`), and create the workload connection secrets on `USER_CLUSTER_KUBECONFIG`:
+
+```shell
+# 1. Discover primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog event-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-event-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin over verified TLS to initialize the consumer role and schema
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export APP_DB_PASSWORD="<strong-app-db-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'event_consumer') THEN
+    CREATE ROLE event_consumer WITH LOGIN PASSWORD '${APP_DB_PASSWORD}';
+  END IF;
+END
+\$\$;
+
+-- PostgreSQL 15+ revokes default CREATE on schema public from PUBLIC
+GRANT USAGE, CREATE ON SCHEMA public TO event_consumer;
+
+CREATE TABLE IF NOT EXISTS events (
+    id SERIAL PRIMARY KEY,
+    event_id VARCHAR(50),
+    data VARCHAR(255),
+    timestamp BIGINT,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+GRANT SELECT, INSERT, UPDATE ON TABLE events TO event_consumer;
+GRANT USAGE, SELECT ON SEQUENCE events_id_seq TO event_consumer;
+SQL
+
+# 3. Create event-db-credentials and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic event-db-credentials \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="event_consumer" \
+  --from-literal=password="${APP_DB_PASSWORD}" \
+  --from-literal=connection_string="postgresql://event_consumer:${APP_DB_PASSWORD}@${DB_HOST}:5432/postgres" \
+  -n my-gdc-project
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic event-db-ca \
+  --from-file=ca.crt=./ca.crt \
+  -n my-gdc-project
 ```
 
 ---
@@ -267,16 +344,72 @@ spec:
       labels:
         app: kafka
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
       - name: volume-permissions
-        image: harbor.shared-services.gdc.local/library/busybox:latest
-        command: ["sh", "-c", "chown -R 1000:1000 /mnt/kafka"]
+        image: harbor.shared-services.gdc.local/iac/busybox:1.36
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        command: ["sh", "-c", "mkdir -p /mnt/kafka/data"]
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+      - name: init-kafka-config
+        image: harbor.shared-services.gdc.local/iac/kafka:3.9.0
+        command: ["sh", "-c", "cp -a /opt/kafka/config/. /work-config/"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        volumeMounts:
+        - name: kafka-config
+          mountPath: /work-config
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: kafka
-        image: harbor.shared-services.gdc.local/library/apache/kafka:3.7.0
+        image: harbor.shared-services.gdc.local/iac/kafka:3.9.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 9092
           name: client
@@ -312,6 +445,19 @@ spec:
         volumeMounts:
         - name: kafka-data
           mountPath: /mnt/kafka
+        - name: tmp
+          mountPath: /tmp
+        - name: kafka-logs
+          mountPath: /opt/kafka/logs
+        - name: kafka-config
+          mountPath: /opt/kafka/config
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: kafka-logs
+        emptyDir: {}
+      - name: kafka-config
+        emptyDir: {}
   volumeClaimTemplates:
   - metadata:
       name: kafka-data
@@ -447,19 +593,19 @@ Persisting processed event: ID 100 success
    ```shell
    kubectl exec -it kafka-0 -n my-gdc-project -- /bin/bash
    ```
-2. Create a test topic:
+2. Create the `events` topic:
    ```bash
-   /opt/kafka/bin/kafka-topics.sh --create --topic test-event-topic --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+   /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic events --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
    ```
-3. Produce test messages:
+3. Produce test messages matching the consumer schema (`eventId`, `data`, `timestamp`):
    ```bash
-   /opt/kafka/bin/kafka-console-producer.sh --topic test-event-topic --bootstrap-server localhost:9092
-   >{"id": 100, "message": "Verify P4 Pipeline Ingest"}
+   /opt/kafka/bin/kafka-console-producer.sh --topic events --bootstrap-server localhost:9092
+   >{"eventId": "evt-100", "data": "Verify P4 Pipeline Ingest", "timestamp": 1700000000}
    ```
-4. Verify consumer logs to verify database writes:
+4. Verify consumer logs and PostgreSQL `events` table writes:
    ```shell
    kubectl logs -l app=consumer -n my-gdc-project
-   # Expected output: "Persisting processed event: ID 100 success"
+   # Expected output: "Saved Event to Database"
    ```
 
 ---
@@ -474,18 +620,18 @@ If event lag increases, scale the consumer replicas to match the number of parti
 kubectl scale deployment/kafka-consumer --replicas=3 -n my-gdc-project
 ```
 
-### 6.2 Database High Availability & Manual Failover
+### 6.2 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover event-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover
