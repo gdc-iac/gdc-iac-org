@@ -56,9 +56,12 @@ spec:
     adminUser:
       passwordRef:
         name: {{ $item.secretName | default (printf "db-pw-%s" $clusterName) }}
-    {{- if $item.databaseFlags }}
-    databaseFlags:
-      {{- toYaml $item.databaseFlags | nindent 6 }}
+    {{- $params := merge (deepCopy ($item.parameters | default dict)) ($item.databaseFlags | default dict) }}
+    {{- if $params }}
+    parameters:
+      {{- range $k, $v := $params }}
+      {{ $k }}: {{ $v | toString | quote }}
+      {{- end }}
     {{- end }}
     resources:
       cpu: {{ $item.cpu | default 2 }}

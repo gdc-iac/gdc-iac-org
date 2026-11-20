@@ -49,10 +49,17 @@
             }
           }
         },
-        "databaseFlags": {
+        "parameters": {
           "type": "object",
           "additionalProperties": {
-            "type": "string"
+            "type": ["string", "integer", "number", "boolean"]
+          }
+        },
+        "databaseFlags": {
+          "description": "Legacy alias mapped into spec.primarySpec.parameters.",
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "integer", "number", "boolean"]
           }
         },
         "backupPlan": {
@@ -63,6 +70,15 @@
             },
             "name": {
               "type": "string"
+            },
+            "backupRepository": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
             },
             "backupRetainDays": {
               "type": "integer",

@@ -9,7 +9,7 @@ This Helm chart deploys and manages Database Services on Google Distributed Clou
 
 1.  **Helm:** Helm version 3.x is installed.
 2.  **Kubectl:** `kubectl` is configured against your GDCag Zonal Management API server (for example, `org-1-admin-zone1`).
-3.  **Permissions:** Bind `IAMRole` `project-db-admin` and `secret-admin` in the target project namespace, and ensure `BackupRepository/dbs-backup-repository` exists on the Zonal Management API server before creating `DBCluster` or `BackupPlan` resources.
+3.  **Permissions & Backup Repository:** Bind `IAMRole` `project-db-admin` (`iam.global.gdc.goog/v1`) and `secret-admin` in the target project namespace, and verify the cluster-scoped `BackupRepository` name via `kubectl get backuprepositories.backup.gdc.goog` on the Zonal Management API server before creating `DBCluster` or `BackupPlan` resources.
 4.  **Project Namespace:** A project namespace must exist in your GDCag organization where the database will be deployed.
 
 ## Usage / Installation
@@ -26,16 +26,27 @@ cd charts/gdc-dbs
 export B64_PASSWORD=$(echo -n 'YourSecureP@ssw0rd' | base64 -w0)
 ```
 
-3. Install a Zonal HA PostgreSQL 15 `DBCluster` with an Automated `BackupPlan`:
+3. Install a Zonal HA PostgreSQL 15 `DBCluster` and Automated `BackupPlan`:
+
+> [!NOTE]
+> **Admission Ordering (`vbackupplan.postgresql.dbadmin.gdc.goog`):** On GDCag, an unpaused `BackupPlan` (`paused: false`) requires its target `DBCluster` to exist at admission time. Argo CD GitOps deploys both in a single sync via `argocd.argoproj.io/sync-wave: "1"`. When installing directly with the `helm` CLI (which sorts Custom Resources alphabetically and sends `BackupPlan` before `DBCluster`), either apply `DBCluster` first and enable `backupPlan` on `helm upgrade`, or pass `--set postgresql.backupPlan.paused=true` on initial install and unpause after creation. If your organization's `BackupRepository` is not named `dbs-backup-repository`, pass `--set postgresql.backupPlan.backupRepository=<repo-name>` to avoid `DBSE0062`.
 
 ```bash
+# Step 3a: Provision Secret and PostgreSQL 15 DBCluster
 helm upgrade --install my-pg-release . \
   --namespace my-db-project \
   --set namespace=my-db-project \
   --set base64EncodedPassword="${B64_PASSWORD}" \
   --set postgresql.enabled=true \
   --set postgresql.clusterName=prod-pg \
-  --set postgresql.backupPlan.enabled=true
+  --set-string postgresql.parameters.max_connections=200
+
+# Step 3b: Enable automated BackupPlan once DBCluster exists
+helm upgrade --install my-pg-release . \
+  --namespace my-db-project \
+  --reuse-values \
+  --set postgresql.backupPlan.enabled=true \
+  --set postgresql.backupPlan.backupRepository=org-1-backup-repository
 ```
 
 4. *(Deprecated on GDCag)* Install a Legacy Oracle `DBCluster`:
@@ -66,16 +77,18 @@ The chart is configured through `values.yaml` or `--set` / `-f` flags during `he
 | `postgresql.clusterName` | Name of the PostgreSQL `DBCluster` resource. | `my-pg-cluster` |
 | `postgresql.createSecret` | Render `Secret/db-pw-<clusterName>` (`false` when pre-created via SOPS or External Secrets). | `true` |
 | `postgresql.base64EncodedPassword` | Base64-encoded password for `dbsadmin` (overrides top-level `base64EncodedPassword`). | `""` |
-| `postgresql.secretName` | Optional custom `passwordRef.name` Secret (defaults to `db-pw-<clusterName>`). | `""` |
+| `postgresql.secretName` | Optional custom `passwordRef.name` Secret (defaults to `db-pw-<clusterName>`, which is required by the GDCag `vdbcluster` admission webhook). | `""` |
 | `postgresql.version` | PostgreSQL major version (`"15"` supported on GDCag). | `"15"` |
 | `postgresql.cpu` | Primary instance vCPU allocation (`>= 2` required on GDCag). | `2` |
 | `postgresql.memory` | Primary instance memory allocation (`>= 8Gi` required on GDCag). | `8Gi` |
 | `postgresql.dataDiskSize` | Primary `DataDisk` size. | `50Gi` |
 | `postgresql.availability.enableHighAvailability` | Deploy Zonal HA standby replica. | `true` |
 | `postgresql.availability.enableAutoFailover` | Enable automatic failover (`GDCag v1.15.1+`). | `true` |
-| `postgresql.databaseFlags` | Optional key-value PostgreSQL runtime flags (`spec.primarySpec.databaseFlags`). | `{}` |
+| `postgresql.parameters` | Optional key-value PostgreSQL engine parameters (`spec.primarySpec.parameters`, for example `max_connections: "200"`). | `{}` |
 | `postgresql.backupPlan.enabled` | Deploy a `postgresql.dbadmin.gdc.goog/v1` `BackupPlan` targeting `clusterName`. | `false` |
 | `postgresql.backupPlan.name` | Custom `BackupPlan` resource name (defaults to `<clusterName>-backup-plan`). | `""` |
+| `postgresql.backupPlan.backupRepository` | Optional `BackupRepository` name injected as `metadata.annotations["fleet.dbadmin.goog/backup-repository"]` (required when the cluster repository is not named `dbs-backup-repository`). | `""` |
+| `postgresql.backupPlan.annotations` | Optional extra annotations merged onto `BackupPlan` (`argocd.argoproj.io/sync-wave: "1"` is set by default). | `{}` |
 | `postgresql.backupPlan.backupRetainDays` | Automated backup retention window in days (`1` to `90`). | `14` |
 | `postgresql.backupPlan.paused` | Pause scheduled backup execution. | `false` |
 | `postgresql.backupPlan.PITREnabled` | Enable log replication for Point-in-Time Recovery (`PITR`). | `false` |
@@ -126,14 +139,15 @@ postgresqlClusters:
 
 ## Checking Deployment Status
 
-Monitor `DBCluster` and `BackupPlan` readiness on the Zonal Management API server:
+Monitor `DBCluster` and `BackupPlan` readiness on the Zonal Management API server (note that GDCag `DBCluster` readiness is reported via `.status.phase=DBClusterReady` rather than a `Ready` status condition):
 
 ```bash
 kubectl get dbcluster.postgresql.dbadmin.gdc.goog,backupplan.postgresql.dbadmin.gdc.goog -n <namespace>
+kubectl wait --for=jsonpath='{.status.phase}'=DBClusterReady dbcluster.postgresql.dbadmin.gdc.goog/<clusterName> -n <namespace> --timeout=20m
 kubectl get dbcluster.oracle.dbadmin.gdc.goog -n <namespace> <oracle.clusterName> -w
 ```
 
-Once `Ready`, retrieve the database endpoint (`{.status.primary.url}`, stripping `:5432` when an application expects a bare hostname) and extract the server TLS CA certificate (`dbs-pg-cert-<clusterName>`) from `Secret/dbs-certificates` in the project namespace.
+Once `.status.phase` reaches `DBClusterReady`, retrieve the database endpoint (`{.status.primary.url}`, stripping `:5432` when an application expects a bare hostname) and extract the server TLS CA certificate (`dbs-pg-cert-<clusterName>`) from `Secret/dbs-certificates` in the project namespace.
 
 ## Uninstallation
 

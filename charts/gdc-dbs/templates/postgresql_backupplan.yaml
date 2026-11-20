@@ -39,12 +39,25 @@
 {{- if hasKey $bp "PITREnabled" -}}
   {{- $pitr = $bp.PITREnabled -}}
 {{- end }}
+{{- $bpAnnotations := deepCopy ($bp.annotations | default dict) -}}
+{{- if not (hasKey $bpAnnotations "argocd.argoproj.io/sync-wave") -}}
+  {{- $_ := set $bpAnnotations "argocd.argoproj.io/sync-wave" "1" -}}
+{{- end -}}
+{{- if $bp.backupRepository -}}
+  {{- $_ := set $bpAnnotations "fleet.dbadmin.goog/backup-repository" ($bp.backupRepository | toString) -}}
+{{- end }}
 ---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: BackupPlan
 metadata:
   name: {{ $bp.name | default (printf "%s-backup-plan" $clusterName) }}
   namespace: {{ $.Values.namespace }}
+  {{- if $bpAnnotations }}
+  annotations:
+    {{- range $ak, $av := $bpAnnotations }}
+    {{ $ak }}: {{ $av | toString | quote }}
+    {{- end }}
+  {{- end }}
   labels:
     app.kubernetes.io/name: {{ include "gdc-dbs.name" $ }}
     helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version | replace "+" "_" }}

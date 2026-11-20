@@ -93,7 +93,7 @@ tests:
           path: spec.primarySpec.resources.disks[0].size
           value: 50Gi
 
-  - it: should honor explicit false availability flags and databaseFlags on PostgreSQL DBCluster
+  - it: should honor explicit false availability flags, parameters, and legacy databaseFlags alias on PostgreSQL DBCluster
     set:
       namespace: iac-root
       postgresql:
@@ -103,8 +103,10 @@ tests:
         availability:
           enableHighAvailability: false
           enableAutoFailover: false
+        parameters:
+          max_connections: 200
         databaseFlags:
-          max_connections: "200"
+          shared_buffers: "2GB"
     template: templates/postgresql_dbcluster.yaml
     asserts:
       - equal:
@@ -114,10 +116,13 @@ tests:
           path: spec.availability.enableAutoFailover
           value: false
       - equal:
-          path: spec.primarySpec.databaseFlags.max_connections
+          path: spec.primarySpec.parameters.max_connections
           value: "200"
+      - equal:
+          path: spec.primarySpec.parameters.shared_buffers
+          value: "2GB"
 
-  - it: should render PostgreSQL BackupPlan when backupPlan.enabled is true
+  - it: should render PostgreSQL BackupPlan and optional backupRepository annotation when backupPlan.enabled is true
     set:
       namespace: iac-root
       postgresql:
@@ -126,6 +131,7 @@ tests:
         base64EncodedPassword: "cGctcGFzcw=="
         backupPlan:
           enabled: true
+          backupRepository: org-1-backup-repository
           backupRetainDays: 30
           paused: false
           PITREnabled: true
@@ -142,6 +148,9 @@ tests:
       - equal:
           path: metadata.name
           value: gitlab-db-backup-plan
+      - equal:
+          path: metadata.annotations["fleet.dbadmin.goog/backup-repository"]
+          value: org-1-backup-repository
       - equal:
           path: spec.dbclusterRef
           value: gitlab-db

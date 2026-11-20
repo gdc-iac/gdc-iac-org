@@ -26,7 +26,7 @@ postgresql:
   clusterName: my-pg-cluster
   createSecret: true
   base64EncodedPassword: "" # Overrides top-level base64EncodedPassword when set
-  # secretName: ""          # Defaults to db-pw-<clusterName>
+  # secretName: ""          # Defaults to db-pw-<clusterName> (required by GDCag vdbcluster webhook)
   version: "15"
   cpu: 2
   memory: 8Gi
@@ -34,10 +34,11 @@ postgresql:
   availability:
     enableHighAvailability: true
     enableAutoFailover: true
-  databaseFlags: {}
+  parameters: {}            # Optional key-value PostgreSQL engine parameters (spec.primarySpec.parameters)
   backupPlan:
     enabled: false
     name: ""                # Defaults to <clusterName>-backup-plan
+    backupRepository: ""    # Optional BackupRepository name for fleet.dbadmin.goog/backup-repository annotation
     backupRetainDays: 14
     paused: false
     PITREnabled: false
