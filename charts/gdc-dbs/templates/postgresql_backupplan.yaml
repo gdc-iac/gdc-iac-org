@@ -1,0 +1,70 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+{{- $pgClusters := list -}}
+{{- $pg := .Values.postgresql | default dict -}}
+{{- if $pg.enabled -}}
+  {{- $pgClusters = append $pgClusters $pg -}}
+{{- end -}}
+{{- range $cluster := (.Values.postgresqlClusters | default list) -}}
+  {{- $cEnabled := true -}}
+  {{- if hasKey $cluster "enabled" -}}
+    {{- $cEnabled = $cluster.enabled -}}
+  {{- end -}}
+  {{- if $cEnabled -}}
+    {{- $pgClusters = append $pgClusters $cluster -}}
+  {{- end -}}
+{{- end -}}
+
+{{- range $item := $pgClusters }}
+{{- $bp := $item.backupPlan | default dict -}}
+{{- if $bp.enabled }}
+{{- $clusterName := required "postgresql.clusterName is required" $item.clusterName -}}
+{{- $paused := false -}}
+{{- if hasKey $bp "paused" -}}
+  {{- $paused = $bp.paused -}}
+{{- end -}}
+{{- $pitr := false -}}
+{{- if hasKey $bp "PITREnabled" -}}
+  {{- $pitr = $bp.PITREnabled -}}
+{{- end }}
+{{- $bpAnnotations := deepCopy ($bp.annotations | default dict) -}}
+{{- if not (hasKey $bpAnnotations "argocd.argoproj.io/sync-wave") -}}
+  {{- $_ := set $bpAnnotations "argocd.argoproj.io/sync-wave" "1" -}}
+{{- end -}}
+{{- if $bp.backupRepository -}}
+  {{- $_ := set $bpAnnotations "fleet.dbadmin.goog/backup-repository" ($bp.backupRepository | toString) -}}
+{{- end }}
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: BackupPlan
+metadata:
+  name: {{ $bp.name | default (printf "%s-backup-plan" $clusterName) }}
+  namespace: {{ $.Values.namespace }}
+  {{- if $bpAnnotations }}
+  annotations:
+    {{- range $ak, $av := $bpAnnotations }}
+    {{ $ak }}: {{ $av | toString | quote }}
+    {{- end }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ include "gdc-dbs.name" $ }}
+    helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version | replace "+" "_" }}
+spec:
+  dbclusterRef: {{ $clusterName }}
+  backupRetainDays: {{ $bp.backupRetainDays | default 14 }}
+  paused: {{ $paused }}
+  PITREnabled: {{ $pitr }}
+{{- end }}
+{{- end }}

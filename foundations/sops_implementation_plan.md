@@ -68,13 +68,13 @@ projects:
   - name: "team2-prj"
     resources:
       dbs:
-        alloydbomni:
+        postgresql:
           enabled: true
-          clusterName: lts-ado-cluster
+          clusterName: lts-pg-cluster
           version: "15"
           cpu: 2
-          memory: 4Gi
-          dataDiskSize: 10Gi
+          memory: 8Gi
+          dataDiskSize: 50Gi
           # base64EncodedPassword OMITTED entirely for security
 ```
 
@@ -94,10 +94,10 @@ releases:
     {{- range $project := $tenantConfig.global.projects }}
       {{- if and $project.resources (hasKey $project.resources "dbs") }}
         {{- $dbs := $project.resources.dbs }}
-        {{- if and (hasKey $dbs "alloydbomni") (not (hasKey $dbs.alloydbomni "base64EncodedPassword")) }}
+        {{- if and (hasKey $dbs "postgresql") (not (hasKey $dbs.postgresql "base64EncodedPassword")) }}
           {{- $secretKey := printf "dbs_%s_%s_password" (replace "-" "_" $tenantName) (replace "-" "_" $project.name) }}
           {{- $password := $vals | get $secretKey "default-fallback-password" }}
-          {{- $_ := set $dbs.alloydbomni "base64EncodedPassword" ($password | b64enc) }}
+          {{- $_ := set $dbs.postgresql "base64EncodedPassword" ($password | b64enc) }}
         {{- end }}
       - name: {{ $project.name }}-dbs
         chart: {{ $vals | get "gdc_dbs_chart_path" "../../charts/gdc-dbs" }}

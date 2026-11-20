@@ -200,7 +200,7 @@ gdc_buckets_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-buckets"
 gdc_buckets_chart_version: "0.1.2"
 
 gdc_dbs_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-dbs"
-gdc_dbs_chart_version: "0.1.1"
+gdc_dbs_chart_version: "0.2.0"
 
 gdc_notebooks_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-notebooks"
 gdc_notebooks_chart_version: "0.1.2"
