@@ -35,6 +35,7 @@ docs/
 ├── architecture/                                          # Cross-Pattern Architecture, Security & Governance
 │   ├── patterns_def.md                                    # Blueprint Pattern Catalogue & Architectural Definitions
 │   ├── integration_plan.md                                # Cross-Pattern Integration Architecture (P4, P6, P7, P11, P12, P13, Gemma GW)
+│   ├── secret_injection_patterns.md                       # Kubernetes Pod Secret Injection & Multi-Cluster Vault Architecture (Patterns A–E)
 │   ├── security-vulnerability-management.md               # Container Hardening & Vulnerability Management
 │   └── dependabot-remediation-status.md                   # CVE & Supply Chain Dependency Remediation Ledger
 ├── operations/                                            # Packaging, 3-Step Replication, Day-2 Admin & Integrations
@@ -95,6 +96,7 @@ docs/
 | :--- | :--- |
 | **[Blueprint Pattern Definitions](./architecture/patterns_def.md)** | Architectural taxonomy, GDC-ag service dependencies, and T-shirt sizing across all patterns. |
 | **[Cross-Pattern Integration Plan](./architecture/integration_plan.md)** | How Identity (`P12`), Secrets (`P11`), Streaming (`P4`), RAG (`P6`), SQL (`P7`), IDE (`P13`), and `gdc_gemma_gw` interconnect. |
+| **[Kubernetes Secret Injection & Multi-Cluster Vault Patterns](./architecture/secret_injection_patterns.md)** | Pod credential delivery surfaces (Volume Mounts vs. Env Vars), Patterns A–E comparison (Vault Sidecar, Direct SDK, GitLab OIDC, ESO, SOPS), and multi-cluster CI/CD-seeded Vault architecture. |
 | **[Security & Vulnerability Management](./architecture/security-vulnerability-management.md)** | Rootless container hardening, SQL security gates, OIDC JWT verification, and dependency pinning. |
 | **[Dependabot & CVE Remediation Status](./architecture/dependabot-remediation-status.md)** | Supply-chain CVE tracking and remediation ledger across Python, Node.js, and base container images. |
 
