@@ -12,26 +12,66 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- if .Values.postgresql.enabled }}
+{{- $pgClusters := list -}}
+{{- $pg := .Values.postgresql | default dict -}}
+{{- if $pg.enabled -}}
+  {{- $pgClusters = append $pgClusters $pg -}}
+{{- end -}}
+{{- range $cluster := (.Values.postgresqlClusters | default list) -}}
+  {{- $cEnabled := true -}}
+  {{- if hasKey $cluster "enabled" -}}
+    {{- $cEnabled = $cluster.enabled -}}
+  {{- end -}}
+  {{- if $cEnabled -}}
+    {{- $pgClusters = append $pgClusters $cluster -}}
+  {{- end -}}
+{{- end -}}
+
+{{- range $item := $pgClusters }}
+{{- $clusterName := required "postgresql.clusterName is required" $item.clusterName -}}
+{{- $avail := $item.availability | default dict -}}
+{{- $enableHA := true -}}
+{{- if hasKey $avail "enableHighAvailability" -}}
+  {{- $enableHA = $avail.enableHighAvailability -}}
+{{- end -}}
+{{- $enableAutoFailover := true -}}
+{{- if hasKey $avail "enableAutoFailover" -}}
+  {{- $enableAutoFailover = $avail.enableAutoFailover -}}
+{{- end }}
+{{- $isDeleted := false -}}
+{{- if hasKey $item "isDeleted" -}}
+  {{- $isDeleted = $item.isDeleted -}}
+{{- end }}
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
-  name: {{ .Values.postgresql.clusterName }}
-  namespace: {{ .Values.namespace }}
+  name: {{ $clusterName }}
+  namespace: {{ $.Values.namespace }}
   labels:
-    app.kubernetes.io/name: {{ include "gdch-dbs.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/name: {{ include "gdc-dbs.name" $ }}
+    helm.sh/chart: {{ $.Chart.Name }}-{{ $.Chart.Version | replace "+" "_" }}
 spec:
+  isDeleted: {{ $isDeleted }}
+  availability:
+    enableHighAvailability: {{ $enableHA }}
+    enableAutoFailover: {{ $enableAutoFailover }}
   primarySpec:
-    version: {{ .Values.postgresql.version | quote }}
+    version: {{ ($item.version | default "15") | quote }}
     adminUser:
       passwordRef:
-        name: db-pw-{{ .Values.postgresql.clusterName }}
+        name: {{ $item.secretName | default (printf "db-pw-%s" $clusterName) }}
+    {{- $params := merge (deepCopy ($item.parameters | default dict)) ($item.databaseFlags | default dict) }}
+    {{- if $params }}
+    parameters:
+      {{- range $k, $v := $params }}
+      {{ $k }}: {{ $v | toString | quote }}
+      {{- end }}
+    {{- end }}
     resources:
-      cpu: {{ .Values.postgresql.cpu }}
-      memory: {{ .Values.postgresql.memory }}
+      cpu: {{ $item.cpu | default 2 }}
+      memory: {{ $item.memory | default "8Gi" }}
       disks:
-      - name: DataDisk
-        size: {{ .Values.postgresql.dataDiskSize }}
+        - name: DataDisk
+          size: {{ $item.dataDiskSize | default "50Gi" }}
 {{- end }}
-
