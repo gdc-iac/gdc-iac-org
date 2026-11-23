@@ -12,6 +12,9 @@ This document provides step-by-step production instructions for deploying and co
 
 ---
 
+Please also refer to [gitlab_vault_kms_installation_guide.md](../../../docs/operations/gitlab_vault_kms_installation_guide.md) for a comprehensive Vault and Gitlab installation and integration guide.
+
+
 ## **Architecture**
 
 On GDCag, control-plane and data-plane operations span **three distinct Kubernetes API planes** plus the **GDCag KMS & STS data-plane endpoints**:
