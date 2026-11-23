@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,35 +29,75 @@ spec:
     spec:
       nodeSelector:
         pool: cpu
-      serviceAccountName: gemini-gui-sa
+      serviceAccountName: gemma-client-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
-        image: us-central1-docker.pkg.dev/test-project/blueprint-images/p10-backend:latest
-        imagePullPolicy: Always
+        image: harbor.gdc.local/gemma-client-backend:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
         ports:
         - containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
         env:
         - name: PROJECT_ID
           value: "test-project" # Placeholder
         - name: INPUT_BUCKET
-          value: "gs://gemini-gui-files-test-project" # Placeholder
+          value: "gs://gemma-client-files-test-project" # Placeholder
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: gemini-gui-db-credentials
+              name: gemma-client-db-credentials
               key: connection_string
         - name: REGION
           value: "us-central1"
-        # - name: GEMINI_ENDPOINT
-        #   value: "us-central1-aiplatform.googleapis.com" # Uncomment to override
         - name: GEMMA_MODEL
           value: "gemma4:26b"
         - name: GATEWAY_URL
-          value: "http://gemma-gateway/v1"
+          value: "http://gemma-gateway.gemma-inference.svc.cluster.local/v1"
         - name: ENABLE_OIDC
           value: "true"
         - name: KEYCLOAK_URL
           value: "http://keycloak-svc:8080/auth/realms/gdc-rag-realm"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: gemma-client-db-credentials
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service

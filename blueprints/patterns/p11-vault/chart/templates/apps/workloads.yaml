@@ -370,6 +370,9 @@ spec:
               mountPath: /home/vault
             - name: tmp
               mountPath: /tmp
+            {{- with .Values.vault.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -385,6 +388,9 @@ spec:
         - name: userconfig-gdc-kms-sa
           secret:
             secretName: {{ .Values.vault.bridge.secretName | default "gdc-kms-sa" | quote }}
+        {{- end }}
+        {{- with .Values.vault.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
   volumeClaimTemplates:
     - metadata:
@@ -467,4 +473,14 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+    {{- if .Values.vault.networkPolicy.allowPostgresEgress }}
+    - to:
+        {{- range $cidr := (.Values.vault.networkPolicy.postgresCidrs | default (list "0.0.0.0/0")) }}
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
 {{- end }}

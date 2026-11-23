@@ -23,11 +23,42 @@ spec:
   template:
     metadata: { labels: { app: agent } }
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: langchain
         image: test-registry.local/my-org/sql-agent:v1
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         env:
         - name: DB_USER
           valueFrom: { secretKeyRef: { name: db-ro-creds, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: db-ro-creds, key: password } }
+        - name: DB_HOST
+          valueFrom: { secretKeyRef: { name: db-ro-creds, key: host } }
+        - name: DB_NAME
+          value: "postgres"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: db-ro-creds
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt

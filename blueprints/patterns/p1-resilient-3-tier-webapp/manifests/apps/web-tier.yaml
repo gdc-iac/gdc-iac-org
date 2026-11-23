@@ -26,12 +26,16 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 101 # nginx user
+        runAsGroup: 101
         fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: nginx
         image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p1-frontend:latest # kpt-set: ${registry-host}/p1-frontend:latest
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -60,6 +64,24 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
+      - name: nginx-conf
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

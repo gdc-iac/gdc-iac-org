@@ -222,13 +222,45 @@ kubectl run p11-verify --rm -i --restart=Never -n "${NAMESPACE}" \
 
 Workloads can exchange `/var/run/secrets/kubernetes.io/serviceaccount/token` directly at `POST http://vault.vault.svc.cluster.local:8200/v1/auth/kubernetes/login` using Python's standard-library `urllib.request` (see `docs/operations/gitlab_vault_kms_installation_guide.md` Section 8.3 and `docs/operations/vault_integration_guide.md`).
 
+### Option C: Integrating Vault with GDCag Managed PostgreSQL (`DBCluster` / `database/` Dynamic Secrets Engine)
+
+When configuring Vault's Dynamic Database Secrets Engine (`database/`) or a PostgreSQL backend against a Zonal GDCag Managed PostgreSQL `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`), Vault server pods require `5432/TCP` egress to the Zonal database subnet and the `DBCluster` server TLS CA certificate (`Secret/dbs-certificates` extracted from `ZONE_KUBECONFIG`) mounted for `sslmode=verify-ca`:
+
+* **Standalone Manifest (`manifests/security/network-policy.yaml`)**: Egress rule `# 5` (`5432/TCP`) is commented out by default (matching `allowPostgresEgress: false` in the Helm chart). Uncomment rule `# 5` and replace `<POSTGRES_SUBNET_CIDR>/32` with your Zonal `DBCluster` VIP/subnet CIDR before applying.
+* **Helm Wrapper Chart (`chart/`)**: Enable PostgreSQL egress via `vault.networkPolicy.allowPostgresEgress=true` with `vault.networkPolicy.postgresCidrs`, and mount your User Cluster TLS CA Secret (`db-tls-ca`) into the Vault server container via `vault.extraVolumes` and `vault.extraVolumeMounts`:
+  ```yaml
+  # values-postgres.yaml
+  vault:
+    extraVolumes:
+      - name: db-tls-ca
+        secret:
+          secretName: db-tls-ca
+    extraVolumeMounts:
+      - name: db-tls-ca
+        mountPath: /vault/userconfig/db-tls-ca
+        readOnly: true
+    networkPolicy:
+      allowPostgresEgress: true
+      postgresCidrs:
+        - "10.200.16.0/24"
+  ```
+  ```bash
+  GODEBUG=tlsmlkem=0 helm upgrade --install p11-vault ./chart \
+    --namespace "${NAMESPACE}" \
+    -f values-postgres.yaml \
+    --set global.projectId="${PROJECT_ID}" \
+    --set global.namespace="${NAMESPACE}" \
+    --set global.registry="${PROJECT_HARBOR}/iac" \
+    --set vault.bridge.kmsEndpoint="https://kms.${ORG_NAME}.${GDCH_ZONE}.${GDCH_DOMAIN}"
+  ```
+
 ---
 
 ## Helm & IaC Orchestrated Deployment (`chart/`)
 
 Pattern 11 includes a self-contained Helm chart in [`chart/`](./chart/) (`0.2.0`) integrated with `foundations/releases/5-workload-factory`:
 
-* **User Cluster Workloads (`apps.enabled: true`, `gdc.enabled: false` — Default for Stage 5)**: Renders `ServiceAccount`, RBAC (`vault-discovery-role` & `system:auth-delegator`), Raft `ConfigMap` (`vault-config`), `vault` & `vault-internal` `Service`s, the 3-replica `vault` `StatefulSet` with `gdc-kms-bridge` native sidecar and `standard-rwo` PVCs, and `NetworkPolicy` (`vault-internal-policy`).
+* **User Cluster Workloads (`apps.enabled: true`, `gdc.enabled: false` — Default for Stage 5)**: Renders `ServiceAccount`, RBAC (`vault-discovery-role` & `system:auth-delegator`), Raft `ConfigMap` (`vault-config`), `vault` & `vault-internal` `Service`s, the 3-replica `vault` `StatefulSet` with `gdc-kms-bridge` native sidecar and `standard-rwo` PVCs, and `NetworkPolicy` (`vault-internal-policy`, with optional `5432/TCP` egress via `vault.networkPolicy.allowPostgresEgress`).
 * **Control-Plane KMS & IAM (`gdc.enabled: true`)**: Renders Global `ProjectServiceAccount` + `IAMRoleBinding`s (`gdc.globalIam.enabled: true`) and Zonal `kms.gdc.goog/v1` `AEADKey` (`gdc.zonalKms.enabled: true`).
 
 ### Direct Helm CLI Deployment

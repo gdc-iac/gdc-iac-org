@@ -31,12 +31,15 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
             fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
           - name: ingest
             image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/rag-ingest:v7 # kpt-set: ${registry-host}/rag-ingest:v7
             imagePullPolicy: Always
             securityContext:
               allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
               capabilities:
                 drop: ["ALL"]
             resources:
@@ -86,5 +89,21 @@ spec:
                 secretKeyRef:
                   name: rag-db-credentials
                   key: password
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: db-ca
+              mountPath: /etc/db-tls
+              readOnly: true
+          volumes:
+          - name: tmp
+            emptyDir: {}
+          - name: db-ca
+            secret:
+              secretName: rag-db-credentials
+              optional: true
+              items:
+              - key: ca.crt
+                path: ca.crt
           restartPolicy: OnFailure
 

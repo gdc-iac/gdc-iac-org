@@ -52,10 +52,39 @@ tests:
     template: templates/gdc/resources.yaml
     asserts:
       - hasDocuments:
-          count: 3
+          count: 4
       - isKind:
           of: Network
         documentIndex: 0
+      - isKind:
+          of: Secret
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: db-pw-legacy-db
+        documentIndex: 1
+      - isKind:
+          of: DBCluster
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: legacy-db
+        documentIndex: 2
+      - equal:
+          path: spec.availability.enableHighAvailability
+          value: true
+        documentIndex: 2
+      - equal:
+          path: spec.primarySpec.version
+          value: "15"
+        documentIndex: 2
+      - equal:
+          path: spec.primarySpec.adminUser.passwordRef.name
+          value: db-pw-legacy-db
+        documentIndex: 2
+      - isKind:
+          of: VirtualMachine
+        documentIndex: 3
   - it: should keep Day-2 Failover disabled even when gdc.enabled is true unless explicitly triggered
     set:
       gdc:

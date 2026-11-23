@@ -75,29 +75,56 @@ To deploy the resources, your user account must hold the following GDC IAM roles
 You can execute deployment using the automated GitOps cycle or manual execution approaches.
 
 ### Step 1: Deploy Database Backend
- 
- **Option A: Manual (CLI)**
- 
- ```bash
- export PROJECT_ID=<YOUR_PROJECT_ID>
- 
- gdcloud database clusters create keycloak-db \
-   --project=$PROJECT_ID --database-version=POSTGRESQL_14 --availability-type=ZONAL_HA --cpu=2 --memory=8Gi --storage-size=100Gi
- ```
- 
- **Option B: GitOps**
- 
- Sync the `manifests/gdc/db/db-cluster.yaml` declarative configuration to your infrastructure repository.
- 
-### Step 2: Extract Database Secrets
-Keycloak must connect securely to the database provisioned above to execute Schema migrations on startup.
+
+**Option A: Manual (CLI)**
 
 ```bash
-# Wait for DB to be 'READY'. 
-# This script specifically retrieves the managed connection string for Helm.
-export DB_HOST=$(kubectl get secret keycloak-db-credentials -n my-gdc-project -o jsonpath='{.data.host}' | base64 -d)
-export DB_PASSWORD=$(kubectl get secret keycloak-db-credentials -n my-gdc-project -o jsonpath='{.data.password}' | base64 -d)
+export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
+
+gdcloud database clusters create keycloak-db \
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
+  --cpu=2 --memory=8Gi --storage-size=100Gi
 ```
+
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
+
+Replace the base64 placeholder in `Secret/db-pw-keycloak-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/db/db-cluster.yaml` (`Secret/db-pw-keycloak-db` + `DBCluster/keycloak-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`).
+
+### Step 2: Retrieve Database Endpoint, Initialize `keycloak` Database & Configure Credentials
+
+GDC Database Service exposes the primary PostgreSQL endpoint on `ZONE_KUBECONFIG` under `DBCluster` `.status.primary.url` and publishes the server TLS CA certificate in `Secret/dbs-certificates` (`dbs-pg-cert-keycloak-db`):
+
+```bash
+# 1. Wait for keycloak-db to become Ready and retrieve primary endpoint + TLS CA from ZONE_KUBECONFIG
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog keycloak-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+export DB_HOST="${DB_URL%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-keycloak-db}' | base64 -d > /tmp/keycloak-db-ca.crt
+
+# 2. Connect as dbsadmin and create the dedicated keycloak database
+PGPASSWORD="${DB_ADMIN_PASSWORD}" PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/keycloak-db-ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres -c "CREATE DATABASE keycloak;"
+
+# 3. Store DB credentials & TLS CA on the User Cluster and configure Keycloak JDBC env vars
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic keycloak-db-secret \
+  -n "${PROJECT_ID}" \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=username="dbsadmin" \
+  --from-literal=password="${DB_ADMIN_PASSWORD}" \
+  --from-literal=jdbc_url="jdbc:postgresql://${DB_HOST}:5432/keycloak?sslmode=verify-ca&sslrootcert=/etc/keycloak/db-ca/ca.crt" \
+  --from-file=ca.crt=/tmp/keycloak-db-ca.crt \
+  --dry-run=client -o yaml | kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" apply -f -
+```
+
+Update `KC_DB_URL` (`jdbc:postgresql://${DB_HOST}:5432/keycloak`), `KC_DB_USERNAME` (`dbsadmin`), and `KC_DB_PASSWORD` (referencing `Secret/keycloak-db-secret`) in `manifests/apps/keycloak.yaml` (or pass via Helm values) before deploying to the User Cluster.
+
+> **PostgreSQL 15 Least-Privilege Role Note:** If configuring a dedicated non-`dbsadmin` role (e.g., `CREATE ROLE keycloak WITH LOGIN PASSWORD ...`) instead of `dbsadmin`, connect to `-d keycloak` as `dbsadmin` and run `GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak; GRANT ALL ON SCHEMA public TO keycloak;` because PostgreSQL 15+ revokes default `CREATE` privileges on `SCHEMA public` from `PUBLIC`.
 
 ### Step 3: Deploy Identity Application (Kubernetes Manifests)
 

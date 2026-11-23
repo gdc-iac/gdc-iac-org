@@ -31,6 +31,8 @@ registry: ""
 # - Set gdc.enabled=true only when deploying GDC CRDs directly from this wrapper chart to a Zonal context.
 gdc:
   enabled: false
+  db:
+    base64EncodedPassword: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
   failover:
     enabled: false # Day-2 manual failover trigger; must remain false during normal sync
 

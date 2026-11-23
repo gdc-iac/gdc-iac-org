@@ -21,6 +21,7 @@ gdcloud compute networks subnets create vm-subnet --network=vm-net --range=10.1.
 # High Performance HA Database
 gdcloud database clusters create legacy-db \
   --project=test-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD:?Set DB_ADMIN_PASSWORD}" \
   --cpu=4 --memory=16Gi --storage-size=100Gi

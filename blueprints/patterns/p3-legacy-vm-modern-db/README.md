@@ -93,41 +93,50 @@ To deploy the resources for this pattern, your user account will need the follow
 
 ```bash
 export PROJECT_ID=<YOUR_PROJECT_ID>
+export DB_ADMIN_PASSWORD='<YOUR_STRONG_PASSWORD>'
 
 # Network for the VM
-gdcloud compute networks create vm-net --project=$PROJECT_ID --subnet-mode=custom
+gdcloud compute networks create vm-net --project="${PROJECT_ID}" --subnet-mode=custom
 gdcloud compute networks subnets create vm-subnet --network=vm-net --range=10.1.0.0/24 --region=region-1
 
 # High Performance HA Database
 gdcloud database clusters create legacy-db \
-  --project=$PROJECT_ID \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --project="${PROJECT_ID}" \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=4 --memory=16Gi --storage-size=100Gi
 ```
 
-**Option B: GitOps**
+**Option B: GitOps (`ZONE_KUBECONFIG`)**
 
-Sync the `manifests/gdc/infra/legacy-infra.yaml` file to your cluster.
+Replace the base64 placeholder in `Secret/db-pw-legacy-db` (`echo -n "${DB_ADMIN_PASSWORD}" | base64`) and sync `manifests/gdc/infra/legacy-infra.yaml` (`Network/vm-net`, `Secret/db-pw-legacy-db`, and `DBCluster/legacy-db`) to the **Zonal Management API Server** (`ZONE_KUBECONFIG`).
 
-### Step 2: Initialize Database Schema
+### Step 2: Retrieve Database Endpoint & Initialize Schema
 
-The legacy application requires a specific database schema to store orders.
+Retrieve the primary endpoint from `.status.primary.url` and the server TLS CA certificate from `Secret/dbs-certificates` (`dbs-pg-cert-legacy-db`) on `ZONE_KUBECONFIG`, then connect as `dbsadmin` to create the `orders` table:
 
-**For GDC Production (PostgreSQL):**
-You must manually apply the schema to your GDC Database Service instance.
+```bash
+DB_URL=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog legacy-db \
+  -n "${PROJECT_ID}" -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_URL%:5432}"
 
-1.  Connect to your PostgreSQL instance using `psql`.
-2.  Run the following SQL commands:
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n "${PROJECT_ID}" -o jsonpath='{.data.dbs-pg-cert-legacy-db}' | base64 -d > /tmp/legacy-db-ca.crt
+```
 
-    ```sql
-    CREATE TABLE IF NOT EXISTS orders (
-        id SERIAL PRIMARY KEY,
-        product_id INT NOT NULL,
-        quantity INT NOT NULL,
-        processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ```
+Connect using `PGSSLMODE=verify-ca PGSSLROOTCERT=/tmp/legacy-db-ca.crt psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres` and run:
+
+```sql
+CREATE TABLE IF NOT EXISTS orders (
+    id SERIAL PRIMARY KEY,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+> **PostgreSQL 15 Least-Privilege Role Note:** If configuring a dedicated non-`dbsadmin` role (such as `legacy_app`), grant PostgreSQL 15 `public` schema and sequence privileges as `dbsadmin` (`GRANT USAGE, CREATE ON SCHEMA public TO legacy_app; GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE orders TO legacy_app; GRANT USAGE, SELECT ON SEQUENCE orders_id_seq TO legacy_app;`).
 
 ### Step 3: Provision VM
 

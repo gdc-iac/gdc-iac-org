@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,15 +32,28 @@ spec:
         app: backend
     spec:
       serviceAccountName: gemini-gui-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
         image: {{ include "p10-gemini-gui.registry" . }}/p10-backend:latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
         - containerPort: 8000
         env:
         - name: PROJECT_ID
-          value: test-project
+          value: {{ include "p10-gemini-gui.projectId" . }}
         - name: INPUT_BUCKET
           value: gs://gemini-gui-files-{{ include "p10-gemini-gui.projectId" . }}
         - name: DATABASE_URL
@@ -50,6 +65,22 @@ spec:
           value: us-central1
         - name: GEMINI_MODEL
           value: gemini-2.5-flash
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: gemini-gui-db-credentials
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service
@@ -83,15 +114,54 @@ spec:
       labels:
         app: p10-frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: p10-frontend
         image: {{ include "p10-gemini-gui.registry" . }}/p10-frontend:latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         env:
         - name: VITE_API_URL
           value: /api
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -105,6 +175,6 @@ spec:
     app: p10-frontend
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
   type: LoadBalancer
 {{- end }}

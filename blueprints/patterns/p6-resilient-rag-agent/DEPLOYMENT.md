@@ -68,7 +68,7 @@ Run the configuration script to set up Workload Identity, Service Accounts, and 
     *   Apply the StatefulSet: `kubectl apply -f p6-resilient-rag-agent/manifests/gcp/statefulset-postgres.yaml`
     *   Wait for Postgres to be ready: `kubectl wait --for=condition=ready pod -l app=postgres -n test-project --timeout=60s`
 2.  **Deploy Ingestion Job:** Apply `p6-resilient-rag-agent/manifests/apps/ingest-job.yaml`.
-    *   **Note:** The ingestion application (`app.py`) automatically initializes the database (creates `vector` extension and `documents` table) upon startup. No manual SQL setup is required.
+    *   **Note:** In GCP Stepping-Stone emulation (where the container connects as `postgres`), `app.py` checks `pg_extension` and automatically initializes `vector` and the `documents`, `chats`, and `messages` tables upon startup. On GDC air-gapped Managed PostgreSQL 15 (`POSTGRESQL_15`), run `CREATE EXTENSION IF NOT EXISTS vector;` and bootstrap the schema as `dbsadmin` first (see `README.md` Step 3).
 3.  **Monitor:**
     *   Check Pod status: `kubectl get pods -n test-project`.
     *   Check Logs: `kubectl logs -l job-name=manual-ingest-test -n test-project -f`.

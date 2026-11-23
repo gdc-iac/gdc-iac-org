@@ -31,6 +31,14 @@
         "enabled": {
           "type": "boolean"
         },
+        "db": {
+          "type": "object",
+          "properties": {
+            "base64EncodedPassword": {
+              "type": "string"
+            }
+          }
+        },
         "failover": {
           "type": "object",
           "properties": {
@@ -46,6 +54,26 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "dbCredentials": {
+          "type": "object",
+          "properties": {
+            "create": {
+              "type": "boolean"
+            },
+            "secretName": {
+              "type": "string"
+            },
+            "host": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            }
+          }
         }
       }
     }

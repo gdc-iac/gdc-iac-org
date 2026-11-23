@@ -28,10 +28,21 @@ spec:
         app: query-service
     spec:
       serviceAccountName: rag-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: query-service
         image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/rag-query:v7 # kpt-set: ${registry-host}/rag-query:v7
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
         ports:
         - containerPort: 8080
         env:
@@ -68,6 +79,22 @@ spec:
           value: "projects/your-project-id" # kpt-set: projects/${project-id}
         - name: INPUT_BUCKET
           value: "gs://raw-docs-your-project-id" # kpt-set: gs://raw-docs-${project-id}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: rag-db-credentials
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service

@@ -1,9 +1,31 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import asyncpg
 import uuid
 from typing import Optional
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@postgres-svc:5432/postgres")
+
+
+def _resolve_dsn(dsn: str) -> str:
+    default_ca = os.getenv("PGSSLROOTCERT", "/etc/db-tls/ca.crt")
+    if "sslmode=" in dsn and "sslrootcert=" not in dsn and os.path.isfile(default_ca):
+        sep = "&" if "?" in dsn else "?"
+        return f"{dsn}{sep}sslrootcert={default_ca}"
+    return dsn
 
 def _parse_args(args):
     parsed = []
@@ -26,7 +48,7 @@ class Database:
 
     async def connect(self):
         if not self.pool:
-            self.pool = await asyncpg.create_pool(DATABASE_URL)
+            self.pool = await asyncpg.create_pool(_resolve_dsn(DATABASE_URL))
             await self._init_schema()
 
     async def _init_schema(self):

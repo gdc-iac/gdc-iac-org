@@ -16,6 +16,7 @@
 # Step 1: Provision Data Tier (HA Database)
 gdcloud database clusters create tier3-db \
   --project=test-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD:?Set DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=50Gi

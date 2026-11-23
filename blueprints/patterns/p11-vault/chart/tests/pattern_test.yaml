@@ -149,3 +149,63 @@ tests:
       - isKind:
           of: AEADKey
         documentIndex: 0
+  - it: should render 5432/TCP PostgreSQL egress rule in NetworkPolicy when vault.networkPolicy.allowPostgresEgress is true
+    set:
+      vault:
+        networkPolicy:
+          allowPostgresEgress: true
+          postgresCidrs:
+            - "10.200.16.0/24"
+    template: templates/apps/workloads.yaml
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+        documentIndex: 8
+      - equal:
+          path: spec.egress[4].to[0].ipBlock.cidr
+          value: "10.200.16.0/24"
+        documentIndex: 8
+      - equal:
+          path: spec.egress[4].ports[0].port
+          value: 5432
+        documentIndex: 8
+      - equal:
+          path: spec.egress[4].ports[0].protocol
+          value: TCP
+        documentIndex: 8
+  - it: should render extraVolumes and extraVolumeMounts on Vault StatefulSet for DBCluster TLS CA secrets
+    set:
+      vault:
+        extraVolumes:
+          - name: db-tls-ca
+            secret:
+              secretName: dbs-certificates
+        extraVolumeMounts:
+          - name: db-tls-ca
+            mountPath: /vault/userconfig/db-tls-ca
+            readOnly: true
+    template: templates/apps/workloads.yaml
+    asserts:
+      - isKind:
+          of: StatefulSet
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[5].name
+          value: db-tls-ca
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[5].mountPath
+          value: /vault/userconfig/db-tls-ca
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[5].readOnly
+          value: true
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.volumes[5].name
+          value: db-tls-ca
+        documentIndex: 7
+      - equal:
+          path: spec.template.spec.volumes[5].secret.secretName
+          value: dbs-certificates
+        documentIndex: 7

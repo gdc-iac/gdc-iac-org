@@ -101,12 +101,12 @@ This document outlines common pitfalls and unexpected behaviors encountered when
       size: 10Gi
     ```
 
-### Managed Service Credentials
-*   **The Issue:** GDC Managed Services (PostgreSQL) expose credentials via Kubernetes Secrets. The strict format of these secrets (keys like `username`, `password`, `host`) might differ from what your application expects (e.g., a single connection string `DATABASE_URL`).
-*   **The Symptom:** `CrashLoopBackOff` with "Authentication failed" or "Connection refused".
+### Managed Service Credentials & Cross-Cluster Projection
+*   **The Issue:** GDC Managed PostgreSQL (`postgresql.dbadmin.gdc.goog/v1` `DBCluster`) runs on the Zonal Management Plane (`ZONE_KUBECONFIG`) and does **not** automatically project a `<cluster-name>-credentials` Secret into your User Cluster (`USER_CLUSTER_KUBECONFIG`). Instead, operators provide `Secret/db-pw-<name>` (for `dbsadmin`), discover `.status.primary.url` (note: `.status.primary.url` includes `:5432`, so strip it via `DB_HOST="${DB_URL%:5432}"`), extract the server TLS CA from `Secret/dbs-certificates` (`dbs-pg-cert-<name>`), and create the workload `Secret` on the User Cluster with the exact keys expected by the application (`host`, `username`, `password`, `database`, `ca.crt`, or `connection_string`).
+*   **The Symptom:** `CreateContainerConfigError` (missing User Cluster `Secret`) or `CrashLoopBackOff` with "Authentication failed" / TLS certificate verification errors / doubled `:5432:5432` port strings.
 *   **The Fix:** 
-    *   Verify the secret structure of the created managed resource.
-    *   Use `env` configurations in your Deployment to map specific secret keys to the environment variables your app expects.
+    *   Query `.status.primary.url` (`DB_HOST="${DB_URL%:5432}"`) and `Secret/dbs-certificates` on `ZONE_KUBECONFIG`, initialize your least-privilege application role as `dbsadmin` (`PGSSLMODE=verify-ca`), and create the workload connection `Secret` + CA `Secret` (mounted at a dedicated path like `/etc/db-tls/ca.crt`, never masking `/etc/ssl/certs`) on `USER_CLUSTER_KUBECONFIG`.
+    *   Verify the `Secret` keys match the `secretKeyRef` mappings in your `Deployment`.
 *   **What Good Looks Like (`deployment.yaml`):**
     ```yaml
     env:
@@ -154,12 +154,12 @@ This document outlines common pitfalls and unexpected behaviors encountered when
 
 ## 6. Pattern-Specific Expectations
 
-### Patterns 1, 3, 7, 10 (Web App & Standard DB)
-*   **Database:** These patterns rely on the **GDC Managed Service for PostgreSQL**.
-*   **Expectation:** You do not deploy a Postgres pod. You create a `PostgreSQLInstance` custom resource.
-*   **Gotcha (Secret Keys):** The operator creates a Kubernetes Secret with specific keys: `username`, `password`, `database`, `host`.
-    *   *Check:* Verify your application code (e.g., `config.py`, `settings.js`) reads these exact keys or maps them correctly. If your app expects `DB_USER` but the secret provides `username`, the pod will crash.
-*   **Validation:** Run `kubectl get secret <db-instance-name>-connection -o yaml` to confirm the keys match your app's expectations.
+### Patterns 1, 3, 7, 10, 12 (Web App, IAM & Standard DB)
+*   **Database:** These patterns rely on the **GDC Managed Database Service for PostgreSQL 15**.
+*   **Expectation:** You do not deploy a Postgres pod in production. You apply `Secret/db-pw-<name>` and `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`) on `ZONE_KUBECONFIG`.
+*   **Gotcha (Cross-Cluster Secret Creation & TLS CA):** GDCag does **not** auto-create `<name>-credentials` on the User Cluster.
+    *   *Check:* Query `.status.primary.url` and `Secret/dbs-certificates` (`dbs-pg-cert-<name>`) on `ZONE_KUBECONFIG`, initialize schemas/roles as `dbsadmin`, and create the User Cluster `Secret` with the exact keys (`username`, `password`, `database`, `host`, or `connection_string`) expected by your application manifests.
+*   **Validation:** Run `kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" get secret <app-db-secret> -n <namespace> -o yaml` to confirm the keys match your app's `secretKeyRef` mappings.
 
 ### Pattern 4 (Event-Driven Kafka)
 *   **Chart Dependencies:** This uses the Bitnami Kafka Helm chart.

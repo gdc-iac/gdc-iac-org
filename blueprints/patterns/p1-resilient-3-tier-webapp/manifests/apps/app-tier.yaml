@@ -26,7 +26,10 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -41,6 +44,7 @@ spec:
         image: us-central1-docker.pkg.dev/your-project-id/blueprint-images/p1-backend:latest # kpt-set: ${registry-host}/p1-backend:latest
         securityContext:
           allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
         resources:
@@ -55,6 +59,8 @@ spec:
           value: "postgres"
         - name: DB_HOST
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: host } }
+        - name: DB_USER
+          valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: username } }
         - name: DB_PASS
           valueFrom: { secretKeyRef: { name: tier3-db-credentials, key: password } }
         livenessProbe:
@@ -67,6 +73,12 @@ spec:
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

@@ -12,14 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-postgres-db
+  namespace: test-project # kpt-set: ${namespace}
+type: Opaque
+data:
+  postgres-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: postgres-db
   namespace: test-project # kpt-set: ${namespace}
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-     requests: { cpu: "2", memory: "8Gi" }
-  storage: { size: "50G" }
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-postgres-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 50Gi

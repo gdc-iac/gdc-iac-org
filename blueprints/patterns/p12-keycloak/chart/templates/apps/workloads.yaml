@@ -1,3 +1,4 @@
+{{/*
 # Copyright 2026 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+*/ -}}
 {{- if .Values.apps.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,20 +32,86 @@ spec:
       labels:
         app: keycloak
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: init-keycloak-quarkus
+        image: {{ include "p12-keycloak.registry" . }}/keycloak/keycloak:24.0.4
+        command:
+        - sh
+        - -c
+        - cp -a /opt/keycloak/lib/quarkus/. /quarkus-work/
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: keycloak-quarkus
+          mountPath: /quarkus-work
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: keycloak
         image: {{ include "p12-keycloak.registry" . }}/keycloak/keycloak:24.0.4
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
         args:
         - start-dev
         env:
         - name: KC_DB
           value: postgres
+        {{- if .Values.keycloak.db.existingSecret }}
         - name: KC_DB_URL
-          value: jdbc:postgresql://keycloak-postgresql:5432/keycloak
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.keycloak.db.existingSecret }}
+              key: {{ .Values.keycloak.db.urlKey | default "jdbc_url" }}
         - name: KC_DB_USERNAME
-          value: postgres
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.keycloak.db.existingSecret }}
+              key: {{ .Values.keycloak.db.usernameKey | default "username" }}
         - name: KC_DB_PASSWORD
-          value: postgres_password
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.keycloak.db.existingSecret }}
+              key: {{ .Values.keycloak.db.passwordKey | default "password" }}
+        {{- else }}
+        - name: KC_DB_URL
+          value: {{ .Values.keycloak.db.url | default "jdbc:postgresql://keycloak-postgresql:5432/keycloak" | quote }}
+        - name: KC_DB_USERNAME
+          value: {{ .Values.keycloak.db.username | default "postgres" | quote }}
+        - name: KC_DB_PASSWORD
+          value: {{ .Values.keycloak.db.password | default "postgres_password" | quote }}
+        {{- end }}
         - name: KEYCLOAK_ADMIN
           value: admin
         - name: KEYCLOAK_ADMIN_PASSWORD
@@ -73,6 +141,26 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 5
           failureThreshold: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+        - name: keycloak-quarkus
+          mountPath: /opt/keycloak/lib/quarkus
+        {{- with .Values.keycloak.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: keycloak-data
+        emptyDir: {}
+      - name: keycloak-quarkus
+        emptyDir: {}
+      {{- with .Values.keycloak.extraVolumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
 ---
 apiVersion: v1
 kind: Service

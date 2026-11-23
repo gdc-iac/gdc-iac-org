@@ -32,7 +32,7 @@ Keycloak runs as a GKE deployment, exposed to clients internally and externally 
 ### **Key Solution Capabilities**
 
 * **Centralized IdP**: Exposes OIDC (OpenID Connect) and SAML endpoints for client authentication across all project namespaces.
-* **Persistent User Store**: Uses the GDC Database Service PostgreSQL `ZONAL_HA` cluster, safeguarding user profile records and active session states.
+* **Persistent User Store**: Uses the GDC Database Service PostgreSQL 15 `zonal_ha` cluster (`spec.availability.enableHighAvailability: true`, `enableAutoFailover: true`), safeguarding user profile records and active session states across node failures.
 * **Declarative Configuration Imports**: Facilitates auto-configuration of realms, clients, and test user databases during startup using Kubernetes ConfigMaps.
 * **Proxy-Friendly exposure**: Configured to trust upstream header forwards (`KC_PROXY_HEADERS="xforwarded"`), enabling seamless integration behind hardware load balancers.
 
@@ -206,46 +206,109 @@ spec:
 
 ## **Section 2: Deploying the Database Tier (PostgreSQL HA)**
 
-Create the PostgreSQL database cluster configurations for Keycloak.
+### 2.1 Provision PostgreSQL DBCluster
+
+Create the managed PostgreSQL 15 database cluster (`postgresql.dbadmin.gdc.goog/v1`) on the Zonal Management Plane (`ZONE_KUBECONFIG`) for Keycloak.
 
 #### Option A: Manual (CLI)
 ```shell
+export DB_ADMIN_PASSWORD="<strong-dbsadmin-password>"
+
 gdcloud database clusters create keycloak-db \
   --project=my-gdc-project \
-  --database-version=POSTGRESQL_14 \
-  --availability-type=ZONAL_HA \
+  --database-version=POSTGRESQL_15 \
+  --availability-type=zonal_ha \
+  --admin-password="${DB_ADMIN_PASSWORD}" \
   --cpu=2 --memory=8Gi --storage-size=100Gi
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/db-cluster.yaml`)
+#### Option B: GitOps / IaC (`manifests/gdc/db/db-cluster.yaml` on `ZONE_KUBECONFIG`)
+Apply both the `dbsadmin` password `Secret` (`db-pw-keycloak-db`, key `keycloak-db`) and the `DBCluster` resource against `ZONE_KUBECONFIG`:
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-keycloak-db
+  namespace: my-gdc-project
+type: Opaque
+data:
+  keycloak-db: "<base64-admin-password>"
+---
 apiVersion: postgresql.dbadmin.gdc.goog/v1
 kind: DBCluster
 metadata:
   name: keycloak-db
   namespace: my-gdc-project
 spec:
-  version: POSTGRESQL_14
-  availabilityType: ZONAL_HA
-  resources:
-    requests:
-      cpu: "2"
-      memory: "8Gi"
-  storage:
-    size: "100Gi"
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-keycloak-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi
 ```
 
-Wait for status `READY`, retrieve host connection details from the `keycloak-db-credentials` secret, and connect via `psql` to create the Keycloak target database:
+### 2.2 Endpoint Discovery, TLS Root CA, `dbsadmin` Initialization & User Cluster Secret Creation
 
-```sql
-CREATE DATABASE keycloak;
+GDCag Managed PostgreSQL does **not** automatically create a `keycloak-db-credentials` Secret on the User Cluster. Once `DBCluster/keycloak-db` reaches `READY` on `ZONE_KUBECONFIG`, discover its primary DNS endpoint, extract the server TLS CA certificate from `Secret/dbs-certificates`, connect as `dbsadmin` (`cloudsqlsuperuser`) over verified TLS to run `CREATE DATABASE keycloak;` and provision a dedicated `keycloak` role, and then create the workload connection secrets on `USER_CLUSTER_KUBECONFIG`:
+
+```shell
+# 1. Discover primary DNS endpoint and extract TLS Root CA on ZONE_KUBECONFIG
+DB_ENDPOINT=$(kubectl --kubeconfig="${ZONE_KUBECONFIG}" get dbcluster.postgresql.dbadmin.gdc.goog keycloak-db \
+  -n my-gdc-project -o jsonpath='{.status.primary.url}')
+DB_HOST="${DB_ENDPOINT%:5432}"
+
+kubectl --kubeconfig="${ZONE_KUBECONFIG}" get secret dbs-certificates \
+  -n my-gdc-project -o jsonpath='{.data.dbs-pg-cert-keycloak-db}' | base64 -d > ca.crt
+
+# 2. Connect as dbsadmin over verified TLS to create the keycloak database and dedicated role
+export PGPASSWORD="${DB_ADMIN_PASSWORD}"
+export KEYCLOAK_DB_PASSWORD="<strong-keycloak-db-password>"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d postgres \
+  -c "CREATE DATABASE keycloak;"
+
+PGSSLMODE=verify-ca PGSSLROOTCERT=./ca.crt \
+  psql -h "${DB_HOST}" -p 5432 -U dbsadmin -d keycloak <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'keycloak') THEN
+    CREATE ROLE keycloak WITH LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD}';
+  END IF;
+END
+\$\$;
+
+GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+GRANT ALL ON SCHEMA public TO keycloak;
+SQL
+
+# 3. Create keycloak-db-credentials and TLS CA Secrets on the User Cluster (USER_CLUSTER_KUBECONFIG)
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic keycloak-db-credentials \
+  --from-literal=host="${DB_HOST}" \
+  --from-literal=jdbc_url="jdbc:postgresql://${DB_HOST}:5432/keycloak" \
+  --from-literal=username="keycloak" \
+  --from-literal=password="${KEYCLOAK_DB_PASSWORD}" \
+  -n my-gdc-project
+
+kubectl --kubeconfig="${USER_CLUSTER_KUBECONFIG}" create secret generic keycloak-db-ca \
+  --from-file=ca.crt=./ca.crt \
+  -n my-gdc-project
 ```
 
 ---
 
 ## **Section 3: Deploying Keycloak**
 
-Deploy the Keycloak manifests. Update connection variables (`KC_DB_URL`, `KC_DB_PASSWORD`) based on details retrieved from GDC's `keycloak-db-credentials` secret.
+Deploy the Keycloak manifests on the User Cluster (`USER_CLUSTER_KUBECONFIG`), referencing the `keycloak-db-credentials` Secret created in Section 2.2 (or setting `KC_DB_URL`, `KC_DB_USERNAME`, and `KC_DB_PASSWORD` to `${DB_HOST}` and the `keycloak` role).
 
 #### Option A: Manual (CLI)
 ```shell
@@ -271,9 +334,54 @@ spec:
       labels:
         app: keycloak
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: init-keycloak-quarkus
+        image: harbor.shared-services.gdc.local/keycloak/keycloak:24.0.4
+        command: ["sh", "-c", "cp -a /opt/keycloak/lib/quarkus/. /quarkus-work/"]
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: keycloak-quarkus
+          mountPath: /quarkus-work
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: keycloak
         image: harbor.shared-services.gdc.local/keycloak/keycloak:24.0.4
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
         args: ["start-dev"]
         env:
         - name: KC_DB
@@ -313,6 +421,20 @@ spec:
           initialDelaySeconds: 90
           periodSeconds: 5
           failureThreshold: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: keycloak-data
+          mountPath: /opt/keycloak/data
+        - name: keycloak-quarkus
+          mountPath: /opt/keycloak/lib/quarkus
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: keycloak-data
+        emptyDir: {}
+      - name: keycloak-quarkus
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -380,18 +502,18 @@ Verify you can log in to the admin console:
 
 ## **Section 5: Operations & Troubleshooting**
 
-### 5.1 Database High Availability & Manual Failover
+### 5.1 Database High Availability & Failover
 
-In GDC air-gapped, database clusters configured with `ZONAL_HA` (primary and standby replicas) do not automatically failover when the primary instance becomes unavailable. Failover must be triggered manually by an operator.
+In GDC air-gapped `v1.15.1+`, `DBCluster` resources configured with `spec.availability.enableHighAvailability: true` enable automatic failover (`enableAutoFailover: true`) by default upon primary instance failure. Operators can also trigger planned switchovers or manual failovers via the `gdcloud` CLI or the declarative `fleet.dbadmin.gdc.goog/v1` `Failover` custom resource.
 
-#### Option A: Manual (CLI)
-To trigger a manual failover using the `gdcloud` CLI:
+#### Option A: Manual Switchover / Failover (CLI)
+To trigger an operator-initiated failover using the `gdcloud` CLI:
 ```shell
 gdcloud database clusters failover keycloak-db --project=my-gdc-project
 ```
 
-#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml`)
-Apply a `Failover` custom resource to trigger the failover declaratively:
+#### Option B: GitOps / IaC (`manifests/gdc/db/failover.yaml` on `ZONE_KUBECONFIG`)
+Apply a `Failover` custom resource to trigger a switchover or manual failover declaratively:
 ```yaml
 apiVersion: fleet.dbadmin.gdc.goog/v1
 kind: Failover

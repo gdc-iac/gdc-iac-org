@@ -36,10 +36,23 @@ spec:
         app: backend
     spec:
       serviceAccountName: gemma-client-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
         image: {{ if $registry }}{{ $registry }}/gemma-client-backend:{{ .Values.apps.imageTag | default "latest" }}{{ else }}gemma-client-backend:latest{{ end }}
         imagePullPolicy: {{ .Values.apps.imagePullPolicy | default "IfNotPresent" }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
         ports:
         - containerPort: 8000
@@ -81,6 +94,22 @@ spec:
           value: {{ .Values.apps.enableOidc | default "true" | quote }}
         - name: KEYCLOAK_URL
           value: {{ .Values.apps.keycloakUrl | default "http://keycloak-svc:8080/auth/realms/gdc-rag-realm" | quote }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: db-ca
+          mountPath: /etc/db-tls
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: db-ca
+        secret:
+          secretName: gemma-client-db-credentials
+          optional: true
+          items:
+          - key: ca.crt
+            path: ca.crt
 ---
 apiVersion: v1
 kind: Service
@@ -114,21 +143,54 @@ spec:
       labels:
         app: frontend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: frontend
         image: {{ if $registry }}{{ $registry }}/gemma-client-frontend:{{ .Values.apps.imageTag | default "latest" }}{{ else }}gemma-client-frontend:latest{{ end }}
         imagePullPolicy: {{ .Values.apps.imagePullPolicy | default "IfNotPresent" }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         readinessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
         env:
         - name: VITE_API_URL
           value: /api
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-run
+          mountPath: /var/run
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-run
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -142,7 +204,7 @@ spec:
     app: frontend
   ports:
   - port: 80
-    targetPort: 80
+    targetPort: 8080
   type: ClusterIP
 ---
 apiVersion: networking.k8s.io/v1
