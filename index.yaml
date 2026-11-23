@@ -107,6 +107,19 @@ entries:
     version: 0.1.1
   gdc-dbs:
   - apiVersion: v2
+    appVersion: "15"
+    created: "2026-11-23T09:43:26.992630243Z"
+    description: A Helm chart for deploying GDC Air-Gapped Database Services (PostgreSQL;
+      Oracle deprecated)
+    digest: d6d8e7a6a03a9d9a366257122c252a89ead8164be0711c699c2c39f532fb24dc
+    maintainers:
+    - name: gdc-iac
+    name: gdc-dbs
+    type: application
+    urls:
+    - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdc-dbs-0.2.0/gdc-dbs-0.2.0.tgz
+    version: 0.2.0
+  - apiVersion: v2
     appVersion: "1.0"
     created: "2026-10-29T14:22:47.366273457Z"
     description: A Helm chart for deploying GDCH Database Services (PostgreSQL or
@@ -347,4 +360,4 @@ entries:
     urls:
     - https://github.com/gdc-iac/gdc-iac-org/releases/download/gdch-dbs-0.1.1/gdch-dbs-0.1.1.tgz
     version: 0.1.1
-generated: "2026-10-29T14:22:47.554389914Z"
+generated: "2026-11-23T09:43:26.992652357Z"
