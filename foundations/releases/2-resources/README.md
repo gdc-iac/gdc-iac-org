@@ -18,7 +18,7 @@ This stage provisions regional workload infrastructure resources and zonal appli
    * **Chart**: `gdc-vm`
 2. **`buckets.yaml.gotmpl`**: Provisions object storage buckets.
    * **Chart**: `gdc-buckets`
-3. **`dbs.yaml.gotmpl`**: Provisions managed database clusters (PostgreSQL / Alloydb Omni).
+3. **`dbs.yaml.gotmpl`**: Provisions managed database clusters (PostgreSQL; Oracle deprecated on GDCag).
    * **Chart**: `gdc-dbs`
 4. **`dashboards.yaml.gotmpl`**: Configures observability dashboards.
    * **Chart**: `gdc-dashboards`

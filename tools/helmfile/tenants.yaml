@@ -98,22 +98,15 @@ gdc_tenants:
             - "mellon-alloydb-sa"
           resources:
             dbs:
-              alloydbomni:
-                enabled: true
-                clusterName: lts-ado-cluster
-                version: "15"
-                cpu: 2
-                memory: 4Gi
-                dataDiskSize: 10Gi
-                base64EncodedPassword: "WW91clNlY3VyZVBAc3N3MHJk"
               postgresql:
                 enabled: true
                 clusterName: lts-pg-cluster
                 version: "15"
                 cpu: 2
-                memory: 4Gi
-                dataDiskSize: 10Gi
+                memory: 8Gi
+                dataDiskSize: 50Gi
                 base64EncodedPassword: "WW91clNlY3VyZVBAc3N3MHJk"
+              # DEPRECATED: Oracle DB (oracle.dbadmin.gdc.goog/v1) is deprecated on GDCag
               oracle:
                 enabled: false
                 clusterName: lts-ora-cluster
