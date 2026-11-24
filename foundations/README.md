@@ -20,7 +20,7 @@ The system groups environment resources and setups into execution layers trigger
 - **`5-workload-factory/`**: Orchestrates User Cluster application workloads for GDC Blueprint Patterns (`blueprints/patterns/*/chart`) while relying on Stage 2 (`2-resources`) for Zonal managed databases, VMs, and buckets.
 
 ## Operational Playbooks & Guides
-- 📖 **[Deployment Manual](DEPLOYMENT_MANUAL.md)**: Step-by-step execution, RBAC bootstrapping, verification, and rollback runbook.
+- 📖 **[Deployment Manual](DEPLOYMENT_MANUAL.md)**: Step-by-step execution, RBAC bootstrapping, [code-vs-config separation](DEPLOYMENT_MANUAL.md#separating-code-from-environment-configuration), verification, and rollback runbook.
 - 📦 **[Air-Gap Mirroring & Ingestion Guide](AIRGAP_MIRRORING.md)**: Downloading releases, SHA256/Cosign verification, and turnkey Harbor ingestion with `./scripts/ingest-airgap-bundle.sh`.
 - 💻 **[Workstation Onboarding](WORKSTATION_ONBOARDING.md)**: Tooling installation, Helm plugins, and environment setup.
 
@@ -32,8 +32,10 @@ The system groups environment resources and setups into execution layers trigger
 gdc-iac-org/
 ├── charts/                     <- 30+ canonical Helm charts for GDC Custom Resources
 ├── foundations/
-│   ├── bases/                  <- Shared base configurations and variables
-│   │   └── environments/       <- Environments (dev, stg, prd) definitions files
+│   ├── bases/                  <- Shared base configurations and environment loaders
+│   │   ├── environments.yaml.gotmpl               <- Dynamic loader (in-tree or FOUNDATIONS_ENV_DIR)
+│   │   ├── environments.remote.yaml.gotmpl.example <- Remote Git (`git::`) values loader template
+│   │   └── environments/       <- Default in-tree environments (dev, stg, prd) definitions
 │   │       ├── dev/            <- dev environment definition
 │   │       │   ├── global/           <- `dev` environment global API resources
 │   │       │   │   ├── iac.yaml      <- IaC role bindings and service accounts
@@ -81,6 +83,16 @@ Each environment (e.g. dev, stg, prd) represents a set of GDC resources belongin
 
 3. One or more zone resources definitions:
 	- **`tenant-*.yaml`**: Zonal resources (clusters, Harbors, etc.) for that specific zone, grouped by tenant profiles.
+
+### Separating Code from Environment Configuration
+
+To keep an unmodified clone of `gdc-iac-org` while storing organization-specific environment values in a separate private Git repository, `foundations/` supports three decoupled workflows alongside the default in-tree `bases/environments/` directory:
+
+1. **External Config Directory (`FOUNDATIONS_ENV_DIR`)**: Point `bases/environments.yaml.gotmpl` to a local checkout of your private config repository (`FOUNDATIONS_ENV_DIR=/path/to/gdc-config/environments helmfile -e prod apply` or `./foundations/scripts/validate.sh prod --env-dir /path/to/gdc-config/environments`) with automatic file and zone discovery.
+2. **Remote Git Values Getter (`git::` URLs)**: Load ref-pinned values files directly from a Git server (`git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/charts.yaml?ref=v1.0.0`) using [`bases/environments.remote.yaml.gotmpl.example`](bases/environments.remote.yaml.gotmpl.example).
+3. **Pull-Based Argo CD GitOps (`foundations-argo/`)**: Manage environment values in a standalone [`landing-argo.git`](../foundations-argo/README.md) repository reconciled by Argo CD against Harbor OCI charts.
+
+See **[Separating Code from Environment Configuration](DEPLOYMENT_MANUAL.md#separating-code-from-environment-configuration)** in the Deployment Manual for architecture diagrams, comparison tables, and step-by-step instructions.
 
 The key role of environment component is providing [workload separation](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation). There are two patterns possible that depend on a level oif isolation required:
 - single organization with [separate projects per software development environment](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/access-boundaries#design-projects-for-isolation) with [recommendation to design separate Kubernetes clusters per software development environment](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/resources/workload-separation#design-clusters-for-workload-isolation)

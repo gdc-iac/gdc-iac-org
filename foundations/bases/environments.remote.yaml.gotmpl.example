@@ -1,0 +1,81 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+# bases/environments.remote.yaml.gotmpl.example
+#
+# Reference template demonstrating Helmfile's native remote Git values loader (`go-getter` `git::` URLs):
+#   https://helmfile.readthedocs.io/en/latest/environments/#loading-remote-environment-values-files
+#
+# When to use this pattern vs. FOUNDATIONS_ENV_DIR:
+#   - FOUNDATIONS_ENV_DIR (in default `bases/environments.yaml.gotmpl`):
+#     Best when your external configuration repository is cloned locally alongside `gdc-iac-org`
+#     (for example on an operator workstation or air-gapped bastion). Because the files exist on
+#     the local filesystem at template-render time, `readDirEntries` automatically discovers all
+#     `<env>/*.yaml` files, `global/*.yaml`, and `<zone>/` directories.
+#   - Remote `git::` Values URLs (this template):
+#     Best for stateless CI/CD runners that fetch version-pinned (`?ref=<tag-or-sha>`) environment
+#     values directly from a private Git repository (GitLab, Gitea, or GitHub) without managing a
+#     second checkout directory. Because Go template functions (`readDirEntries`) run before
+#     Helmfile's `go-getter` downloads remote URLs, remote `git::` environments list their values
+#     files and `zones` explicitly, giving strict, auditable ref-pinned GitOps control.
+#
+# Usage:
+#   1. Store your environment definitions in a dedicated config repository (for example,
+#      `https://git.infra.gdc.example.com/platform/gdc-config.git` under `environments/<env>/`).
+#      Remember to wrap tenant/IaC dictionaries under the matching top-level environment key
+#      (for example `prod:` in `environments/prod/global/iac.yaml` and `tenant-1.yaml`), and set
+#      `gdc_dashboards_env_path: ""` in `charts.yaml` unless dashboard JSON files are present locally.
+#   2. Copy this file to `bases/environments.yaml.gotmpl` (or reference it from a wrapper helmfile)
+#      and set optional repository/ref overrides:
+#        export GDC_CONFIG_GIT_URL="https://git.infra.gdc.example.com/platform/gdc-config.git"
+#        export GDC_CONFIG_GIT_REF="v1.0.0"
+#        helmfile -e prod diff
+#
+# Private repository authentication examples:
+#   - SSH deploy key:
+#       GDC_CONFIG_GIT_URL="ssh://git@git.infra.gdc.example.com/platform/gdc-config.git"
+#   - CI job / personal access token over HTTPS:
+#       GDC_CONFIG_GIT_URL="https://oauth2:${GIT_TOKEN}@git.infra.gdc.example.com/platform/gdc-config.git"
+---
+{{- $configRepo := env "GDC_CONFIG_GIT_URL" | default "https://git.infra.gdc.example.com/platform/gdc-config.git" }}
+{{- $devRef := env "GDC_CONFIG_DEV_REF" | default "main" }}
+{{- $prodRef := env "GDC_CONFIG_GIT_REF" | default "v1.0.0" }}
+
+environments:
+  dev:
+    values:
+      - git::{{ $configRepo }}@environments/dev/charts.yaml?ref={{ $devRef }}
+      - git::{{ $configRepo }}@environments/dev/contexts.yaml?ref={{ $devRef }}
+      - git::{{ $configRepo }}@environments/dev/globals.yaml?ref={{ $devRef }}
+      - git::{{ $configRepo }}@environments/dev/overrides.yaml?ref={{ $devRef }}
+      - git::{{ $configRepo }}@environments/dev/global/iac.yaml?ref={{ $devRef }}
+      - git::{{ $configRepo }}@environments/dev/global/tenant-1.yaml?ref={{ $devRef }}
+      - git::{{ $configRepo }}@environments/dev/zone1/tenant-1.yaml?ref={{ $devRef }}
+      - zones: ["zone1"]
+      - environment_name: "dev"
+
+  prod:
+    values:
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/charts.yaml?ref={{ $prodRef }}
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/contexts.yaml?ref={{ $prodRef }}
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/globals.yaml?ref={{ $prodRef }}
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/overrides.yaml?ref={{ $prodRef }}
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/global/iac.yaml?ref={{ $prodRef }}
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/global/tenant-1.yaml?ref={{ $prodRef }}
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/zone1/tenant-1.yaml?ref={{ $prodRef }}
+      # Add additional zonal tenant files as needed (and append the zone name to `zones` below):
+      # - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/zone2/tenant-1.yaml?ref={{ $prodRef }}
+      - zones: ["zone1"]
+      - environment_name: "prod"
