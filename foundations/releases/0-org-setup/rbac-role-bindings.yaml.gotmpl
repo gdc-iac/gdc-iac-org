@@ -39,10 +39,12 @@ releases:
         {{- end }}
         {{- $rbacrolebindings = append $rbacrolebindings $resolved }}
       {{- end }}
+    {{- $rbacRoleBindingsChartPath := coalesce ($vals | get "gdc_rbac_role_bindings_chart_path" "") ($vals | get "gdc_rbac_rolebindings_chart_path" "") "../../../charts/gdc-rbac-role-bindings" }}
+    {{- $rbacRoleBindingsChartVersion := coalesce ($vals | get "gdc_rbac_role_bindings_chart_version" "") ($vals | get "gdc_rbac_rolebindings_chart_version" "") }}
     - name: {{ $tenantName }}-rbac-rolebindings
-      chart: {{ $vals | get "gdc_rbac_rolebindings_chart_path" "../../../charts/gdc-rbac-role-bindings" }}
-      {{- if ($vals | get "gdc_rbac_rolebindings_chart_version" "") }}
-      version: {{ $vals | get "gdc_rbac_rolebindings_chart_version" | quote }}
+      chart: {{ $rbacRoleBindingsChartPath }}
+      {{- if $rbacRoleBindingsChartVersion }}
+      version: {{ $rbacRoleBindingsChartVersion | quote }}
       {{- end }}
       labels:
         stage: 0-org-setup
