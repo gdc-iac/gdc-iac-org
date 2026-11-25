@@ -74,11 +74,139 @@ Helmfile supports two operational modes configured in `foundations/bases/environ
 ### 5. Workstation & Pipeline Validation
 1. Verify your local workstation is prepared as detailed in [`WORKSTATION_ONBOARDING.md`](WORKSTATION_ONBOARDING.md).
 2. Ensure all required container images and Helm charts are mirrored to local registries as detailed in [`AIRGAP_MIRRORING.md`](AIRGAP_MIRRORING.md).
-3. Execute the validation script to ensure there are no syntax or schema violations:
+3. Decide how your organization separates pipeline code from environment configuration (see [Separating Code from Environment Configuration](#separating-code-from-environment-configuration) below).
+4. Execute the validation script to ensure there are no syntax or schema violations:
    ```bash
    ./foundations/scripts/validate.sh dev
    ```
-4. Proceed with deploying the stages below.
+5. Proceed with deploying the stages below.
+
+---
+
+## Separating Code from Environment Configuration
+
+By default, `foundations/` includes a sample `dev` environment inside `bases/environments/dev/`. In enterprise and air-gapped deployments, platform teams should **avoid committing organization-specific tenant definitions, Kubecontexts, or Harbor endpoints into a fork of `gdc-iac-org`**. Decoupling pipeline code (`foundations/releases/` and `charts/`) from environment values (`environments/<env>/`) lets you upgrade `gdc-iac-org` cleanly while keeping sensitive environment configurations in a dedicated, access-controlled Git repository.
+
+### Architecture Comparison
+
+```mermaid
+flowchart LR
+    subgraph Upstream ["Upstream Pipeline Code (Unmodified)"]
+        Repo["gdc-iac-org<br/>(foundations/releases + charts)"]
+        OCI["Managed Harbor OCI<br/>(oci://harbor.infra.gdc.example.com/gdc-iac/*)"]
+    end
+
+    subgraph P1 ["Pattern 1: In-Tree (Default Dev)"]
+        InTree["bases/environments/dev/*.yaml"]
+    end
+
+    subgraph P2 ["Pattern 2: External Directory (FOUNDATIONS_ENV_DIR)"]
+        ExtClone["Local Clone: gdc-config/environments/&lt;env&gt;/"]
+        AutoDisc["bases/environments.yaml.gotmpl<br/>(readDirEntries auto-discovery)"]
+        ExtClone --> AutoDisc
+    end
+
+    subgraph P3 ["Pattern 3: Remote Git Getter (git:: URLs)"]
+        GitSrv["Private Git Server (GitLab / Gitea)<br/>gdc-config.git ?ref=v1.0.0"]
+        RemoteTmpl["bases/environments.remote.yaml.gotmpl.example<br/>(Explicit files + zones)"]
+        GitSrv --> RemoteTmpl
+    end
+
+    subgraph P4 ["Pattern 4: Pull-Based GitOps (foundations-argo)"]
+        LandingArgo["Standalone Repo: landing-argo.git<br/>(apps/values.yaml + environments/&lt;env&gt;/)"]
+        ArgoCD["Argo CD Controller<br/>(3 + 2N Applications)"]
+        LandingArgo --> ArgoCD
+    end
+
+    InTree --> Repo
+    AutoDisc --> Repo
+    RemoteTmpl --> Repo
+    OCI --> Repo
+    OCI --> ArgoCD
+```
+
+| Pattern | Configuration Source | File & Zone Discovery | Best Suited For |
+| :--- | :--- | :--- | :--- |
+| **1. In-Tree (`bases/environments/`)** | Inside `gdc-iac-org/foundations/bases/environments/<env>/` | Automatic (`readDirEntries`) | Local chart authoring, CI linting, and disposable sandbox testing. |
+| **2. External Config Directory (`FOUNDATIONS_ENV_DIR`)** | Separate `gdc-config` repo cloned alongside an unmodified `gdc-iac-org` checkout or air-gap bundle | Automatic (`readDirEntries`, ignores hidden `.git` dirs) | Air-gapped bastions, operator workstations, and CI jobs mounting two checkouts. |
+| **3. Remote Git Values (`git::` Getter)** | Ref-pinned `git::https://...@path?ref=v1.0.0` URLs via [`bases/environments.remote.yaml.gotmpl.example`](bases/environments.remote.yaml.gotmpl.example) | Explicit list of YAML URLs and `zones` | Stateless CI/CD runners pulling pinned configs directly from GitLab or Gitea. |
+| **4. Pull-Based Argo CD (`foundations-argo/`)** | Standalone [`landing-argo.git`](../foundations-argo/README.md) repository + Harbor OCI charts | Declarative `projects:` catalog in `apps/values.yaml` | Continuous pull-based GitOps reconciliation without CLI-driven Helmfile runs. |
+
+---
+
+### Pattern 2: External Configuration Repository via `FOUNDATIONS_ENV_DIR`
+
+`foundations/bases/environments.yaml.gotmpl` checks the `FOUNDATIONS_ENV_DIR` environment variable before falling back to `$PWD/bases/environments`. Both absolute paths and paths relative to the working directory are resolved cleanly.
+
+1. **Create a separate private configuration repository** (for example `gdc-config.git`) with the standard per-environment directory structure:
+   ```text
+   gdc-config/
+   └── environments/
+       ├── stg/
+       │   ├── charts.yaml
+       │   ├── contexts.yaml
+       │   ├── globals.yaml
+       │   ├── overrides.yaml
+       │   ├── global/
+       │   │   ├── iac.yaml
+       │   │   └── tenant-1.yaml
+       │   └── zone1/
+       │       └── tenant-1.yaml
+       └── prod/
+           ├── charts.yaml
+           ├── contexts.yaml
+           ├── globals.yaml
+           ├── overrides.yaml
+           ├── global/
+           │   ├── iac.yaml
+           │   └── tenant-1.yaml
+           └── zone1/
+               └── tenant-1.yaml
+   ```
+   > [!IMPORTANT]
+   > In `global/iac.yaml`, `global/tenant-*.yaml`, and `<zone>/tenant-*.yaml`, ensure the top-level YAML key matches the environment directory name (for example `prod:` under `environments/prod/`). When defining environments outside `bases/environments/`, set `gdc_dashboards_env_path: ""` in `charts.yaml` (or supply a `../` relative path) unless custom dashboard JSON files exist under `bases/environments/<env>/`.
+
+2. **Validate and deploy from an unmodified `gdc-iac-org` checkout**:
+   ```bash
+   # Validate external 'prod' environment (via CLI flag or environment variable)
+   ./foundations/scripts/validate.sh prod --env-dir /path/to/gdc-config/environments
+
+   # Run Helmfile diff / apply from foundations/ against the external config directory
+   cd foundations
+   export FOUNDATIONS_ENV_DIR="/path/to/gdc-config/environments"
+   helmfile -e prod -l stage=0-org-setup diff
+   helmfile -e prod -l stage=0-org-setup apply
+   ```
+
+---
+
+### Pattern 3: Stateless Remote Git Values via `git::` URLs
+
+Helmfile natively supports fetching remote environment values files via [`go-getter` URLs](https://helmfile.readthedocs.io/en/latest/environments/#loading-remote-environment-values-files). See [`bases/environments.remote.yaml.gotmpl.example`](bases/environments.remote.yaml.gotmpl.example) for a complete, ready-to-adapt template:
+
+```yaml
+environments:
+  prod:
+    values:
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/charts.yaml?ref=v1.0.0
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/contexts.yaml?ref=v1.0.0
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/globals.yaml?ref=v1.0.0
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/overrides.yaml?ref=v1.0.0
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/global/iac.yaml?ref=v1.0.0
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/global/tenant-1.yaml?ref=v1.0.0
+      - git::https://git.infra.gdc.example.com/platform/gdc-config.git@environments/prod/zone1/tenant-1.yaml?ref=v1.0.0
+      - zones: ["zone1"]
+      - environment_name: "prod"
+```
+
+* **Why explicit files and `zones` are required with `git::` URLs**: Go template functions (`readDirEntries`) execute before Helmfile's `go-getter` downloads remote values files, so `readDirEntries` cannot scan directories inside an uncloned remote Git URL. Listing each values file URL alongside explicit `zones: ["zone1"]` and `environment_name: "prod"` entries provides deterministic, tag/SHA-pinned (`?ref=v1.0.0`) execution without pre-cloning the config repo.
+* **Private Git authentication**: Use SSH deploy keys (`git::ssh://git@git.infra.gdc.example.com/platform/gdc-config.git@...`) or inject CI job tokens via environment variables (`git::https://oauth2:{{ env "GIT_TOKEN" }}@git.infra.gdc.example.com/platform/gdc-config.git@...`).
+
+---
+
+### Pattern 4: Pull-Based GitOps with Argo CD (`foundations-argo/`)
+
+Teams operating an in-cluster Argo CD control plane can adopt the [`foundations-argo/` (`landing-argo.git`)](../foundations-argo/README.md) model, where `landing-argo.git` serves as the dedicated environment configuration repository (`apps/values.yaml` + `environments/<env>/`) and pulls packaged `gdc-*` Helm charts directly from Managed Harbor (`oci://`). See [`../foundations-argo/README.md`](../foundations-argo/README.md) for architecture details and sync-wave design.
 
 ---
 
