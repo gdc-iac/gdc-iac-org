@@ -15,12 +15,76 @@
 
 # GDC AG Foundations IaC Pipeline Validation Script
 # Automates local static checks, schema enforcement, and template rendering checks.
+#
+# Usage:
+#   ./foundations/scripts/validate.sh [ENV] [--env-dir PATH]
+#   FOUNDATIONS_ENV_DIR=/path/to/environments ./foundations/scripts/validate.sh [ENV]
 
 set -euo pipefail
 
+CALLER_PWD="$(pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FOUNDATIONS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+ENV=""
+ENV_DIR_ARG=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --env-dir requires a directory argument." >&2
+        exit 1
+      fi
+      ENV_DIR_ARG="$2"
+      shift 2
+      ;;
+    --env-dir=*)
+      ENV_DIR_ARG="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: $0 [ENV] [--env-dir PATH]"
+      echo "  ENV             Target Helmfile environment name (default: dev)"
+      echo "  --env-dir PATH  External environments directory (sets FOUNDATIONS_ENV_DIR)"
+      exit 0
+      ;;
+    -*)
+      echo "Error: Unknown option '$1'" >&2
+      exit 1
+      ;;
+    *)
+      if [[ -z "${ENV}" ]]; then
+        ENV="$1"
+      else
+        echo "Error: Unexpected positional argument '$1'" >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+ENV="${ENV:-dev}"
+
+if [[ -n "${ENV_DIR_ARG}" ]]; then
+  export FOUNDATIONS_ENV_DIR="${ENV_DIR_ARG}"
+fi
+
+# Canonicalize relative FOUNDATIONS_ENV_DIR against the caller's working directory
+# before switching into FOUNDATIONS_DIR.
+if [[ -n "${FOUNDATIONS_ENV_DIR:-}" ]]; then
+  if [[ "${FOUNDATIONS_ENV_DIR}" != /* ]]; then
+    FOUNDATIONS_ENV_DIR="${CALLER_PWD}/${FOUNDATIONS_ENV_DIR}"
+  fi
+  if [[ ! -d "${FOUNDATIONS_ENV_DIR}" ]]; then
+    echo "Error: FOUNDATIONS_ENV_DIR directory does not exist: ${FOUNDATIONS_ENV_DIR}" >&2
+    exit 1
+  fi
+  FOUNDATIONS_ENV_DIR="$(cd "${FOUNDATIONS_ENV_DIR}" && pwd)"
+  export FOUNDATIONS_ENV_DIR
+fi
 
 cd "${FOUNDATIONS_DIR}"
 
@@ -30,10 +94,13 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0;0m'
 
-ENV=${1:-"dev"}
-
 echo -e "${BLUE}====================================================${NC}"
 echo -e "${BLUE}   GDC AG IaC Foundations Validation Harness (${ENV})${NC}"
+if [[ -n "${FOUNDATIONS_ENV_DIR:-}" ]]; then
+  echo -e "${BLUE}   Config Source: ${FOUNDATIONS_ENV_DIR}${NC}"
+else
+  echo -e "${BLUE}   Config Source: ${FOUNDATIONS_DIR}/bases/environments (in-tree)${NC}"
+fi
 echo -e "${BLUE}====================================================${NC}"
 
 # Step 1: Helm Chart Linting

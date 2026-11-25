@@ -14,34 +14,51 @@
 
 ---
 # bases/environments.yaml.gotmpl
+#
+# Discovers environment value files from:
+#   1. FOUNDATIONS_ENV_DIR (when set to an absolute or PWD-relative path pointing to an
+#      external environments directory containing <env>/{charts.yaml,contexts.yaml,globals.yaml,global/*,<zone>/*})
+#   2. $PWD/bases/environments (default in-tree directory when FOUNDATIONS_ENV_DIR is unset)
+#
+# For stateless remote Git URL loading (`git::https://...`), see:
+#   bases/environments.remote.yaml.gotmpl.example
 ---
 environments:
 {{- $root := requiredEnv "PWD" }}
-{{- range (readDirEntries (printf "%s/bases/environments" $root)) }}
-  {{- if .IsDir }}
+{{- $rawEnvDir := env "FOUNDATIONS_ENV_DIR" }}
+{{- $envsRoot := clean (printf "%s/bases/environments" $root) }}
+{{- if ne $rawEnvDir "" }}
+  {{- if isAbs $rawEnvDir }}
+    {{- $envsRoot = clean $rawEnvDir }}
+  {{- else }}
+    {{- $envsRoot = clean (printf "%s/%s" $root $rawEnvDir) }}
+  {{- end }}
+{{- end }}
+{{- range (readDirEntries $envsRoot) }}
+  {{- if and .IsDir (not (hasPrefix "." .Name)) }}
   {{- $envName := .Name }}
   {{ $envName }}:
     values:
-      {{- $envPath := printf "%s/bases/environments/%s" $root $envName }}
+      {{- $envPath := printf "%s/%s" $envsRoot $envName }}
       {{- range (readDirEntries $envPath) }}
         {{- if and (not .IsDir) (hasSuffix ".yaml" .Name) }}
-      - {{ $root }}/bases/environments/{{ $envName }}/{{ .Name }}
+      - {{ $envPath }}/{{ .Name }}
         {{- end }}
       {{- end }}
       {{- range (readDirEntries $envPath) }}
-        {{- if .IsDir }}
+        {{- if and .IsDir (not (hasPrefix "." .Name)) }}
           {{- $subDirName := .Name }}
           {{- $subDirPath := printf "%s/%s" $envPath $subDirName }}
           {{- range (readDirEntries $subDirPath) }}
             {{- if and (not .IsDir) (hasSuffix ".yaml" .Name) }}
-      - {{ $root }}/bases/environments/{{ $envName }}/{{ $subDirName }}/{{ .Name }}
+      - {{ $subDirPath }}/{{ .Name }}
             {{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
       {{- $zones := list }}
       {{- range (readDirEntries $envPath) }}
-        {{- if .IsDir }}
+        {{- if and .IsDir (not (hasPrefix "." .Name)) }}
           {{- if ne .Name "global" }}
             {{- $zones = append $zones .Name }}
           {{- end }}
@@ -52,8 +69,3 @@ environments:
 
   {{- end }}
 {{- end }}
-
-
-
-
-
