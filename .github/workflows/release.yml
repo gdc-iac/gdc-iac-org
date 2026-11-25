@@ -31,6 +31,7 @@ on:
     paths:
       - "charts/**"
       - "foundations/**"
+      - "foundations-argo/**"
       - "blueprints/**"
       - "VERSION"
 
@@ -206,14 +207,18 @@ jobs:
             helm package "$chart" --destination "$DIST_DIR/$BUNDLE_NAME/charts"
           done
 
-          # 2. Copy foundations, blueprints, policy, scripts, and documentation
+          # 2. Copy foundations, foundations-argo, blueprints, policy, scripts, and documentation
           cp -r foundations "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r foundations-argo "$DIST_DIR/$BUNDLE_NAME/"
           cp -r blueprints "$DIST_DIR/$BUNDLE_NAME/"
           cp -r policy "$DIST_DIR/$BUNDLE_NAME/"
           cp -r scripts "$DIST_DIR/$BUNDLE_NAME/"
+          cp -r docs "$DIST_DIR/$BUNDLE_NAME/"
           cp VERSION README.md LICENSE RELEASE_STRATEGY.md "$DIST_DIR/$BUNDLE_NAME/"
-          # Ship the release notes inside the bundle for air-gapped operators.
+          # Ship the release notes and chart-versions manifest inside the bundle for air-gapped operators.
           cp "$DIST_DIR/RELEASE_NOTES.md" "$DIST_DIR/$BUNDLE_NAME/"
+          ./scripts/generate-chart-versions.sh > "$DIST_DIR/$BUNDLE_NAME/chart-versions.yaml"
+          cp "$DIST_DIR/$BUNDLE_NAME/chart-versions.yaml" "$DIST_DIR/$BUNDLE_NAME/foundations/bases/chart-versions.yaml"
 
           # 3. Generate cryptographic SHA256SUMS inside the bundle
           cd "$DIST_DIR/$BUNDLE_NAME"

@@ -105,11 +105,14 @@ cd "gdc-iac-airgap-v${VERSION}"
 ```
 
 The bundle contains:
-- `charts/`: 30+ pre-packaged Helm charts (`*.tgz`).
-- `foundations/`: Phased Helmfile execution stages (`0-bootstrap` through `4-notebooks`).
-- `blueprints/`: 100% self-contained application reference architectures (P0–P13).
+- `charts/`: 30 pre-packaged Helm charts (`*.tgz`).
+- `chart-versions.yaml`: Pre-populated `<chart_name>_chart_version` manifest (also included at `foundations/bases/chart-versions.yaml`).
+- `foundations/`: Phased Helmfile execution stages (`0-bootstrap` through `5-workload-factory`).
+- `foundations-argo/`: Argo CD GitOps App-of-Apps landing zone manifests.
+- `blueprints/`: 100% self-contained application reference architectures (P1 through P14).
+- `docs/`: Architecture and operational guides.
 - `policy/`: Security, OPA, and Conftest compliance rules.
-- `scripts/ingest-airgap-bundle.sh`: Automated bundle ingestion utility.
+- `scripts/ingest-airgap-bundle.sh`: Automated bundle ingestion utility (also symlinked at `foundations/scripts/ingest-airgap-bundle.sh`).
 - `SHA256SUMS`: Cryptographic manifest of every individual file inside the bundle.
 
 ### Step 2: Dry-Run Simulation (Recommended)
@@ -165,51 +168,52 @@ Run the script to verify internal checksums, authenticate against Harbor, and pu
 
 Once the charts are ingested into your local Harbor registry, configure your downstream Helmfile environment values to resolve charts from Harbor instead of the local filesystem.
 
-Open `foundations/bases/environments/<env>/charts.yaml` (e.g. `dev`, `stg`, or `prd`) and set the chart path and pinned version variables:
+Helmfile automatically loads every `*.yaml` file inside `foundations/bases/environments/<env>/` (for example `dev`, `stg`, or `prd`). Separating static OCI registry paths (`charts.yaml`) from release-pinned chart versions (`chart-versions.yaml`) lets platform teams configure Harbor URLs once and upgrade chart versions by copying the bundle manifest.
+
+### Step 1: Copy the Release `chart-versions.yaml` Manifest
+Copy the pre-populated `chart-versions.yaml` shipped in the air-gap bundle (`./chart-versions.yaml` or `foundations/bases/chart-versions.yaml`) into your target environment directory:
+
+```bash
+cp foundations/bases/chart-versions.yaml foundations/bases/environments/<env>/chart-versions.yaml
+```
+
+*(To regenerate `chart-versions.yaml` from local `charts/*/Chart.yaml` sources during development, run `./scripts/generate-chart-versions.sh --output foundations/bases/environments/<env>/chart-versions.yaml`.)*
+
+### Step 2: Configure Static OCI Chart Paths in `charts.yaml`
+Open `foundations/bases/environments/<env>/charts.yaml` and point each `<chart_name_with_underscores>_chart_path` variable at your local Harbor OCI project:
 
 ```yaml
 # ==============================================================================
-# Air-Gapped Harbor Registry Chart Resolution
+# Air-Gapped Harbor Registry Chart Resolution (Static OCI Paths)
+# Versions are loaded automatically from sibling chart-versions.yaml.
 # ==============================================================================
 
 # Zonal & Cluster Charts
 gdc_clusters_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-clusters"
-gdc_clusters_chart_version: "0.1.3"
-
 gdc_standard_clusters_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-standard-clusters"
-gdc_standard_clusters_chart_version: "0.1.1"
 
 # Tenancy & Global Resource Charts
 gdc_projects_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-projects"
-gdc_projects_chart_version: "0.1.1"
-
-gdc_projects_sa_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-project-service-accounts"
-gdc_projects_sa_chart_version: "0.1.1"
-
+gdc_project_service_accounts_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-project-service-accounts"
+gdc_iac_role_bindings_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-iac-role-bindings"
 gdc_iam_roles_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-iam-roles"
-gdc_iam_roles_chart_version: "0.1.3"
-
-gdc_iam_rolebindings_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-iam-role-bindings"
-gdc_iam_rolebindings_chart_version: "0.1.3"
+gdc_iam_role_bindings_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-iam-role-bindings"
+gdc_rbac_role_bindings_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-rbac-role-bindings"
 
 # Workload & Resource Charts
 gdc_vm_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-vm"
-gdc_vm_chart_version: "0.1.5"
-
 gdc_buckets_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-buckets"
-gdc_buckets_chart_version: "0.1.2"
-
 gdc_dbs_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-dbs"
-gdc_dbs_chart_version: "0.2.0"
-
 gdc_notebooks_chart_path: "oci://harbor.infra.gdc.example.com/gdc-iac/gdc-notebooks"
-gdc_notebooks_chart_version: "0.1.2"
 ```
+
+> [!NOTE]
+> All chart variables follow the `<chart_name_with_underscores>_chart_{path,version}` convention matching each directory in `charts/*`. Legacy variable names (`gdc_iam_rolebindings_chart_*`, `gdc_rbac_rolebindings_chart_*`, and `gdc_projects_sa_chart_*`) remain supported in release templates as backward-compatible fallbacks.
 
 ### Validate Ingested Resolution:
 Verify that Helmfile resolves the charts directly from Harbor:
 ```bash
-helmfile -f foundations/releases/3-clusters/clusters.yaml.gotmpl -e dev list
+(cd foundations && helmfile -f releases/3-clusters/clusters.yaml.gotmpl -e dev list)
 ```
 **Expected Output:**
 ```text

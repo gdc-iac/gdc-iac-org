@@ -32,9 +32,34 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Default values
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+resolve_realpath() {
+  local target="$1"
+  if readlink -f "${target}" >/dev/null 2>&1; then
+    readlink -f "${target}"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${target}"
+  else
+    local dir file
+    while [[ -L "${target}" ]]; do
+      dir="$(cd -P "$(dirname "${target}")" && pwd)"
+      file="$(readlink "${target}")"
+      if [[ "${file}" == /* ]]; then
+        target="${file}"
+      else
+        target="${dir}/${file}"
+      fi
+    done
+    echo "$(cd -P "$(dirname "${target}")" && pwd)/$(basename "${target}")"
+  fi
+}
+
+# Default values (canonicalize symlinks such as foundations/scripts/ingest-airgap-bundle.sh)
+SCRIPT_PATH="$(resolve_realpath "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -P "$(dirname "${SCRIPT_PATH}")" && pwd)"
+DEFAULT_BUNDLE_DIR="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
+if [[ ! -f "${DEFAULT_BUNDLE_DIR}/SHA256SUMS" && ! -d "${DEFAULT_BUNDLE_DIR}/charts" && -d "${SCRIPT_DIR}/../../charts" ]]; then
+  DEFAULT_BUNDLE_DIR="$(cd -P "${SCRIPT_DIR}/../.." && pwd)"
+fi
 
 REGISTRY=""
 PROJECT="charts"
@@ -304,13 +329,12 @@ echo -e "${BLUE}================================================================
 
 # Downstream Configuration Instructions
 echo -e "\n${BOLD}${CYAN}Downstream Helmfile Configuration Example:${NC}"
-echo -e "To consume these ingested charts in downstream tenant environments, update"
-echo -e "${BOLD}foundations/bases/environments/<env>/charts.yaml${NC} with:"
+echo -e "1. Copy the bundled chart version manifest into your target environment:"
+echo -e "   ${GREEN}cp \"${BUNDLE_DIR}/chart-versions.yaml\" foundations/bases/environments/<env>/chart-versions.yaml${NC}"
+echo -e "2. Configure static OCI URLs in ${BOLD}foundations/bases/environments/<env>/charts.yaml${NC}:"
 echo -e ""
-echo -e "  ${YELLOW}# Pinned OCI charts in local Harbor${NC}"
+echo -e "  ${YELLOW}# Static OCI chart paths in local Harbor${NC}"
 echo -e "  gdc_clusters_chart_path: ${GREEN}\"oci://${REGISTRY}/${PROJECT}/gdc-clusters\"${NC}"
-echo -e "  gdc_clusters_chart_version: ${GREEN}\"0.1.3\"${NC}"
-echo -e ""
 echo -e "  gdc_projects_chart_path: ${GREEN}\"oci://${REGISTRY}/${PROJECT}/gdc-projects\"${NC}"
-echo -e "  gdc_projects_chart_version: ${GREEN}\"0.1.1\"${NC}"
+echo -e "  gdc_iam_role_bindings_chart_path: ${GREEN}\"oci://${REGISTRY}/${PROJECT}/gdc-iam-role-bindings\"${NC}"
 echo -e ""
