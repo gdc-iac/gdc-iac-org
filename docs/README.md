@@ -15,7 +15,7 @@ docs/
 │   ├── ai_enabled_e2e_gdc_production_iac_guide.md         # Full AI-Enabled Blueprint E2E Deployment on GDC-ag (gdc-iac-org)
 │   ├── gui_demo_walkthrough_and_prompts.md                # Interactive Browser Walkthrough & Copy-Paste Demo Prompts (Ports 8080–8084)
 │   └── e2e_zero_tweak_validation_runbook.md               # Automated IO/AO 17-Test Upgrade & Functional Verification Runbook
-├── implementation-guides/                                 # Solution Reference Implementations (Patterns 1–14 & Synthesis)
+├── implementation-guides/                                 # Solution Reference Implementations (Patterns 1–15 & Synthesis)
 │   ├── Solution-Reference-Implementation-Multi-Blueprint-Intelligence-Synthesis.md
 │   ├── Solution-Reference-Implementation-Pattern-1-Resilient-3-Tier-Web-Application.md
 │   ├── Solution-Reference-Implementation-Pattern-2-High-Availability-ML-AI-Inference.md
@@ -31,6 +31,7 @@ docs/
 │   ├── Solution-Reference-Implementation-Pattern-12-Identity-Keycloak.md
 │   ├── Solution-Reference-Implementation-Pattern-13-GDC-Dev.md
 │   ├── Solution-Reference-Implementation-Pattern-14-Antigravity-Dev.md
+│   ├── Solution-Reference-Implementation-Pattern-15-Job-Orchestrator.md
 │   └── Solution-Reference-Implementation-Template-Pattern.md
 ├── architecture/                                          # Cross-Pattern Architecture, Security & Governance
 │   ├── patterns_def.md                                    # Blueprint Pattern Catalogue & Architectural Definitions
@@ -86,6 +87,7 @@ docs/
 | **Pattern 12** | [Centralized Identity & Access Management (Keycloak OIDC SSO)](./implementation-guides/Solution-Reference-Implementation-Pattern-12-Identity-Keycloak.md) |
 | **Pattern 13** | [Resilient GDC Developer Environment (`gdc-dev` + 3-Agent AI Swarm)](./implementation-guides/Solution-Reference-Implementation-Pattern-13-GDC-Dev.md) |
 | **Pattern 14** | [GDC-ag Antigravity SDK & Integrated Notebooks Developer IDE Platform (`p14-antigravity-dev`)](./implementation-guides/Solution-Reference-Implementation-Pattern-14-Antigravity-Dev.md) |
+| **Pattern 15** | [GDC-ag Generic Job Management & Orchestration Platform (`p15-job-orchestrator`)](./implementation-guides/Solution-Reference-Implementation-Pattern-15-Job-Orchestrator.md) |
 | **Template** | [Blueprint Reference Implementation Template](./implementation-guides/Solution-Reference-Implementation-Template-Pattern.md) |
 
 ---

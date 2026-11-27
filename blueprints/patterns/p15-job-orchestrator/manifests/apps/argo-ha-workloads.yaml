@@ -1,0 +1,265 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG` — Profile A `engine.mode: "argo"`):
+# High-Availability Argo Workflows v3.6.2 control plane (`workflow-controller` x2 + `argo-server` x2)
+# hardened to PSS `Restricted` (Trivy `KSV-0118` & `KSV-0014` compliant).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-controller
+  namespace: test-project
+  labels:
+    app: workflow-controller
+    app.kubernetes.io/name: workflow-controller
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: workflow-controller
+  template:
+    metadata:
+      labels:
+        app: workflow-controller
+        app.kubernetes.io/name: workflow-controller
+        app.kubernetes.io/part-of: p15-job-orchestrator
+    spec:
+      serviceAccountName: argo-workflow-controller-sa
+      priorityClassName: p15-pa-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: workflow-controller
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: workflow-controller
+          image: harbor.gdc.local/blueprint-images/workflow-controller:v3.6.2
+          imagePullPolicy: IfNotPresent
+          command: ["workflow-controller"]
+          args:
+            - "--configmap=workflow-controller-configmap"
+            - "--executor-image=harbor.gdc.local/blueprint-images/argoexec:v3.6.2"
+            - "--namespaced"
+            - "--managed-namespace=test-project"
+          env:
+            - name: LEADER_ELECTION_IDENTITY
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+            - name: healthz
+              containerPort: 6060
+              protocol: TCP
+          # Upstream Argo Workflows v3.6.2 exposes /healthz on :6060 for liveness only
+          # (in HA replicas: 2 mode, omit readinessProbe on :6060 so the standby replica
+          # stays Ready while waiting on the leader-election Lease).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6060
+            initialDelaySeconds: 90
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: workflow-controller-pdb
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: workflow-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-controller-metrics
+  namespace: test-project
+  labels:
+    app: workflow-controller
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    app: workflow-controller
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-server
+  namespace: test-project
+  labels:
+    app: argo-server
+    app.kubernetes.io/name: argo-server
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: argo-server
+  template:
+    metadata:
+      labels:
+        app: argo-server
+        app.kubernetes.io/name: argo-server
+        app.kubernetes.io/part-of: p15-job-orchestrator
+    spec:
+      serviceAccountName: argo-workflow-controller-sa
+      priorityClassName: p15-pa-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: argo-server
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: argo-server
+          image: harbor.gdc.local/blueprint-images/argocli:v3.6.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "server"
+            - "--namespaced"
+            - "--managed-namespace=test-project"
+            - "--auth-mode=client"
+            - "--secure=true"
+          ports:
+            - name: web
+              containerPort: 2746
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 2746
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 2746
+              scheme: HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: argo-server-pdb
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: argo-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-server
+  namespace: test-project
+  labels:
+    app: argo-server
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    app: argo-server
+  ports:
+    - name: web
+      port: 2746
+      targetPort: 2746
+      protocol: TCP

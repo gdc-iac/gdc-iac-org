@@ -7,5 +7,8 @@ ghcr.io/mlflow/mlflow:v2.11.3
 hashicorp/vault-k8s:1.7.2
 hashicorp/vault:1.15.0
 ollama/ollama:latest
+quay.io/argoproj/argocli:v3.6.2
+quay.io/argoproj/argoexec:v3.6.2
+quay.io/argoproj/workflow-controller:v3.6.2
 quay.io/keycloak/keycloak:24.0.4
 vllm/vllm-openai:latest

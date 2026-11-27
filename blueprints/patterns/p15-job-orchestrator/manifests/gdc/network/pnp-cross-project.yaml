@@ -1,0 +1,90 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ==============================================================================
+# Cross-Project `ProjectNetworkPolicy` (`GLOBAL_KUBECONFIG` — APPLY STEP 2 OF 2):
+# Apply ONLY AFTER `pnp-intra-project-egress.yaml` is active and DEP has been disabled.
+#
+# Authorises explicit least-privilege Cross-Project communication using `projectSelector`
+# (ZERO `0.0.0.0/0` CIDRs per `policy/security.rego`):
+#   1. Egress to & scrape ingress from `platform-obs` (`cortex-proxy` metrics & alerting)
+#   2. Egress to `p12-keycloak` (Keycloak OIDC RS256 JWKS & token verification)
+# ==============================================================================
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: allow-p15-cross-project-obs-and-oidc
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    networking.gdc.goog/step-order: "2-after-dep-disable"
+spec:
+  subject:
+    subjectType: UserWorkload
+    userWorkloadSelector:
+      labelSelector:
+        workloads:
+          matchLabels:
+            app.kubernetes.io/part-of: p15-job-orchestrator
+  ingress:
+    - from:
+        - projectSelector:
+            projects:
+              matchNames:
+                - platform-obs
+            workloadSelector:
+              labelSelector:
+                workloads:
+                  matchLabels:
+                    app: cortex-proxy
+      ports:
+        - port: 9090
+          protocol: TCP
+        - port: 9091
+          protocol: TCP
+  egress:
+    - to:
+        - projectSelector:
+            projects:
+              matchNames:
+                - platform-obs
+            workloadSelector:
+              labelSelector:
+                workloads:
+                  matchLabels:
+                    app: cortex-proxy
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+    - to:
+        - projectSelector:
+            projects:
+              matchNames:
+                - p12-keycloak
+            workloadSelector:
+              labelSelector:
+                workloads:
+                  matchLabels:
+                    app: keycloak
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+        - port: 8080
+          protocol: TCP

@@ -1,0 +1,4 @@
+# 3P Container Dependencies for p15-job-orchestrator (Air-Gapped GDC)
+quay.io/argoproj/workflow-controller:v3.6.2
+quay.io/argoproj/argoexec:v3.6.2
+quay.io/argoproj/argocli:v3.6.2

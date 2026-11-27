@@ -1,0 +1,182 @@
+{{/*
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if .Values.gdc.enabled }}
+{{- $ns := include "p15-job-orchestrator.namespace" . -}}
+{{- $projectId := include "p15-job-orchestrator.projectId" . -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-{{ .Values.gdc.db.name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+type: Opaque
+data:
+  {{ .Values.gdc.db.name }}: {{ (.Values.gdc.db.base64EncodedPassword | default "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE") | quote }}
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: {{ .Values.gdc.db.name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-{{ .Values.gdc.db.name }}
+    version: {{ .Values.gdc.db.version | quote }}
+    resources:
+      cpu: {{ .Values.gdc.db.cpu }}
+      memory: {{ .Values.gdc.db.memory }}
+      disks:
+        - name: DataDisk
+          size: {{ .Values.gdc.db.diskSize }}
+---
+apiVersion: resourcemanager.global.gdc.goog/v1
+kind: ProjectServiceAccount
+metadata:
+  name: p15-jobs-sa
+  namespace: {{ $projectId }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+---
+apiVersion: iam.global.gdc.goog/v1
+kind: IAMRoleBinding
+metadata:
+  name: p15-jobs-sa--project-bucket-object-admin
+  namespace: {{ $projectId }}
+  labels:
+    iam.global.gdc.goog/iam-role-name: project-bucket-object-admin
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  roleRef:
+    apiGroup: iam.global.gdc.goog/v1
+    kind: IAMRole
+    name: project-bucket-object-admin
+  subjects:
+    - kind: ServiceAccount
+      name: p15-jobs-sa
+      namespace: {{ $projectId }}
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: p15-intra-project-egress
+  namespace: {{ $projectId }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  subject:
+    subjectType: UserWorkload
+    userWorkloadSelector:
+      labelSelector:
+        workloads:
+          matchLabels:
+            app.kubernetes.io/part-of: p15-job-orchestrator
+  egress:
+    - to:
+        - projectSelector:
+            projects:
+              matchNames:
+                - {{ $projectId | quote }}
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 5432
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
+        - port: 8081
+          protocol: TCP
+---
+apiVersion: networking.global.gdc.goog/v1
+kind: ProjectNetworkPolicy
+metadata:
+  name: p15-cross-project-observability
+  namespace: {{ $projectId }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  subject:
+    subjectType: UserWorkload
+    userWorkloadSelector:
+      labelSelector:
+        workloads:
+          matchLabels:
+            app.kubernetes.io/part-of: p15-job-orchestrator
+  egress:
+    - to:
+        - projectSelector:
+            projects:
+              matchNames:
+                - "platform-obs"
+        - projectSelector:
+            projects:
+              matchNames:
+                - "p12-keycloak"
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+  ingress:
+    - from:
+        - projectSelector:
+            projects:
+              matchNames:
+                - "platform-obs"
+      ports:
+        - port: 8080
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+        - port: 9091
+          protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: p15-alertmanager-config
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'gdc-generic-webhook'
+      group_by: ['alertname', 'namespace', 'job_name']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: 'gdc-generic-webhook'
+        webhook_configs:
+          - url: 'https://webhooks.gdc.local/alertmanager'
+            send_resolved: true
+{{- end }}

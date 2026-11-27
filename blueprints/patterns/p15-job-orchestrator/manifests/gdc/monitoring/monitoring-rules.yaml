@@ -1,0 +1,70 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 2 Zonal Management API (`MANAGEMENT_KUBECONFIG`):
+# Platform-independent Prometheus alerting rules evaluated inside GDC Cortex.
+# Fires through `ObservabilityPipeline` (`alertmanager.yml`) even if `p15-job-manager`
+# pods are completely down (`absent()` dead-man's switch).
+# Every alert carries mandatory GDC labels: `severity`, `code`, and `resource`.
+apiVersion: monitoring.gdc.goog/v1
+kind: MonitoringRule
+metadata:
+  name: p15-job-orchestrator-alerts
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  interval: 30s
+  limit: 0
+  alertRules:
+    - alert: P15JobManagerDeadMansSwitch
+      expr: absent(gdc_job_last_success_timestamp_seconds) == 1
+      for: 15m
+      labels:
+        severity: critical
+        code: P15_DEAD_MANS_SWITCH
+        resource: p15-job-manager
+      annotations:
+        summary: "p15-job-manager telemetry missing for 15m (Dead-Man's Switch)"
+        description: "No gdc_job_last_success_timestamp_seconds series scraped in namespace test-project for 15 minutes. Verify p15-job-manager pods and MonitoringTarget."
+    - alert: P15JobSLAExceeded
+      expr: (time() - gdc_job_last_success_timestamp_seconds) > 1800 or increase(gdc_job_runs_total{status="TimedOut"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        code: P15_JOB_SLA_EXCEEDED
+        resource: p15-scheduled-job
+      annotations:
+        summary: "Scheduled job exceeded configured freshness or execution SLA"
+        description: "Job {{ $labels.job_id }} in namespace {{ $labels.namespace }} breached its SLA window or timed out."
+    - alert: P15CircuitBreakerOpen
+      expr: gdc_job_circuit_breaker_open == 1
+      for: 1m
+      labels:
+        severity: critical
+        code: P15_CIRCUIT_BREAKER_OPEN
+        resource: p15-self-healing-guardrail
+      annotations:
+        summary: "Job self-healing or GitOps tug-of-war circuit breaker tripped"
+        description: "Circuit breaker is OPEN for job {{ $labels.job_id }} in namespace {{ $labels.namespace }}. Operator review required before resuming."
+    - alert: P15NotificationDeadLetter
+      expr: increase(gdc_job_notification_dead_letter_total[10m]) > 0
+      for: 2m
+      labels:
+        severity: warning
+        code: P15_NOTIFICATION_DEAD_LETTER
+        resource: p15-notification-outbox
+      annotations:
+        summary: "Transactional notification outbox message moved to dead_letter"
+        description: "One or more air-gapped notification deliveries exhausted retries for sink {{ $labels.sink_name }}."

@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["global", "gdc", "apps", "engine", "jobManager", "auth", "storage", "notifications", "events", "gateway"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "namespace": { "type": "string" },
+        "registry": { "type": "string" },
+        "imagePullSecrets": { "type": "array" },
+        "commonLabels": { "type": "object" },
+        "commonAnnotations": { "type": "object" }
+      }
+    },
+    "namespace": { "type": "string" },
+    "registry": { "type": "string" },
+    "gdc": {
+      "type": "object",
+      "required": ["enabled", "failover"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "failover": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "db": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" },
+            "cpu": { "type": "integer" },
+            "memory": { "type": "string" },
+            "diskSize": { "type": "string" },
+            "base64EncodedPassword": { "type": "string" }
+          }
+        }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "engine": {
+      "type": "object",
+      "required": ["mode", "gitopsMode"],
+      "properties": {
+        "mode": { "type": "string" },
+        "gitopsMode": { "type": "string" },
+        "argo": {
+          "type": "object",
+          "properties": {
+            "version": { "type": "string" },
+            "controllerReplicas": { "type": "integer" },
+            "serverReplicas": { "type": "integer" },
+            "parallelism": { "type": "integer" },
+            "archiveTTL": { "type": "string" },
+            "maxOpenConns": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "jobManager": {
+      "type": "object",
+      "properties": {
+        "replicas": { "type": "integer" },
+        "imageTag": { "type": "string" },
+        "workerImageTag": { "type": "string" },
+        "requireFourEyesApproval": { "type": "boolean" },
+        "maxShardsPerRun": { "type": "integer" },
+        "minAoCronIntervalMinutes": { "type": "integer" },
+        "maxActionsPerRun": { "type": "integer" },
+        "cooldownSeconds": { "type": "integer" },
+        "consecutiveFailureThreshold": { "type": "integer" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "allowSimulatedOidc": { "type": ["string", "boolean"] },
+        "cookieSecure": { "type": ["boolean", "string"] },
+        "oidcIssuer": { "type": "string" },
+        "oidcJwksUrl": { "type": "string" },
+        "oidcClientId": { "type": "string" },
+        "oidcAdminClientId": { "type": "string" }
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "bucketName": { "type": "string" },
+        "s3Endpoint": { "type": "string" },
+        "s3Region": { "type": "string" },
+        "retentionDays": { "type": "integer" },
+        "gcpServiceAccount": { "type": "string" }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "allowedHosts": { "type": "string" },
+        "allowHttpEmulationSinks": { "type": ["boolean", "string"] },
+        "dedupWindowSeconds": { "type": "integer" },
+        "rateLimitPerMinute": { "type": "integer" },
+        "quietHoursUtc": { "type": "string" },
+        "sinks": { "type": "array" }
+      }
+    },
+    "events": {
+      "type": "object",
+      "required": ["kafka", "argoEvents"],
+      "properties": {
+        "kafka": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "bootstrapServers": { "type": "string" }
+          }
+        },
+        "argoEvents": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "name": { "type": "string" },
+        "portalDomain": { "type": "string" },
+        "adminDomain": { "type": "string" },
+        "tlsSecretName": { "type": "string" },
+        "clusterIssuer": { "type": "string" },
+        "internalLoadBalancer": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,105 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+global:
+  projectId: "test-project"
+  namespace: "test-project"
+  registry: "harbor.gdc.local/blueprint-images"
+  imagePullSecrets: []
+  commonLabels: {}
+  commonAnnotations: {}
+
+namespace: ""
+registry: ""
+
+gdc:
+  enabled: false
+  failover:
+    enabled: false
+  db:
+    name: "p15-jobs-db"
+    version: "15"
+    cpu: 2
+    memory: "8Gi"
+    diskSize: "100Gi"
+    base64EncodedPassword: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+
+apps:
+  enabled: true
+
+engine:
+  mode: "argo" # "argo" (Profile A: Standard Cluster HA) or "k8s-native" (Profile B: Shared Cluster 0 CRDs)
+  gitopsMode: "direct-apply" # "direct-apply" (default with GitOps annotation guard) or "gitops-mr"
+  argo:
+    version: "v3.6.2"
+    controllerReplicas: 2
+    serverReplicas: 2
+    parallelism: 10
+    archiveTTL: "90d"
+    maxOpenConns: 15
+
+jobManager:
+  replicas: 2
+  imageTag: "v1.0.0"
+  workerImageTag: "v1.0.0"
+  requireFourEyesApproval: true
+  maxShardsPerRun: 50
+  minAoCronIntervalMinutes: 5
+  maxActionsPerRun: 5
+  cooldownSeconds: 3600
+  consecutiveFailureThreshold: 5
+
+auth:
+  allowSimulatedOidc: "false"
+  cookieSecure: true
+  oidcIssuer: "https://keycloak.gdc.local/realms/gdc-jobs-realm"
+  oidcJwksUrl: "http://keycloak.p12-keycloak.svc.cluster.local:80/realms/gdc-jobs-realm/protocol/openid-connect/certs"
+  oidcClientId: "p15-job-portal"
+  oidcAdminClientId: "p15-job-admin"
+
+database:
+  host: "p15-jobs-db"
+
+storage:
+  bucketName: "p15-jobs-ledger"
+  s3Endpoint: "https://objectstorage.gdc.goog"
+  s3Region: "zone1"
+  retentionDays: 400
+  gcpServiceAccount: ""
+
+notifications:
+  allowedHosts: "webhooks.gdc.local,smtp.gdc.local,chat.gdc.local,itsm.gdc.local"
+  allowHttpEmulationSinks: false
+  dedupWindowSeconds: 900
+  rateLimitPerMinute: 30
+  quietHoursUtc: ""
+  sinks: []
+
+events:
+  kafka:
+    enabled: false
+    bootstrapServers: "kafka-headless.platform-events.svc.cluster.local:9092"
+  argoEvents:
+    enabled: false
+
+gateway:
+  enabled: true
+  className: "gdc-gateway-class"
+  name: "p15-jobs-gateway"
+  portalDomain: "jobs.gdc.local"
+  adminDomain: "admin.jobs.gdc.local"
+  tlsSecretName: "p15-jobs-tls-secret"
+  clusterIssuer: "gdc-ca-issuer"
+  internalLoadBalancer:
+    enabled: false

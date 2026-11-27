@@ -1,0 +1,118 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG`):
+# Default-Deny Kubernetes `NetworkPolicy` + least-privilege ingress/egress allow rules:
+#   - DNS (`UDP/TCP 53`)
+#   - Kubernetes API (`TCP 443`, `TCP 6443`)
+#   - PostgreSQL (`TCP 5432`)
+#   - Object Storage S3 / GCS (`TCP 443`)
+#   - Keycloak OIDC (`TCP 80`, `TCP 443`, `TCP 8080`)
+#   - Air-gapped notification sinks (`TCP 443`, `TCP 587`, `TCP 8085`)
+#   - Prometheus metrics (`TCP 9090`, `TCP 9091`)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: p15-default-deny-all
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: p15-allow-control-plane-and-workers
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: p15-job-orchestrator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Gateway / Internal LoadBalancer / Intra-namespace worker callbacks (:8080 Portal, :8081 Admin, :2746 Argo UI, :8085 Mock Notifier)
+    - ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 2746
+        - protocol: TCP
+          port: 8085
+    # Prometheus metrics scraping (:9090 workflow-controller, :9091 p15-job-manager)
+    - ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9091
+  egress:
+    # 1. Cluster DNS resolution (kube-system CoreDNS / kube-dns)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 2. Intra-namespace communication (Postgres StatefulSet, Mock Notifier, Job Manager callbacks)
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8085
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9091
+    # 3. Keycloak OIDC (`p12-keycloak`) JWKS & token verification
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: p12-keycloak
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8080
+    # 4. Kubernetes API (443/6443), GDC DBCluster (5432), Object Storage S3/GCS (443), & Notification Sinks (443/587/8085)
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6443
+        - protocol: TCP
+          port: 8085

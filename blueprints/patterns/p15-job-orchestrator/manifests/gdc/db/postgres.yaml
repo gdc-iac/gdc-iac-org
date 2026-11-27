@@ -1,0 +1,51 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 2 Zonal Management API (`MANAGEMENT_KUBECONFIG`):
+# Managed PostgreSQL 15 High-Availability DBCluster for p15-job-orchestrator (`platform_jobs` ledger & outbox).
+# Replace the placeholder admin password prior to production apply.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-pw-p15-jobs-db
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+type: Opaque
+data:
+  p15-jobs-db: "Q0hBTkdFX01FX0RCX0FETUlOX1BBU1NXT1JE"
+---
+apiVersion: postgresql.dbadmin.gdc.goog/v1
+kind: DBCluster
+metadata:
+  name: p15-jobs-db
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    project: my-gdc-project
+spec:
+  availability:
+    enableHighAvailability: true
+    enableAutoFailover: true
+  primarySpec:
+    adminUser:
+      passwordRef:
+        name: db-pw-p15-jobs-db
+    version: "15"
+    resources:
+      cpu: 2
+      memory: 8Gi
+      disks:
+        - name: DataDisk
+          size: 100Gi

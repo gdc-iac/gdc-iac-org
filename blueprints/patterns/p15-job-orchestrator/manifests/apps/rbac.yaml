@@ -1,0 +1,246 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ==============================================================================
+# Least-Privilege RBAC & Separation of Duties (`REQ-SEC-002`):
+#   1. `p15-job-manager-sa`: Strictly namespace-scoped `Role` (ZERO `Secret` read/write,
+#      ZERO cluster-wide write).
+#   2. `p15-pa-watcher-sa`: Optional PA cross-namespace metadata-only `ClusterRole`
+#      (ZERO `secrets`, ZERO `configmaps`, ZERO `pods/exec` or `pods/attach`).
+#   3. `p15-ao-worker-sa`: Strictly namespace-scoped `Role` for AO reference workers.
+# ==============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: p15-job-manager-sa
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+automountServiceAccountToken: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: p15-pa-watcher-sa
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+automountServiceAccountToken: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: p15-ao-worker-sa
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+automountServiceAccountToken: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow-controller-sa
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p15-job-manager-role
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+rules:
+  # Singleton leader election for Reaper, Profile B Watcher & Outbox Dispatcher
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Profile B native Kubernetes CronJob & Job lifecycle
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Profile A Argo Workflows & CronWorkflows lifecycle
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - "workflows"
+      - "cronworkflows"
+      - "workflowtemplates"
+      - "workflowtaskresults"
+      - "workflowartifactgctasks"
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pod status inspection, log harvesting & zombie reaper (explicitly NO secrets or pods/exec)
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+  # Bounded namespace KRM compliance patching (labels/annotations only; guarded by TOCTOU + 4-eyes)
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p15-job-manager-rolebinding
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p15-job-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: p15-job-manager-sa
+    namespace: test-project
+---
+# Metadata-only read ClusterRole for PA platform hygiene & audit watchers (Profile A / Dedicated Cluster).
+# Omit on Shared Clusters when deploying zero-ClusterRole Profile B (`rbac.createClusterWatcher: false`).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: p15-pa-metadata-watcher-role
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods", "services", "resourcequotas", "limitranges", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["clusterworkflowtemplates", "workflows", "cronworkflows"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: p15-pa-metadata-watcher-binding
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: p15-pa-metadata-watcher-role
+subjects:
+  - kind: ServiceAccount
+    name: p15-pa-watcher-sa
+    namespace: test-project
+  - kind: ServiceAccount
+    name: p15-job-manager-sa
+    namespace: test-project
+  - kind: ServiceAccount
+    name: argo-workflow-controller-sa
+    namespace: test-project
+---
+# Dedicated least-privilege namespace Role for Argo Workflows HA controller & server (`Profile A`).
+# Keeps `p15-job-manager-sa` at ZERO Secret access while scoping Argo secret reads strictly to
+# named backing secrets (`p15-db-credentials`, `p15-s3-credentials`, `gdc-ca-bundle`).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p15-argo-controller-role
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["p15-db-credentials", "p15-s3-credentials", "gdc-ca-bundle"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "persistentvolumeclaims", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - "workflows"
+      - "workflows/finalizers"
+      - "cronworkflows"
+      - "cronworkflows/finalizers"
+      - "workflowtemplates"
+      - "workflowtemplates/finalizers"
+      - "workflowtaskresults"
+      - "workflowtasksets"
+      - "workflowartifactgctasks"
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p15-argo-controller-rolebinding
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p15-argo-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: argo-workflow-controller-sa
+    namespace: test-project
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p15-ao-worker-role
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "events", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p15-ao-worker-rolebinding
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p15-ao-worker-role
+subjects:
+  - kind: ServiceAccount
+    name: p15-ao-worker-sa
+    namespace: test-project

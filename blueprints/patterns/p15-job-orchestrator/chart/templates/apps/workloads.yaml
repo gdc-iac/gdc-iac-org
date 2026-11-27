@@ -1,0 +1,1271 @@
+{{/*
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+*/ -}}
+{{- if .Values.apps.enabled }}
+{{- $ns := include "p15-job-orchestrator.namespace" . -}}
+{{- $projectId := include "p15-job-orchestrator.projectId" . -}}
+{{- $registry := include "p15-job-orchestrator.registry" . -}}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: p15-jobs-quota
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  hard:
+    pods: "60"
+    requests.cpu: "16"
+    requests.memory: "32Gi"
+    limits.cpu: "32"
+    limits.memory: "64Gi"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: p15-jobs-limits
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: p15-job-manager-leader
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  leaseDurationSeconds: 30
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: p15-job-manager-sa
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+  {{- with .Values.storage.gcpServiceAccount }}
+  annotations:
+    iam.gke.io/gcp-service-account: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: p15-ao-worker-sa
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+  {{- with .Values.storage.gcpServiceAccount }}
+  annotations:
+    iam.gke.io/gcp-service-account: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p15-job-manager-ns-role
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "configmaps", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows", "cronworkflows", "workflowtemplates", "workflowtaskresults", "workflowartifactgctasks"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p15-job-manager-ns-binding
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: p15-job-manager-sa
+    namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p15-job-manager-ns-role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p15-ao-worker-ns-role
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "events", "persistentvolumeclaims", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p15-ao-worker-ns-binding
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: p15-ao-worker-sa
+    namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p15-ao-worker-ns-role
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: p15-job-manager-config
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+data:
+  PROJECT_ID: {{ $projectId | quote }}
+  NAMESPACE: {{ $ns | quote }}
+  ENGINE_MODE: {{ .Values.engine.mode | quote }}
+  GITOPS_MODE: {{ .Values.engine.gitopsMode | quote }}
+  ALLOW_SIMULATED_OIDC: {{ .Values.auth.allowSimulatedOidc | quote }}
+  COOKIE_SECURE: {{ .Values.auth.cookieSecure | quote }}
+  ALLOW_HTTP_EMULATION_SINKS: {{ .Values.notifications.allowHttpEmulationSinks | quote }}
+  REQUIRE_FOUR_EYES_APPROVAL: {{ .Values.jobManager.requireFourEyesApproval | quote }}
+  ALLOWED_REGISTRY_PREFIXES: {{ printf "%s/" $registry | quote }}
+  APPROVED_TEMPLATES: "gdc-standard-job-runner-v1"
+  ALLOWED_NOTIFICATION_HOSTS: {{ .Values.notifications.allowedHosts | quote }}
+  CORS_ALLOWED_ORIGINS: {{ printf "https://%s,https://%s" .Values.gateway.portalDomain .Values.gateway.adminDomain | quote }}
+  GDC_CA_BUNDLE: "/etc/gdc-certs/ca.crt"
+  AWS_CA_BUNDLE: "/etc/gdc-certs/ca.crt"
+  OIDC_ISSUER: {{ .Values.auth.oidcIssuer | quote }}
+  OIDC_JWKS_URL: {{ .Values.auth.oidcJwksUrl | quote }}
+  OIDC_CLIENT_ID: {{ .Values.auth.oidcClientId | quote }}
+  OIDC_ADMIN_CLIENT_ID: {{ .Values.auth.oidcAdminClientId | quote }}
+  BUCKET_NAME: {{ .Values.storage.bucketName | quote }}
+  S3_ENDPOINT: {{ .Values.storage.s3Endpoint | quote }}
+  S3_REGION: {{ .Values.storage.s3Region | quote }}
+  MAX_SHARDS_PER_RUN: {{ .Values.jobManager.maxShardsPerRun | quote }}
+  MIN_AO_CRON_INTERVAL_MINUTES: {{ .Values.jobManager.minAoCronIntervalMinutes | quote }}
+  DEFAULT_MAX_ACTIONS_PER_RUN: {{ .Values.jobManager.maxActionsPerRun | quote }}
+  DEFAULT_COOLDOWN_SECONDS: {{ .Values.jobManager.cooldownSeconds | quote }}
+  CONSECUTIVE_FAILURE_THRESHOLD: {{ .Values.jobManager.consecutiveFailureThreshold | quote }}
+  DEDUP_WINDOW_SECONDS: {{ .Values.notifications.dedupWindowSeconds | quote }}
+  SINK_RATE_LIMIT_PER_MINUTE: {{ .Values.notifications.rateLimitPerMinute | quote }}
+  QUIET_HOURS_UTC: {{ .Values.notifications.quietHoursUtc | quote }}
+  KAFKA_ENABLED: {{ .Values.events.kafka.enabled | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.events.kafka.bootstrapServers | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: p15-approved-templates
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+data:
+  gdc-standard-job-runner-v1.yaml: |
+    name: gdc-standard-job-runner-v1
+    workerImage: {{ $registry }}/p15-reference-worker:{{ .Values.jobManager.workerImageTag }}
+    modes:
+      - batch-watermarked-rollup
+      - monitor-platform-hygiene
+      - enforce-resource-policy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p15-job-manager
+  namespace: {{ $ns }}
+  labels:
+    app: p15-job-manager
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.jobManager.replicas }}
+  selector:
+    matchLabels:
+      app: p15-job-manager
+  template:
+    metadata:
+      labels:
+        app: p15-job-manager
+        {{- include "p15-job-orchestrator.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: p15-job-manager-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: p15-job-manager
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: job-manager
+          image: {{ $registry }}/p15-job-manager:{{ .Values.jobManager.imageTag }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: portal-http
+              containerPort: 8080
+            - name: admin-http
+              containerPort: 8081
+            - name: metrics
+              containerPort: 9091
+          envFrom:
+            - configMapRef:
+                name: p15-job-manager-config
+            - secretRef:
+                name: p15-session-and-webhook-secrets
+                optional: true
+            - secretRef:
+                name: p15-s3-credentials
+                optional: true
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: host
+                  optional: true
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: database
+                  optional: true
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: username
+                  optional: true
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: password
+                  optional: true
+            - name: AWS_CA_BUNDLE
+              value: /etc/gdc-certs/ca.crt
+            - name: DB_SSLROOTCERT
+              value: /etc/db-tls/ca.crt
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: app-home
+              mountPath: /home/appuser
+            - name: gdc-certs
+              mountPath: /etc/gdc-certs
+              readOnly: true
+            - name: db-tls
+              mountPath: /etc/db-tls
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: app-home
+          emptyDir: {}
+        - name: gdc-certs
+          secret:
+            secretName: gdc-ca-bundle
+            optional: true
+        - name: db-tls
+          secret:
+            secretName: dbs-certificates
+            optional: true
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: p15-job-manager-pdb
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: p15-job-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-portal
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-admin
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: admin-http
+      port: 8081
+      targetPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-metrics
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 8080
+{{- if .Values.gateway.enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: p15-jobs-tls-cert
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.gateway.tlsSecretName }}
+  dnsNames:
+    - {{ .Values.gateway.portalDomain | quote }}
+    - {{ .Values.gateway.adminDomain | quote }}
+  issuerRef:
+    name: {{ .Values.gateway.clusterIssuer }}
+    kind: ClusterIssuer
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    - name: https-portal
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.gateway.portalDomain | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.gateway.tlsSecretName }}
+    - name: https-admin
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.gateway.adminDomain | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Values.gateway.tlsSecretName }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: p15-portal-route
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      sectionName: https-portal
+  hostnames:
+    - {{ .Values.gateway.portalDomain | quote }}
+  rules:
+    - filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: p15-job-portal
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: p15-admin-route
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      sectionName: https-admin
+  hostnames:
+    - {{ .Values.gateway.adminDomain | quote }}
+  rules:
+    - filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: p15-job-admin
+          port: 8081
+{{- end }}
+{{- if .Values.gateway.internalLoadBalancer.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-portal-ilb
+  namespace: {{ $ns }}
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  type: LoadBalancer
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: portal
+      port: 8080
+      targetPort: 8080
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: p15-default-deny-restricted
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8085
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9091
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8085
+        - protocol: TCP
+          port: 587
+{{- if eq .Values.engine.mode "argo" }}
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: p15-pa-critical
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+value: 100000
+globalDefault: false
+description: "Priority tier for Platform Administrator monitoring and bounded compliance jobs."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: p15-ao-standard
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+value: 50000
+globalDefault: false
+description: "Standard priority tier for Application Operator recurring jobs."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: p15-batch-low
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+value: 10000
+globalDefault: false
+description: "Preemptible low-priority tier for large AO batch and backfill jobs."
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: p15-pa-watcher-sa
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-workflow-controller-sa
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+  {{- with .Values.storage.gcpServiceAccount }}
+  annotations:
+    iam.gke.io/gcp-service-account: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: p15-pa-watcher-metadata-ro-{{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "persistentvolumeclaims", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["clusterworkflowtemplates"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: p15-pa-watcher-metadata-ro-{{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: p15-pa-watcher-sa
+    namespace: {{ $ns }}
+  - kind: ServiceAccount
+    name: argo-workflow-controller-sa
+    namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: p15-pa-watcher-metadata-ro-{{ $ns }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: p15-argo-workflow-controller-{{ $ns }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "configmaps", "serviceaccounts", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["p15-db-credentials", "p15-s3-credentials", "gdc-ca-bundle"]
+    verbs: ["get"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows", "workflows/finalizers", "cronworkflows", "cronworkflows/finalizers", "workflowtemplates", "workflowtaskresults", "workflowtasksets", "workflowartifactgctasks"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: p15-argo-workflow-controller-{{ $ns }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: argo-workflow-controller-sa
+    namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: p15-argo-workflow-controller-{{ $ns }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-controller-configmap
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+data:
+  executorImage: {{ printf "%s/argoexec:%s" $registry .Values.engine.argo.version | quote }}
+  parallelism: {{ .Values.engine.argo.parallelism | quote }}
+  workflowDefaults: |
+    spec:
+      ttlStrategy:
+        secondsAfterSuccess: 86400
+        secondsAfterFailure: 259200
+        secondsAfterCompletion: 259200
+      podGC:
+        strategy: OnWorkflowSuccess
+      archiveLogs: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+  artifactRepository: |
+    archiveLogs: true
+{{- if .Values.storage.s3Endpoint }}
+    s3:
+      bucket: {{ .Values.storage.bucketName }}
+      endpoint: {{ replace "https://" "" (replace "http://" "" .Values.storage.s3Endpoint) }}
+      insecure: false
+      region: {{ .Values.storage.s3Region }}
+      accessKeySecret:
+        name: p15-s3-credentials
+        key: AWS_ACCESS_KEY_ID
+      secretKeySecret:
+        name: p15-s3-credentials
+        key: AWS_SECRET_ACCESS_KEY
+{{- else }}
+    gcs:
+      bucket: {{ .Values.storage.bucketName | trimPrefix "gs://" }}
+{{- end }}
+  persistence: |
+    connectionPool:
+      maxIdleConns: 5
+      maxOpenConns: {{ .Values.engine.argo.maxOpenConns }}
+      connMaxLifetime: 30m
+    nodeStatusOffLoad: true
+    archive: true
+    archiveTTL: {{ .Values.engine.argo.archiveTTL }}
+    postgresql:
+      host: {{ (.Values.database).host | default "p15-jobs-db" }}
+      port: 5432
+      database: postgres
+      tableName: argo_workflows
+      userNameSecret:
+        name: p15-db-credentials
+        key: username
+      passwordSecret:
+        name: p15-db-credentials
+        key: password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflow-controller
+  namespace: {{ $ns }}
+  labels:
+    app: workflow-controller
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.engine.argo.controllerReplicas }}
+  selector:
+    matchLabels:
+      app: workflow-controller
+  template:
+    metadata:
+      labels:
+        app: workflow-controller
+        {{- include "p15-job-orchestrator.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: argo-workflow-controller-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: workflow-controller
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: workflow-controller
+          image: {{ $registry }}/workflow-controller:{{ .Values.engine.argo.version }}
+          command: ["workflow-controller"]
+          args: ["--configmap", "workflow-controller-configmap", "--namespaced", "--managed-namespace", {{ $ns | quote }}]
+          env:
+            - name: LEADER_ELECTION_IDENTITY
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: metrics
+              containerPort: 9090
+            - name: healthz
+              containerPort: 6060
+          # Upstream Argo Workflows v3.6.2 exposes /healthz on :6060 for liveness only
+          # (omit readinessProbe on :6060 so the HA standby replica stays Ready while awaiting Lease).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 6060
+            initialDelaySeconds: 90
+            periodSeconds: 60
+            timeoutSeconds: 30
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: workflow-controller-pdb
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: workflow-controller
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflow-controller-metrics
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: workflow-controller
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-server
+  namespace: {{ $ns }}
+  labels:
+    app: argo-server
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.engine.argo.serverReplicas }}
+  selector:
+    matchLabels:
+      app: argo-server
+  template:
+    metadata:
+      labels:
+        app: argo-server
+        {{- include "p15-job-orchestrator.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: argo-workflow-controller-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: argo-server
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: argo-server
+          image: {{ $registry }}/argocli:{{ .Values.engine.argo.version }}
+          args: ["server", "--namespaced", "--managed-namespace", {{ $ns | quote }}, "--auth-mode=client", "--secure=true"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: web
+              containerPort: 2746
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 2746
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 2746
+              scheme: HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-server
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: argo-server
+  ports:
+    - name: web
+      port: 2746
+      targetPort: 2746
+{{- else }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: p15-batch-watermarked-rollup
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  schedule: "*/15 * * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 4
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          serviceAccountName: p15-ao-worker-sa
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: {{ $registry }}/p15-reference-worker:{{ .Values.jobManager.workerImageTag }}
+              args:
+                - "--mode"
+                - "batch-watermarked-rollup"
+                - "--job-id"
+                - "p15-batch-watermarked-rollup"
+                - "--run-id"
+                - "$(POD_NAME)"
+                - "--enforcement-mode"
+                - "audit"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: NAMESPACE
+                  value: {{ $ns | quote }}
+                - name: S3_ENDPOINT
+                  value: {{ .Values.storage.s3Endpoint | quote }}
+                - name: BUCKET_NAME
+                  value: {{ .Values.storage.bucketName | quote }}
+                - name: AWS_CA_BUNDLE
+                  value: /etc/gdc-certs/ca.crt
+              envFrom:
+                - configMapRef:
+                    name: p15-job-manager-config
+                    optional: true
+                - secretRef:
+                    name: p15-db-credentials
+                    optional: true
+                - secretRef:
+                    name: p15-s3-credentials
+                    optional: true
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: appuser-home
+                  mountPath: /home/appuser
+                - name: gdc-certs
+                  mountPath: /etc/gdc-certs
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: appuser-home
+              emptyDir: {}
+            - name: gdc-certs
+              secret:
+                secretName: gdc-ca-bundle
+                optional: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: p15-monitor-platform-hygiene
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  schedule: "*/15 * * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 4
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          serviceAccountName: p15-ao-worker-sa
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: {{ $registry }}/p15-reference-worker:{{ .Values.jobManager.workerImageTag }}
+              args:
+                - "--mode"
+                - "monitor-platform-hygiene"
+                - "--job-id"
+                - "p15-monitor-platform-hygiene"
+                - "--run-id"
+                - "$(POD_NAME)"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: NAMESPACE
+                  value: {{ $ns | quote }}
+                - name: S3_ENDPOINT
+                  value: {{ .Values.storage.s3Endpoint | quote }}
+                - name: BUCKET_NAME
+                  value: {{ .Values.storage.bucketName | quote }}
+                - name: AWS_CA_BUNDLE
+                  value: /etc/gdc-certs/ca.crt
+              envFrom:
+                - configMapRef:
+                    name: p15-job-manager-config
+                    optional: true
+                - secretRef:
+                    name: p15-db-credentials
+                    optional: true
+                - secretRef:
+                    name: p15-s3-credentials
+                    optional: true
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: appuser-home
+                  mountPath: /home/appuser
+                - name: gdc-certs
+                  mountPath: /etc/gdc-certs
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: appuser-home
+              emptyDir: {}
+            - name: gdc-certs
+              secret:
+                secretName: gdc-ca-bundle
+                optional: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: p15-enforce-resource-policy
+  namespace: {{ $ns }}
+  labels:
+    {{- include "p15-job-orchestrator.labels" . | nindent 4 }}
+spec:
+  schedule: "0 * * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 4
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          serviceAccountName: p15-ao-worker-sa
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: {{ $registry }}/p15-reference-worker:{{ .Values.jobManager.workerImageTag }}
+              args:
+                - "--mode"
+                - "enforce-resource-policy"
+                - "--job-id"
+                - "p15-enforce-resource-policy"
+                - "--run-id"
+                - "$(POD_NAME)"
+                - "--enforcement-mode"
+                - "audit"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: NAMESPACE
+                  value: {{ $ns | quote }}
+                - name: S3_ENDPOINT
+                  value: {{ .Values.storage.s3Endpoint | quote }}
+                - name: BUCKET_NAME
+                  value: {{ .Values.storage.bucketName | quote }}
+                - name: AWS_CA_BUNDLE
+                  value: /etc/gdc-certs/ca.crt
+              envFrom:
+                - configMapRef:
+                    name: p15-job-manager-config
+                    optional: true
+                - secretRef:
+                    name: p15-db-credentials
+                    optional: true
+                - secretRef:
+                    name: p15-s3-credentials
+                    optional: true
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: appuser-home
+                  mountPath: /home/appuser
+                - name: gdc-certs
+                  mountPath: /etc/gdc-certs
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: appuser-home
+              emptyDir: {}
+            - name: gdc-certs
+              secret:
+                secretName: gdc-ca-bundle
+                optional: true
+{{- end }}
+{{- end }}
