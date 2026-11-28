@@ -1,0 +1,248 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG`):
+# High-Availability `p15-job-manager` Control Plane (`replicas: 2`, PDB `minAvailable: 1`)
+# exposing strictly isolated surfaces:
+#   - `Service/p15-job-portal`  (`:8080` — AO & PA Job Portal + OpenAPI 3.1 REST API)
+#   - `Service/p15-job-admin`   (`:8081` — PA-only Platform Admin Console)
+#   - `Service/p15-job-metrics` (`:9091` — Prometheus telemetry for GDC `MonitoringTarget`)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: p15-session-and-webhook-secrets
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+type: Opaque
+stringData:
+  # Replace placeholder values via Vault (`p11-vault`) or sealed secret rotation prior to production cutover.
+  USER_COOKIE_SECRET: "CHANGE_ME_PORTAL_COOKIE_HMAC_KEY"
+  ADMIN_COOKIE_SECRET: "CHANGE_ME_ADMIN_COOKIE_HMAC_KEY"
+  WEBHOOK_HMAC_SECRET: "CHANGE_ME_OUTBOX_WEBHOOK_HMAC_KEY"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: p15-job-manager
+  namespace: test-project
+  labels:
+    app: p15-job-manager
+    app.kubernetes.io/name: p15-job-manager
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: p15-job-manager
+  template:
+    metadata:
+      labels:
+        app: p15-job-manager
+        app.kubernetes.io/name: p15-job-manager
+        app.kubernetes.io/part-of: p15-job-orchestrator
+    spec:
+      serviceAccountName: p15-job-manager-sa
+      priorityClassName: p15-pa-critical
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: p15-job-manager
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: job-manager
+          image: harbor.gdc.local/blueprint-images/p15-job-manager:v1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: portal
+              containerPort: 8080
+              protocol: TCP
+            - name: admin
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 9091
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: p15-job-manager-config
+            - secretRef:
+                name: p15-session-and-webhook-secrets
+            - secretRef:
+                name: p15-s3-credentials
+                optional: true
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: host
+                  optional: true
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: database
+                  optional: true
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: username
+                  optional: true
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: p15-db-credentials
+                  key: password
+                  optional: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: appuser-home
+              mountPath: /home/appuser
+            - name: gdc-certs
+              mountPath: /etc/gdc-certs
+              readOnly: true
+            - name: db-tls
+              mountPath: /etc/db-tls
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: appuser-home
+          emptyDir: {}
+        - name: gdc-certs
+          secret:
+            secretName: gdc-ca-bundle
+            optional: true
+        - name: db-tls
+          secret:
+            secretName: dbs-certificates
+            optional: true
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: p15-job-manager-pdb
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: p15-job-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-portal
+  namespace: test-project
+  labels:
+    app: p15-job-manager
+    surface: portal
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: portal
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-admin
+  namespace: test-project
+  labels:
+    app: p15-job-manager
+    surface: admin
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: admin
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-job-metrics
+  namespace: test-project
+  labels:
+    app: p15-job-manager
+    surface: metrics
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 8080
+      protocol: TCP

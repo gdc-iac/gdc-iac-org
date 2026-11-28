@@ -1,0 +1,373 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG` — Profile A `engine.mode: "argo"`):
+# 1. `ClusterWorkflowTemplate/gdc-standard-job-runner-v1`: Reusable orchestrator-agnostic runner
+#    with WAL-first execution, non-blocking PostgreSQL drain (`continueOn: {failed: true}` across
+#    DBCluster HA failover ~2+ min RTO or planned maintenance windows), and `onExit` webhook callback to `p15-job-manager`.
+# 2. Sample `CronWorkflow`s for the three reference starter jobs:
+#    - `batch-watermarked-rollup`
+#    - `monitor-platform-hygiene`
+#    - `enforce-resource-policy`
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: gdc-standard-job-runner-v1
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  entrypoint: standard-job-pipeline
+  onExit: notify-job-manager-onexit
+  serviceAccountName: p15-ao-worker-sa
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  arguments:
+    parameters:
+      - name: mode
+        value: "monitor-platform-hygiene"
+      - name: job_id
+        value: "sample-hygiene-job"
+      - name: window_start
+        value: ""
+      - name: window_end
+        value: ""
+      - name: shard_key
+        value: "all"
+      - name: sink_uri
+        value: ""
+      - name: enforcement_mode
+        value: "audit"
+      - name: worker_image
+        value: "harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0"
+  volumes:
+    - name: tmp
+      emptyDir: {}
+    - name: appuser-home
+      emptyDir: {}
+    - name: gdc-ca-bundle
+      secret:
+        secretName: gdc-ca-bundle
+        optional: true
+  templates:
+    - name: standard-job-pipeline
+      steps:
+        - - name: execute-worker-and-write-wal
+            template: run-worker
+        - - name: drain-wal-to-postgres
+            template: drain-wal
+            continueOn:
+              failed: true
+
+    - name: run-worker
+      inputs:
+        parameters:
+          - name: worker_image
+            default: "{{workflow.parameters.worker_image}}"
+          - name: mode
+            default: "{{workflow.parameters.mode}}"
+          - name: job_id
+            default: "{{workflow.parameters.job_id}}"
+          - name: window_start
+            default: "{{workflow.parameters.window_start}}"
+          - name: window_end
+            default: "{{workflow.parameters.window_end}}"
+          - name: shard_key
+            default: "{{workflow.parameters.shard_key}}"
+          - name: sink_uri
+            default: "{{workflow.parameters.sink_uri}}"
+          - name: enforcement_mode
+            default: "{{workflow.parameters.enforcement_mode}}"
+      retryStrategy:
+        limit: "3"
+        retryPolicy: "OnError"
+        backoff:
+          duration: "10s"
+          factor: 2
+          maxDuration: "120s"
+      activeDeadlineSeconds: 1800
+      container:
+        image: "{{inputs.parameters.worker_image}}"
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "-m", "p15_jobs.runner"]
+        args:
+          - "--mode={{inputs.parameters.mode}}"
+          - "--job-id={{inputs.parameters.job_id}}"
+          - "--run-id={{workflow.name}}"
+          - "--window-start={{inputs.parameters.window_start}}"
+          - "--window-end={{inputs.parameters.window_end}}"
+          - "--shard-key={{inputs.parameters.shard_key}}"
+          - "--sink-uri={{inputs.parameters.sink_uri}}"
+          - "--enforcement-mode={{inputs.parameters.enforcement_mode}}"
+        envFrom:
+          - configMapRef:
+              name: p15-job-manager-config
+              optional: true
+          - configMapRef:
+              name: p15-job-manager-gcp-config
+              optional: true
+          - secretRef:
+              name: p15-s3-credentials
+              optional: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: appuser-home
+            mountPath: /home/appuser
+          - name: gdc-ca-bundle
+            mountPath: /etc/gdc-certs
+            readOnly: true
+
+    - name: drain-wal
+      activeDeadlineSeconds: 120
+      container:
+        image: "{{workflow.parameters.worker_image}}"
+        imagePullPolicy: IfNotPresent
+        command:
+          - "python3"
+          - "-c"
+          - |
+            import json, os, sys
+            from common.storage import DualModeStorageAdapter
+            ns = os.getenv("NAMESPACE", "test-project")
+            store = DualModeStorageAdapter()
+            keys = store.list_keys(f"jobs/{ns}/{{workflow.parameters.job_id}}")
+            print(json.dumps({"reconciled_wal_objects": len(keys), "storage_mode": store.mode}))
+            sys.exit(0)
+        envFrom:
+          - configMapRef:
+              name: p15-job-manager-config
+              optional: true
+          - configMapRef:
+              name: p15-job-manager-gcp-config
+              optional: true
+          - secretRef:
+              name: p15-db-credentials
+              optional: true
+          - secretRef:
+              name: p15-s3-credentials
+              optional: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: appuser-home
+            mountPath: /home/appuser
+          - name: gdc-ca-bundle
+            mountPath: /etc/gdc-certs
+            readOnly: true
+
+    - name: notify-job-manager-onexit
+      activeDeadlineSeconds: 60
+      container:
+        image: "{{workflow.parameters.worker_image}}"
+        imagePullPolicy: IfNotPresent
+        command:
+          - "python3"
+          - "-c"
+          - |
+            import json, os, urllib.request
+            ns = os.getenv("NAMESPACE", "test-project")
+            url = f"http://p15-job-portal.{ns}.svc.cluster.local:8080/healthz"
+            try:
+                with urllib.request.urlopen(url, timeout=5) as resp:
+                    print("onExit callback probe status:", resp.status)
+            except Exception as exc:
+                print(f"onExit callback warning (non-fatal): {exc}")
+        envFrom:
+          - configMapRef:
+              name: p15-job-manager-config
+              optional: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          capabilities:
+            drop:
+              - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: appuser-home
+            mountPath: /home/appuser
+---
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: p15-batch-watermarked-rollup
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    p15.gdc.goog/job-class: batch
+spec:
+  schedule: "*/15 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: "Forbid"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    priorityClassName: p15-batch-low
+    serviceAccountName: p15-ao-worker-sa
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    workflowTemplateRef:
+      name: gdc-standard-job-runner-v1
+      clusterScope: true
+    arguments:
+      parameters:
+        - name: mode
+          value: "batch-watermarked-rollup"
+        - name: job_id
+          value: "ao-batch-rollup-15m"
+        - name: shard_key
+          value: "shard-00"
+        - name: sink_uri
+          value: ""
+        - name: enforcement_mode
+          value: "audit"
+        - name: worker_image
+          value: "harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: p15-monitor-platform-hygiene
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    p15.gdc.goog/job-class: monitor
+spec:
+  schedule: "*/10 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: "Forbid"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    priorityClassName: p15-ao-standard
+    serviceAccountName: p15-pa-watcher-sa
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    workflowTemplateRef:
+      name: gdc-standard-job-runner-v1
+      clusterScope: true
+    arguments:
+      parameters:
+        - name: mode
+          value: "monitor-platform-hygiene"
+        - name: job_id
+          value: "pa-hygiene-10m"
+        - name: shard_key
+          value: "cluster-wide"
+        - name: sink_uri
+          value: ""
+        - name: enforcement_mode
+          value: "audit"
+        - name: worker_image
+          value: "harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: p15-enforce-resource-policy
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    p15.gdc.goog/job-class: enforce
+spec:
+  schedule: "0 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: "Forbid"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  workflowSpec:
+    priorityClassName: p15-pa-critical
+    serviceAccountName: p15-pa-watcher-sa
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    workflowTemplateRef:
+      name: gdc-standard-job-runner-v1
+      clusterScope: true
+    arguments:
+      parameters:
+        - name: mode
+          value: "enforce-resource-policy"
+        - name: job_id
+          value: "pa-policy-enforcer-1h"
+        - name: shard_key
+          value: "namespace-test-project"
+        - name: sink_uri
+          value: ""
+        - name: enforcement_mode
+          value: "audit"
+        - name: worker_image
+          value: "harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0"

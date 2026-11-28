@@ -1,0 +1,112 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 2 Zonal Management API (`MANAGEMENT_KUBECONFIG`):
+# Vendor-neutral Alertmanager configuration (`p15-alertmanager-config`) + GDC `ObservabilityPipeline`
+# routing `MonitoringRule` and `LoggingRule` alerts to air-gapped enterprise receivers
+# using sovereign PKI CA bundles and Secret-mounted credentials.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: p15-alertmanager-config
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: 'smtp-relay.internal.gdc.local:587'
+      smtp_from: 'p15-alerts@internal.gdc.local'
+      smtp_require_tls: true
+
+    route:
+      receiver: 'airgap-generic-webhook'
+      group_by: ['alertname', 'namespace', 'code', 'resource']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - matchers:
+            - severity="critical"
+          receiver: 'airgap-critical-multi-sink'
+          continue: false
+
+    receivers:
+      - name: 'airgap-generic-webhook'
+        webhook_configs:
+          - url: 'https://webhook-sink.internal.gdc.local/api/v1/alerts'
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/webhook-token
+              tls_config:
+                ca_file: /etc/gdc-certs/ca.crt
+                insecure_skip_verify: false
+
+      - name: 'airgap-critical-multi-sink'
+        webhook_configs:
+          - url: 'https://webhook-sink.internal.gdc.local/api/v1/alerts/critical'
+            send_resolved: true
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/webhook-token
+              tls_config:
+                ca_file: /etc/gdc-certs/ca.crt
+                insecure_skip_verify: false
+          # Optional illustrative ITSM webhook receiver (e.g., self-hosted ServiceNow,
+          # Jira Service Management Data Center, or custom enterprise ticketing bridge):
+          # - url: 'https://itsm-bridge.internal.gdc.local/api/now/table/em_event'
+          #   send_resolved: true
+          #   http_config:
+          #     authorization:
+          #       type: Bearer
+          #       credentials_file: /etc/alertmanager/secrets/itsm-token
+          #     tls_config:
+          #       ca_file: /etc/gdc-certs/ca.crt
+        email_configs:
+          - to: 'platform-ops@internal.gdc.local'
+            send_resolved: true
+            auth_username: 'p15-alerts@internal.gdc.local'
+            auth_password_file: /etc/alertmanager/secrets/smtp-password
+            tls_config:
+              ca_file: /etc/gdc-certs/ca.crt
+              insecure_skip_verify: false
+---
+apiVersion: observability.gdc.goog/v1
+kind: ObservabilityPipeline
+metadata:
+  name: p15-observability-pipeline
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  alerting:
+    alertmanagerConfig: p15-alertmanager-config
+    volumes:
+      - name: gdc-ca-bundle
+        secret:
+          secretName: gdc-ca-bundle
+      - name: alertmanager-sink-secrets
+        secret:
+          secretName: p15-alertmanager-secrets
+    volumeMounts:
+      - name: gdc-ca-bundle
+        mountPath: /etc/gdc-certs
+        readOnly: true
+      - name: alertmanager-sink-secrets
+        mountPath: /etc/alertmanager/secrets
+        readOnly: true

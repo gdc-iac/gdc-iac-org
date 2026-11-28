@@ -1,0 +1,110 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG`):
+# PSS `Restricted` Namespace labels, PriorityClasses (`p15-pa-critical` > `p15-ao-standard` > `p15-batch-low`),
+# Noisy-Neighbour ResourceQuota & LimitRange, and Singleton Leader-Election Lease.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: p15-pa-critical
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Reserved for p15-job-manager control plane and PA critical compliance/monitoring jobs."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: p15-ao-standard
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+value: 50000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Standard priority tier for Application Operator scheduled monitoring and operational jobs."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: p15-batch-low
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+value: 10000
+globalDefault: false
+preemptionPolicy: Never
+description: "Non-preempting batch tier for multi-shard rollups and historical backfills."
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: p15-jobs-quota
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  hard:
+    requests.cpu: "16"
+    requests.memory: 32Gi
+    limits.cpu: "32"
+    limits.memory: 64Gi
+    pods: "60"
+    count/jobs.batch: "50"
+    count/cronjobs.batch: "40"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: p15-jobs-limits
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "4"
+        memory: 8Gi
+      min:
+        cpu: 25m
+        memory: 64Mi
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: p15-job-manager-leader
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  leaseDurationSeconds: 30

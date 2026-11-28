@@ -1,0 +1,11 @@
+fastapi==0.142.2
+starlette==1.7.0
+uvicorn==0.34.0
+pydantic==2.11.1
+PyJWT[crypto]==2.14.0
+cryptography==50.0.0
+httpx==0.28.1
+psycopg2-binary==2.9.10
+boto3==1.37.1
+PyYAML==6.0.2
+urllib3==2.8.0

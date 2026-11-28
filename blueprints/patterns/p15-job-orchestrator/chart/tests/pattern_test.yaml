@@ -1,0 +1,194 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+suite: p15-job-orchestrator chart unit tests
+templates:
+  - templates/apps/workloads.yaml
+  - templates/gdc/resources.yaml
+  - templates/gdc/failover.yaml
+tests:
+  - it: should render Profile A (argo HA) workloads by default with internal Harbor images and PSS Restricted
+    set:
+      global:
+        namespace: custom-jobs-ns
+        projectId: custom-jobs-proj
+        registry: harbor.corp.local/blueprints
+        commonLabels:
+          environment: sovereign-prod
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 36
+      - isKind:
+          of: ResourceQuota
+        documentIndex: 0
+      - equal:
+          path: metadata.labels.environment
+          value: sovereign-prod
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        documentIndex: 11
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentIndex: 11
+      - equal:
+          path: spec.template.spec.securityContext.runAsNonRoot
+          value: true
+        documentIndex: 11
+      - isKind:
+          of: ConfigMap
+        documentIndex: 30
+      - matchRegex:
+          path: data.workflowDefaults
+          pattern: "OnWorkflowSuccess"
+        documentIndex: 30
+      - isKind:
+          of: Deployment
+        documentIndex: 31
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentIndex: 31
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "^harbor\\.corp\\.local/blueprints/workflow-controller:v3\\.6\\.2$"
+        documentIndex: 31
+
+  - it: should render Profile B (k8s-native) with zero ClusterRoles and native K8s CronJobs
+    set:
+      engine:
+        mode: k8s-native
+      global:
+        namespace: ao-shared-ns
+        registry: harbor.corp.local/blueprints
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 24
+      - isKind:
+          of: CronJob
+        documentIndex: 21
+      - equal:
+          path: spec.jobTemplate.spec.ttlSecondsAfterFinished
+          value: 86400
+        documentIndex: 21
+
+  - it: should switch Argo artifactRepository to GCS, strip gs:// prefix, annotate Workload Identity SAs, and allow egress port 8085 on GKE Stepping-Stone
+    set:
+      storage:
+        s3Endpoint: ""
+        bucketName: gs://p15-jobs-ledger-my-proj
+        gcpServiceAccount: p15-jobs-sa@my-proj.iam.gserviceaccount.com
+      database:
+        host: postgres-svc.test-project.svc.cluster.local
+    template: templates/apps/workloads.yaml
+    asserts:
+      - equal:
+          path: metadata.annotations["iam.gke.io/gcp-service-account"]
+          value: p15-jobs-sa@my-proj.iam.gserviceaccount.com
+        documentIndex: 3
+      - equal:
+          path: metadata.annotations["iam.gke.io/gcp-service-account"]
+          value: p15-jobs-sa@my-proj.iam.gserviceaccount.com
+        documentIndex: 4
+      - isKind:
+          of: NetworkPolicy
+        documentIndex: 20
+      - contains:
+          path: spec.egress[0].ports
+          content:
+            protocol: TCP
+            port: 8085
+        documentIndex: 20
+      - isKind:
+          of: ConfigMap
+        documentIndex: 30
+      - matchRegex:
+          path: data.artifactRepository
+          pattern: "bucket: p15-jobs-ledger-my-proj"
+        documentIndex: 30
+      - matchRegex:
+          path: data.persistence
+          pattern: "host: postgres-svc\\.test-project\\.svc\\.cluster\\.local"
+        documentIndex: 30
+
+  - it: should not render User Cluster workloads when apps.enabled is false
+    set:
+      apps:
+        enabled: false
+    template: templates/apps/workloads.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not render Stage 2 GDC Zonal resources by default (gdc.enabled is false)
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render Stage 2 DBCluster HA with auto-failover and PNP when gdc.enabled is true
+    set:
+      gdc:
+        enabled: true
+      global:
+        namespace: pa-jobs-ns
+        projectId: pa-jobs-proj
+    template: templates/gdc/resources.yaml
+    asserts:
+      - hasDocuments:
+          count: 7
+      - isKind:
+          of: DBCluster
+        documentIndex: 1
+      - equal:
+          path: spec.availability.enableHighAvailability
+          value: true
+        documentIndex: 1
+      - equal:
+          path: spec.availability.enableAutoFailover
+          value: true
+        documentIndex: 1
+      - isKind:
+          of: ProjectServiceAccount
+        documentIndex: 2
+      - isAPIVersion:
+          of: resourcemanager.global.gdc.goog/v1
+        documentIndex: 2
+      - isKind:
+          of: ProjectNetworkPolicy
+        documentIndex: 4
+      - equal:
+          path: spec.subject.subjectType
+          value: UserWorkload
+        documentIndex: 4
+      - equal:
+          path: spec.egress[0].to[0].projectSelector.projects.matchNames[0]
+          value: pa-jobs-proj
+        documentIndex: 4
+
+  - it: should render DBCluster manual Failover CR only when gdc.enabled and gdc.failover.enabled are true
+    set:
+      gdc:
+        enabled: true
+        failover:
+          enabled: true
+    template: templates/gdc/failover.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Failover
+        documentIndex: 0

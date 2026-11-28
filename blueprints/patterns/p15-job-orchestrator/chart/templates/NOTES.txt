@@ -1,0 +1,5 @@
+Pattern 15 (p15-job-orchestrator) has been rendered for namespace {{ include "p15-job-orchestrator.namespace" . }}.
+- Execution Engine Profile : {{ .Values.engine.mode }}
+- GitOps Governance Mode   : {{ .Values.engine.gitopsMode }}
+- Portal Endpoint (:8080)  : https://{{ .Values.gateway.portalDomain }}
+- PA Admin Console (:8081) : https://{{ .Values.gateway.adminDomain }}

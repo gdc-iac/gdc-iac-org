@@ -1,0 +1,5 @@
+psycopg2-binary==2.9.10
+boto3==1.37.1
+httpx==0.28.1
+cryptography==50.0.0
+urllib3==2.8.0

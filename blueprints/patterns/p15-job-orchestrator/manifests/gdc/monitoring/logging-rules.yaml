@@ -1,0 +1,54 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 2 Zonal Management API (`MANAGEMENT_KUBECONFIG`):
+# Loki LogQL alerting rules detecting structured compliance & TOCTOU security events.
+# Every alert carries mandatory GDC labels: `severity`, `code`, and `resource`.
+apiVersion: logging.gdc.goog/v1
+kind: LoggingRule
+metadata:
+  name: p15-job-orchestrator-log-alerts
+  namespace: test-project # kpt-set: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  source: operational
+  interval: 1m
+  alertRules:
+    - alert: P15CriticalEnforcementEscalation
+      expr: |
+        sum by (namespace) (
+          count_over_time({namespace="test-project", app="p15-job-manager"} |= "CRITICAL_ENFORCEMENT_ESCALATION" [5m])
+        ) > 0
+      for: 0m
+      labels:
+        severity: critical
+        code: P15_CRITICAL_ENFORCEMENT_ESCALATION
+        resource: p15-enforcement-engine
+      annotations:
+        summary: "Critical compliance enforcement escalation logged by p15-job-manager"
+        description: "Structured event CRITICAL_ENFORCEMENT_ESCALATION detected in namespace {{ $labels.namespace }}."
+    - alert: P15RemediationTOCTOUConflict
+      expr: |
+        sum by (namespace) (
+          count_over_time({namespace="test-project", app="p15-job-manager"} |= "TOCTOU_CONFLICT" [5m])
+        ) > 0
+      for: 0m
+      labels:
+        severity: warning
+        code: P15_TOCTOU_CONFLICT
+        resource: p15-hitl-approval-gate
+      annotations:
+        summary: "HITL remediation blocked due to TOCTOU resourceVersion/digest drift"
+        description: "Target KRM resource mutated between finding snapshot and operator approval (409 Conflict)."

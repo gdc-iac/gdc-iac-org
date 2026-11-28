@@ -1,0 +1,128 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG`):
+# 1. `workflow-controller-configmap`: Argo Workflows v3.6.2 HA controller config with
+#    `ttlStrategy` (86400s success / 259200s failure), `podGC: OnWorkflowSuccess`,
+#    `archiveLogs: true` to GDC S3 (`objectstorage.gdc.goog`), and PostgreSQL offloading
+#    (`nodeStatusOffLoad: true`, `archiveTTL: 90d`, `maxOpenConns: 15`).
+# 2. `p15-job-manager-config`: Production-hardened control-plane settings
+#    (`ENGINE_MODE: "argo"`, `GITOPS_MODE: "direct-apply"`, `ALLOW_SIMULATED_OIDC: "false"`,
+#    `REQUIRE_FOUR_EYES_APPROVAL: "true"`).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-controller-configmap
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+data:
+  workflowDefaults: |
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: p15-job-orchestrator
+    spec:
+      serviceAccountName: p15-ao-worker-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      ttlStrategy:
+        secondsAfterSuccess: 86400
+        secondsAfterFailure: 259200
+        secondsAfterCompletion: 259200
+      podGC:
+        strategy: OnWorkflowSuccess
+      archiveLogs: true
+  artifactRepository: |
+    archiveLogs: true
+    s3:
+      endpoint: objectstorage.gdc.goog
+      bucket: p15-jobs-ledger
+      region: zone1
+      insecure: false
+      keyFormat: "argo-artifacts/{{workflow.namespace}}/{{workflow.creationTimestamp.Y}}/{{workflow.creationTimestamp.m}}/{{workflow.name}}/{{pod.name}}"
+      caSecret:
+        name: gdc-ca-bundle
+        key: ca.crt
+      accessKeySecret:
+        name: p15-s3-credentials
+        key: AWS_ACCESS_KEY_ID
+      secretKeySecret:
+        name: p15-s3-credentials
+        key: AWS_SECRET_ACCESS_KEY
+  persistence: |
+    connectionPool:
+      maxIdleConns: 5
+      maxOpenConns: 15
+      connMaxLifetime: 30m
+    nodeStatusOffLoad: true
+    archive: true
+    archiveTTL: 90d
+    postgresql:
+      host: p15-jobs-db-primary.test-project.svc.cluster.local
+      port: 5432
+      database: postgres
+      tableName: argo_workflows
+      userNameSecret:
+        name: p15-db-credentials
+        key: username
+      passwordSecret:
+        name: p15-db-credentials
+        key: password
+      ssl: true
+      sslMode: verify-full
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: p15-job-manager-config
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+data:
+  PROJECT_ID: "my-gdc-project"
+  NAMESPACE: "test-project"
+  ENGINE_MODE: "argo"
+  GITOPS_MODE: "direct-apply"
+  ALLOW_SIMULATED_OIDC: "false"
+  REQUIRE_FOUR_EYES_APPROVAL: "true"
+  ALLOW_HTTP_EMULATION_SINKS: "false"
+  COOKIE_SECURE: "true"
+  ALLOWED_REGISTRY_PREFIXES: "harbor.gdc.local/blueprint-images/,harbor.gdc.local/,harbor.infra.gdc.local/"
+  APPROVED_TEMPLATES: "gdc-standard-job-runner-v1"
+  ALLOWED_NOTIFICATION_HOSTS: "webhook-sink.internal.gdc.local,smtp-relay.internal.gdc.local,chat-sink.internal.gdc.local,itsm-bridge.internal.gdc.local"
+  CORS_ALLOWED_ORIGINS: "https://jobs.gdc.local,https://admin.jobs.gdc.local"
+  OIDC_ISSUER: "https://keycloak.gdc.local/realms/gdc-jobs-realm"
+  OIDC_JWKS_URL: "http://keycloak.p12-keycloak.svc.cluster.local:80/realms/gdc-jobs-realm/protocol/openid-connect/certs"
+  OIDC_CLIENT_ID: "p15-job-portal"
+  OIDC_ADMIN_CLIENT_ID: "p15-job-admin"
+  BUCKET_NAME: "s3://p15-jobs-ledger"
+  S3_ENDPOINT: "https://objectstorage.gdc.goog"
+  S3_REGION: "zone1"
+  GDC_CA_BUNDLE: "/etc/gdc-certs/ca.crt"
+  AWS_CA_BUNDLE: "/etc/gdc-certs/ca.crt"
+  DB_SSLROOTCERT: "/etc/db-tls/ca.crt"
+  MAX_SHARDS_PER_RUN: "50"
+  MIN_AO_CRON_INTERVAL_MINUTES: "5"
+  MAX_BATCH_DEADLINE_SECONDS: "14400"
+  MAX_MONITOR_DEADLINE_SECONDS: "900"
+  DEFAULT_MAX_ACTIONS_PER_RUN: "5"
+  DEFAULT_COOLDOWN_SECONDS: "3600"
+  CONSECUTIVE_FAILURE_THRESHOLD: "5"
+  DEDUP_WINDOW_SECONDS: "900"
+  SINK_RATE_LIMIT_PER_MINUTE: "30"

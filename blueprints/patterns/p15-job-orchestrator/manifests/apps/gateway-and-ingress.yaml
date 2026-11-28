@@ -1,0 +1,141 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG`):
+# Sovereign PKI `Certificate` (`ClusterIssuer/gdc-ca-issuer`), Kubernetes `Gateway`,
+# split `HTTPRoute`s isolating `jobs.gdc.local` (`:8080` Portal) from `admin.jobs.gdc.local`
+# (`:8081` PA Admin Console) with `X-Forwarded-Proto: https`, and optional internal `LoadBalancer`.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: p15-jobs-tls-cert
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+spec:
+  secretName: p15-jobs-tls-secret
+  duration: 2160h # 90d
+  renewBefore: 360h # 15d
+  dnsNames:
+    - jobs.gdc.local
+    - admin.jobs.gdc.local
+  issuerRef:
+    name: gdc-ca-issuer
+    kind: ClusterIssuer
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: p15-jobs-gateway
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  gatewayClassName: gke-l7-rilb
+  listeners:
+    - name: https-portal-and-admin
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: p15-jobs-tls-secret
+            kind: Secret
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: p15-job-portal-route
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    surface: portal
+spec:
+  parentRefs:
+    - name: p15-jobs-gateway
+      namespace: test-project
+  hostnames:
+    - "jobs.gdc.local"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: p15-job-portal
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: p15-job-admin-route
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    surface: admin
+spec:
+  parentRefs:
+    - name: p15-jobs-gateway
+      namespace: test-project
+  hostnames:
+    - "admin.jobs.gdc.local"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: p15-job-admin
+          port: 8081
+---
+# Optional Internal L4 LoadBalancer Service for clusters where Gateway API controllers are not active.
+apiVersion: v1
+kind: Service
+metadata:
+  name: p15-jobs-internal-lb
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  selector:
+    app: p15-job-manager
+  ports:
+    - name: portal
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: admin
+      port: 8081
+      targetPort: 8081
+      protocol: TCP

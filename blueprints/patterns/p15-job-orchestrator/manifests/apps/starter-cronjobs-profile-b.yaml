@@ -1,0 +1,320 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG` — Profile B `engine.mode: "k8s-native"`):
+# Zero-CRD native `batch/v1` `CronJob` starter manifests for GDC-ag Shared Clusters where
+# tenant-installed Custom Resource Definitions (`*.argoproj.io`) are prohibited.
+# Identical `p15-reference-worker:v1.0.0` container contract as Profile A (`argo`)!
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: p15-batch-watermarked-rollup
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    p15.gdc.goog/job-class: batch
+    p15.gdc.goog/job-id: ao-batch-rollup-15m
+spec:
+  schedule: "*/15 * * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 3
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: p15-reference-worker
+            app.kubernetes.io/part-of: p15-job-orchestrator
+            p15.gdc.goog/job-id: ao-batch-rollup-15m
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: p15-ao-worker-sa
+          priorityClassName: p15-batch-low
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0
+              imagePullPolicy: IfNotPresent
+              command: ["python3", "-m", "p15_jobs.runner"]
+              args:
+                - "--mode=batch-watermarked-rollup"
+                - "--job-id=ao-batch-rollup-15m"
+                - "--run-id=$(POD_NAME)"
+                - "--shard-key=shard-00"
+                - "--enforcement-mode=audit"
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+              envFrom:
+                - configMapRef:
+                    name: p15-job-manager-config
+                    optional: true
+                - configMapRef:
+                    name: p15-job-manager-gcp-config
+                    optional: true
+                - secretRef:
+                    name: p15-db-credentials
+                    optional: true
+                - secretRef:
+                    name: p15-s3-credentials
+                    optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: appuser-home
+                  mountPath: /home/appuser
+                - name: gdc-certs
+                  mountPath: /etc/gdc-certs
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: appuser-home
+              emptyDir: {}
+            - name: gdc-certs
+              secret:
+                secretName: gdc-ca-bundle
+                optional: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: p15-monitor-platform-hygiene
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    p15.gdc.goog/job-class: monitor
+    p15.gdc.goog/job-id: ao-hygiene-10m
+spec:
+  schedule: "*/10 * * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: p15-reference-worker
+            app.kubernetes.io/part-of: p15-job-orchestrator
+            p15.gdc.goog/job-id: ao-hygiene-10m
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: p15-ao-worker-sa
+          priorityClassName: p15-ao-standard
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0
+              imagePullPolicy: IfNotPresent
+              command: ["python3", "-m", "p15_jobs.runner"]
+              args:
+                - "--mode=monitor-platform-hygiene"
+                - "--job-id=ao-hygiene-10m"
+                - "--run-id=$(POD_NAME)"
+                - "--shard-key=namespace-test-project"
+                - "--enforcement-mode=audit"
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+              envFrom:
+                - configMapRef:
+                    name: p15-job-manager-config
+                    optional: true
+                - configMapRef:
+                    name: p15-job-manager-gcp-config
+                    optional: true
+                - secretRef:
+                    name: p15-db-credentials
+                    optional: true
+                - secretRef:
+                    name: p15-s3-credentials
+                    optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: appuser-home
+                  mountPath: /home/appuser
+                - name: gdc-certs
+                  mountPath: /etc/gdc-certs
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: appuser-home
+              emptyDir: {}
+            - name: gdc-certs
+              secret:
+                secretName: gdc-ca-bundle
+                optional: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: p15-enforce-resource-policy
+  namespace: test-project
+  labels:
+    app.kubernetes.io/part-of: p15-job-orchestrator
+    p15.gdc.goog/job-class: enforce
+    p15.gdc.goog/job-id: ao-policy-enforcer-1h
+spec:
+  schedule: "0 * * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      template:
+        metadata:
+          labels:
+            app: p15-reference-worker
+            app.kubernetes.io/part-of: p15-job-orchestrator
+            p15.gdc.goog/job-id: ao-policy-enforcer-1h
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: p15-ao-worker-sa
+          priorityClassName: p15-ao-standard
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: worker
+              image: harbor.gdc.local/blueprint-images/p15-reference-worker:v1.0.0
+              imagePullPolicy: IfNotPresent
+              command: ["python3", "-m", "p15_jobs.runner"]
+              args:
+                - "--mode=enforce-resource-policy"
+                - "--job-id=ao-policy-enforcer-1h"
+                - "--run-id=$(POD_NAME)"
+                - "--shard-key=namespace-test-project"
+                - "--enforcement-mode=audit"
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+              envFrom:
+                - configMapRef:
+                    name: p15-job-manager-config
+                    optional: true
+                - configMapRef:
+                    name: p15-job-manager-gcp-config
+                    optional: true
+                - secretRef:
+                    name: p15-db-credentials
+                    optional: true
+                - secretRef:
+                    name: p15-s3-credentials
+                    optional: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 65532
+                runAsGroup: 65532
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: appuser-home
+                  mountPath: /home/appuser
+                - name: gdc-certs
+                  mountPath: /etc/gdc-certs
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: appuser-home
+              emptyDir: {}
+            - name: gdc-certs
+              secret:
+                secretName: gdc-ca-bundle
+                optional: true
