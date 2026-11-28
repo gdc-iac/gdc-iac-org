@@ -82,8 +82,8 @@ The chart is configured through `values.yaml` or `--set` / `-f` flags during `he
 | `postgresql.cpu` | Primary instance vCPU allocation (`>= 2` required on GDCag). | `2` |
 | `postgresql.memory` | Primary instance memory allocation (`>= 8Gi` required on GDCag). | `8Gi` |
 | `postgresql.dataDiskSize` | Primary `DataDisk` size. | `50Gi` |
-| `postgresql.availability.enableHighAvailability` | Deploy Zonal HA standby replica. | `true` |
-| `postgresql.availability.enableAutoFailover` | Enable automatic failover (`GDCag v1.15.1+`). | `true` |
+| `postgresql.availability.enableHighAvailability` | Deploy a same-zone RaaS HA standby replica (`GDCag v1.16.2+`, `dbcluster.dbadmin.goog/raasEnabled: "true"`). HA is PostgreSQL-only (unsupported on Oracle) and opt-in at the GDCag API (`false` / `zonal` by default); this chart enables it by default. | `true` |
+| `postgresql.availability.enableAutoFailover` | Enable automatic failover for unplanned primary failures on `GDCag v1.16.2+` (active only when `enableHighAvailability: true`). Triggers after 3 consecutive 30s health-check failures (`~90s` detection latency; typically `~2+ minutes` total end-to-end RTO as the standby is promoted and traffic reroutes). Planned maintenance and manual switchovers (`gdcloud database clusters failover` / `fleet.dbadmin.gdc.goog/v1` `Failover`) are separate, active client connections drop in all cases, and legacy pre-`v1.15.1` HA clusters must disable HA, wait for `HAReady` to clear, and re-enable HA to migrate to RaaS. See [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability). | `true` |
 | `postgresql.isDeleted` | Mark `spec.isDeleted: true` prior to deleting or uninstalling a PostgreSQL `DBCluster` (`vdbcluster` deletion protection). | `false` |
 | `postgresql.parameters` | Optional key-value PostgreSQL engine parameters (`spec.primarySpec.parameters`, for example `max_connections: "200"`). | `{}` |
 | `postgresql.backupPlan.enabled` | Deploy a `postgresql.dbadmin.gdc.goog/v1` `BackupPlan` targeting `clusterName`. | `false` |
