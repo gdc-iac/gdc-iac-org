@@ -236,14 +236,14 @@ spec:
    * **Resilience:** GKE Deployments manage multiple replicas of the application pods. Horizontal Pod Autoscaling (HPA) can be used (if GDC MHS provides the metrics) to scale pods based on CPU/memory. Communication with the web tier and database tier is managed via GKE Services.  
 3. **Data Tier:**  
    * **GDC Platform Service:** A stateful workload using the **GDC Database Service**. For this pattern, a high-availability **PostgreSQL 15** cluster (`postgresql.dbadmin.gdc.goog/v1`) is provisioned on `ZONE_KUBECONFIG`.  
-   * **Resilience:** The GDC Database Service manages primary-standby replication. In GDCag `v1.15.1+`, the [High availability configuration](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha) (`spec.availability.enableHighAvailability: true`) enables automatic failover (`enableAutoFailover: true`) by default upon primary failure, while also supporting operator-triggered switchovers (`gdcloud database clusters failover` or `fleet.dbadmin.gdc.goog/v1` `Failover`).  
+   * **Resilience:** The GDC Database Service manages same-zone primary-standby replication (PostgreSQL only; HA is opt-in and defaults to `false` / `zonal`). In GDCag `v1.16.2+`, enabling [High availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability) (`spec.availability.enableHighAvailability: true` / `--availability-type=zonal_ha`, RaaS HA via `dbcluster.dbadmin.goog/raasEnabled: "true"`) activates automatic failover (`enableAutoFailover: true` by default) for unplanned primary failures after 3 consecutive 30s health-check failures (`~90s` detection latency; typically `~2+ minutes` total end-to-end RTO as the standby is promoted and traffic reroutes). Planned maintenance and operator-triggered manual switchovers (`gdcloud database clusters failover` or `fleet.dbadmin.gdc.goog/v1` `Failover`) are separate operations, and active client connections drop in all cases.  
 4. **Storage (Static Assets):**  
    * **GDC Platform Service:** Static assets (images, CSS, JS) are stored in a **GDC Storage** bucket (Object Storage).  
    * **Resilience:** GDC Object Storage provides built-in data durability and redundancy within the GDC instance.  
 5. **Security:**  
    * **GDC Platform Service:** Application secrets (API keys, DB credentials) are stored and managed by the **GDC KMS**. The GDC Database Service integrates with KMS for encryption at rest
 
-Resilience: Database Zonal HA (`enableHighAvailability: true`, `enableAutoFailover: true`) with optional manual switchover; Web tier stateless scaling.
+Resilience: Database opt-in same-zone Zonal HA on GDCag `v1.16.2+` (`enableHighAvailability: true`, `enableAutoFailover: true`, `~90s` detection / `~2+ min` typical RTO) with separate manual switchover; Web tier stateless scaling.
 
 ### **Required IAM Permissions**
 
@@ -546,7 +546,7 @@ Use Case: Lift-and-shift legacy apps that can't be containerized but need a mode
    * **GDC Platform Service:** The legacy application (e.g., a Windows Server-based application or a monolithic Linux binary) is deployed onto a virtual machine using the **GDC VM Runtime**.  
    * **Resilience:** The VM Runtime provides basic infrastructure-level availability. For application-level resilience, you would rely on traditional methods like in-guest clustering or load balancing between multiple VMs (if the app supports it).  
    * **GDC Platform Service:** A high-availability **PostgreSQL 15** cluster is provisioned using the **GDC Database Service** (`postgresql.dbadmin.gdc.goog/v1`). This serves as the high-throughput, resilient database for both modern and legacy applications.  
-   * **Resilience:** PostgreSQL is configured for Zonal HA (`enableHighAvailability: true`) with automatic failover (`enableAutoFailover: true`) by default in GDCag `v1.15.1+`, plus operator-triggered switchovers (`Failover` CR / CLI).  
+   * **Resilience:** PostgreSQL is configured for opt-in same-zone Zonal HA (`enableHighAvailability: true`, since the API defaults to `false` / `zonal`) with automatic failover (`enableAutoFailover: true` by default once HA is enabled) on GDCag `v1.16.2+` (`3 × 30s` / `~90s` detection latency; typically `~2+ minutes` total end-to-end RTO for unplanned primary failures), plus separate planned/manual switchovers (`gdcloud database clusters failover` / `fleet.dbadmin.gdc.goog/v1` `Failover`; active client connections drop in all cases — see [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)).  
 3. **VM Data Storage:**  
    * **GDC Platform Service:** Virtual machine disks are provisioned using **GDC Storage (Block Storage)**. Shared filesystems for clustered VMs can use **GDC Storage (File Storage)**.  
    * **Resilience:** GDC Block and File Storage provide resilient, persistent storage for the GDC VMs.  
@@ -914,7 +914,7 @@ This pattern describes a modern, resilient, agentic RAG solution for a Google Cl
   3. It queries PostgreSQL to retrieve relevant document chunks.  
   4. It combines the query and context into a new prompt.  
   5. It sends this prompt to the LLM Gateway—either the **Gemma Inference Gateway** (`../gdc_gemma_gw`) or **GDC Gemini AI Gateway**—for a synthesized answer.  
-* **Resilience:** The agent and ingestion services are stateless (replicas on GKE). All dependencies (Storage, PostgreSQL, Gemma Gateway / GDC Gemini Gateway, and the OCR/Translation/T2S services) are managed, high-availability GDC platform components.
+* **Resilience:** The agent and ingestion services are stateless (replicas on GKE). All dependencies (Storage, PostgreSQL with opt-in same-zone Zonal HA and automatic failover on GDCag `v1.16.2+` — `~90s` detection / `~2+ min` typical RTO, Gemma Gateway / GDC Gemini Gateway, and the OCR/Translation/T2S services) are managed, high-availability GDC platform components.
 
 ### **Required IAM Permissions**
 
@@ -1036,7 +1036,7 @@ spec:
    * User asks a question.    *   The agent service (ADK) calls the LLM backend—either the **Gemma Inference Gateway** (`../gdc_gemma_gw`) or **GDC Gemini AI Gateway**—to *reason* and *plan* (e.g., "I need to write and execute a SQL query").  
    * The agent *acts* by using its SQL toolkit to execute the query against the **GDC Database Service**.  
    * It gets the raw data result (e.g., \[5,482\]).    *   It calls the LLM Gateway again to *reason* and synthesize the raw data into a natural language answer (e.g., "You sold 5,482 units in the last quarter.").  
-6. **Resilience:** The agent service is stateless and replicated on GKE. The LLM backend (Gemma Gateway or GDC Gemini Gateway) is resilient, and the target database is a managed, HA GDC service.
+6. **Resilience:** The agent service is stateless and replicated on GKE. The LLM backend (Gemma Gateway or GDC Gemini Gateway) is resilient, and the target database is a managed GDC service (opt-in PostgreSQL same-zone Zonal HA with automatic failover on GDCag `v1.16.2+`; `~90s` detection, `~2+ min` typical end-to-end RTO).
 
 ### **Day 0 Prerequisites (Air-Gap Transfer)**
 
@@ -1239,7 +1239,7 @@ retrain_on_drift:
     *   **Resilience:** Multiple replicas managed by a Deployment.
 2.  **Vector Database:**
     *   **GDC Platform Service:** A high-availability **GDC Database Service (PostgreSQL)** is used to store vector embeddings.
-    *   **Resilience:** Zonal HA configuration handles failover.
+    *   **Resilience:** Opt-in PostgreSQL same-zone Zonal HA on GDCag `v1.16.2+` (`enableHighAvailability: true`, `enableAutoFailover: true`) handles unplanned primary failover (`~90s` detection latency via 3 consecutive 30s health-check failures; typically `~2+ minutes` total end-to-end RTO), alongside separate manual/planned switchovers (`gdcloud database clusters failover` / `fleet.dbadmin.gdc.goog/v1` `Failover`; active connections drop in all cases — see [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)).
 3.  **Document Storage:**
     *   **GDC Platform Service:** Processed documents (PDFs, etc.) are stored in **GDC Storage (Object)**.
     *   **Resilience:** Built-in durability of GDC Object Storage.
@@ -1319,7 +1319,7 @@ Use Case: Centralized authentication, SSO, and RBAC proxying for applications in
 
 **Design & Resilience Strategy:**
 1. **Identity Provider:** Keycloak is deployed as an HA cluster on a **GDC GKE Cluster**.
-2. **Backend Persistence:** Uses the managed **GDC Database Service** (PostgreSQL HA) to store users, roles, and session states resiliently across zones.
+2. **Backend Persistence:** Uses the managed **GDC Database Service** (opt-in PostgreSQL same-zone Zonal HA on GDCag `v1.16.2+` with `enableHighAvailability: true` and `enableAutoFailover: true`, `~90s` detection / `~2+ min` typical end-to-end RTO for unplanned primary failures, plus separate manual switchover; see [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)) to store users, roles, and session states resiliently within the zone.
 3. **Decoupled Architecture:** Acts as a standalone identity service. Applications integrate with it dynamically via OIDC (e.g., via `react-oidc-context`). For instructions on integrating it with patterns like P6 and P7 without disrupting their core architecture, refer to `docs/keycloak_integration_guide.md`.
 
 ### **Required IAM Permissions**
