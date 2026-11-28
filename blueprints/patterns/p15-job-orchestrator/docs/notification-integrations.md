@@ -19,7 +19,7 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 # Air-Gapped Notification & Incident Integration Guide (`p15-job-orchestrator`)
 
 - **Requirement ID:** `REQ-NOTIF-005` (supports `REQ-NOTIF-001`–`004` and `REQ-SEC-006`)
-- **Target Platform:** Google Distributed Cloud Air-Gapped (`GDC-ag` `v1.15.1+`)
+- **Target Platform:** Google Distributed Cloud Air-Gapped (`GDC-ag` `v1.16.2+`)
 - **Audience:** Platform Administrators (`PA`), Application Operators (`AO`), Infrastructure Operators (`IO`), and Platform Python Developers
 
 ---

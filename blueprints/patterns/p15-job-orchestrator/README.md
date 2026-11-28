@@ -24,6 +24,7 @@ Disconnected sovereign organisations running on **Google Distributed Cloud Air-G
 
 ![Pattern 15: GDC-ag Generic Job Management Platform Architecture](./diagrams/p15-job-orchestrator-arch.svg)
 
+> **Target Platform:** Google Distributed Cloud Air-Gapped (`GDC-ag` `v1.16.2+`)  
 > **Companion Documentation:**
 > - **Operator User Guide (`PA` & `AO` Day-2 Playbook + E2E Custom Job Walkthrough):** [`docs/user-guide.md`](./docs/user-guide.md)
 > - **Runnable Custom Job Example (`inventory-audit-report` Code-to-Run):** [`examples/custom-job-inventory/README.md`](./examples/custom-job-inventory/README.md)
@@ -107,7 +108,7 @@ Conflating *orchestrator recovery* with *autonomous cluster mutation* is one of 
 
 ### Layer 1: Execution & Ledger Self-Healing (`Always Enabled`)
 - **Transient Retries & Deadlines:** Exponential backoff retries for transient exit codes (`!= 2`), strict `activeDeadlineSeconds`, and a K8s `Lease`-elected **Zombie Reaper** cleaning up orphaned/stalled runs.
-- **Zero-Loss `DBCluster` Failover Catch-Up (`REQ-HEAL-002`):** Workers write redacted WAL bundles to Object Storage **before** attempting PostgreSQL indexing. During a `DBCluster` `v1.15.1+` automatic HA failover (`~90s`) or maintenance window, scheduled runs keep firing from Kubernetes `etcd`; once PostgreSQL recovers (`< 15s` stale socket recycling via `pool_pre_ping` and `15s/5s/3` TCP keepalives), subsequent ticks replay unindexed WAL objects with zero lost windows.
+- **Zero-Loss `DBCluster` Failover Catch-Up (`REQ-HEAL-002`):** Workers write redacted WAL bundles to Object Storage **before** attempting PostgreSQL indexing. On GDC-ag `v1.16.2+` (RaaS HA, `dbcluster.dbadmin.goog/raasEnabled: "true"`), a PostgreSQL `DBCluster` with **high availability explicitly enabled** (`spec.availability.enableHighAvailability: true`, `false`/`zonal` by default) enables automatic failover by default (`enableAutoFailover: true`; [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)), triggering after 3 consecutive failed health checks spaced 30 seconds apart (`~90s` detection) followed by standby promotion and traffic rerouting (`~2+ minutes` typical end-to-end RTO). During an unplanned failover or planned maintenance window, active client connections drop while scheduled runs keep firing from Kubernetes `etcd`; once PostgreSQL recovers (`< 15s` stale socket recycling via `pool_pre_ping` and `15s/5s/3` TCP keepalives), subsequent ticks replay unindexed WAL objects with zero lost windows.
 - **Consecutive-Failure Circuit Breaker:** Automatically suspends a runaway schedule after `M=5` consecutive failures (`circuit_breaker_open = true`) and dispatches an `OnCircuitBreakerOpen` alert.
 
 ### Layer 2: Bounded Target-Resource Remediation (`Explicit Opt-In Ladder`)
@@ -208,7 +209,7 @@ helm upgrade --install p15-job-orchestrator ./p15-job-orchestrator/chart \
 | Deployment Tier | Target Topology | Compute Pool (`CPU-Only`) | Control Plane Footprint | Stage 2 Managed Services |
 | :--- | :--- | :--- | :--- | :--- |
 | **Shared Namespace (`Profile B`)** | Existing GDC-ag Shared Cluster | Shared CPU Worker Pool (`0` GPUs) | `p15-job-manager` x2 (`~0.75 vCPU`, `1.5 GiB RAM`) | Project/Shared `DBCluster` (`db-custom-2-8`, HA) + `Bucket` (`400d` lock) |
-| **Standard Pilot (`Profile A`, Recommended)** | Dedicated Standard Cluster | `2x n2-standard-4-gdc` (`8 vCPU`, `32 GiB RAM`, `0` GPUs) | `workflow-controller` x2 + `argo-server` x2 + `p15-job-manager` x2 (`~1.5 vCPU`, `3 GiB RAM`) | `DBCluster` (`db-custom-2-8`, HA + `enableAutoFailover: true`, `100Gi`) + `Bucket` (`400d` lock) |
+| **Standard Pilot (`Profile A`, Recommended)** | Dedicated Standard Cluster | `2x n2-standard-4-gdc` (`8 vCPU`, `32 GiB RAM`, `0` GPUs) | `workflow-controller` x2 + `argo-server` x2 + `p15-job-manager` x2 (`~1.5 vCPU`, `3 GiB RAM`) | `DBCluster` (`db-custom-2-8`, `enableHighAvailability: true` + `enableAutoFailover: true`, `100Gi`) + `Bucket` (`400d` lock) |
 | **Enterprise Enclave (`50+` Jobs)** | Dedicated Standard Cluster | `3–4x n2-standard-8-gdc` (`24–32 vCPU`, `96–128 GiB RAM`, `0` GPUs) | `~2 vCPU`, `4 GiB RAM` + `25–50` concurrent sharded workers | `DBCluster` (`db-custom-4-16`, `200Gi+`) + `Bucket` (`400d` lock) + optional Phase 2 `p4` Kafka |
 
 ### 8.2 Air-Gap Container Image BOM (Synced with [`external_images.txt`](./external_images.txt))

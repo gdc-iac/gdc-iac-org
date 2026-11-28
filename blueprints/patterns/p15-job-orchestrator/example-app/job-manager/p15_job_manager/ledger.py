@@ -177,7 +177,9 @@ class LedgerStore:
 
     Enforces `REQ-REL-003` bounded PostgreSQL pools (`min=1, max=10` per replica), TCP keepalives
     (`15s/5s/3`), `connect_timeout=5`, `statement_timeout=30000`, and `SELECT 1` `pool_pre_ping`
-    so connections recover within `< 15s` across GDC-ag `v1.15.1+` automatic `DBCluster` failover.
+    so connections recover within `< 15s` once PostgreSQL returns after a GDC-ag `v1.16.2+`
+    `DBCluster` HA automatic failover (`~90s` 3x30s detection + standby promotion, `~2+ min` RTO)
+    or planned maintenance window.
     """
 
     POOL_MIN_CONN = 1
@@ -303,7 +305,7 @@ class LedgerStore:
             conn = self._pg_pool.getconn()
             discard = False
             try:
-                # pool_pre_ping: detect stale TCP sockets after DBCluster ~90s failover
+                # pool_pre_ping: detect stale TCP sockets after DBCluster HA failover or maintenance
                 with conn.cursor() as ping_cur:
                     ping_cur.execute("SELECT 1;")
             except Exception as exc:

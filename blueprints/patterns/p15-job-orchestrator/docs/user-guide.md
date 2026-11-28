@@ -22,6 +22,7 @@ Running recurring batch processing, platform hygiene checks, and policy enforcem
 
 **Pattern 15 (`p15-job-orchestrator`)** resolves that tension through a single governed control plane (`p15-job-manager`) split across two strictly isolated surfaces: the **Job Portal & OpenAPI REST API (`:8080`)** for day-to-day schedule operations, and the **PA Platform Admin Console (`:8081`)** for platform-wide governance and emergency controls. This guide walks **Application Operators (`AO`)** and **Platform Administrators (`PA`)** through every day-2 workflow, from creating a UTC-safe schedule to executing a Four-Eyes human-in-the-loop (`HITL`) approval, verifying signed air-gapped notifications, and diagnosing failures.
 
+> **Target Platform:** Google Distributed Cloud Air-Gapped (`GDC-ag` `v1.16.2+`)  
 > **Related Documentation:**
 > - **Architecture & Stage 2–5 Deployment Runbook:** [`../README.md`](../README.md)
 > - **Air-Gapped Notification & Incident Integration Guide:** [`./notification-integrations.md`](./notification-integrations.md)
@@ -289,7 +290,7 @@ def run_inventory_audit_job(mode, job_id, run_id, window_start="", window_end=""
         else:
             compliant += 1
 
-    # 1. Persist WAL bundle to GDC Object Storage FIRST (survives ~90s DBCluster failover)
+    # 1. Persist WAL bundle to GDC Object Storage FIRST (survives DBCluster HA failover or maintenance)
     slug = f"{w_end.replace(':', '').replace('-', '')}-{hashlib.sha256(f'{w_start}..{w_end}'.encode()).hexdigest()[:16]}"
     wal_doc = {
         "idempotency_key": f"{job_id}:{shard_key}:{w_start}:{w_end}",
@@ -759,8 +760,8 @@ Because GDC-ag has no internet egress to SaaS paging services, notifications fol
 
 ## 7. Failover Behaviour & Troubleshooting Reference
 
-### 7.1 What Happens During a PostgreSQL `DBCluster` Failover?
-On GDC-ag `v1.15.1+`, `DBCluster` runs with automatic HA failover (`enableAutoFailover: true`, recovering in `~90s`). During a database failover or maintenance window:
+### 7.1 What Happens During a PostgreSQL `DBCluster` Failover or Maintenance Window?
+On GDC-ag `v1.16.2+` (using the RaaS HA implementation, `dbcluster.dbadmin.goog/raasEnabled: "true"`), a PostgreSQL `DBCluster` with **high availability explicitly enabled** (`spec.availability.enableHighAvailability: true` / `--availability-type=zonal_ha`, which defaults to `false`/`zonal`) has **automatic failover enabled by default** (`spec.availability.enableAutoFailover: true`; see [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)). Automatic failover **triggers** after 3 consecutive health check failures on the primary instance spaced 30 seconds apart (`~90s` detection), followed by taking the primary offline, promoting the same-zone standby replica, and rerouting application traffic (total end-to-end RTO is typically `~2+ minutes`, not `~90s`). Existing legacy HA clusters upgraded from pre-`1.15.1` must disable and re-enable HA to migrate to RaaS, and operators can also trigger a manual switchover at any time (`gdcloud database clusters failover` or `fleet.dbadmin.gdc.goog/v1` `Failover`). During an unplanned automatic failover or a planned maintenance window, active client connections are dropped and applications must reconnect cleanly:
 - **Scheduled Jobs Keep Running:** Both Argo `CronWorkflow`s and Profile B `CronJob`s trigger from Kubernetes `etcd`, independent of PostgreSQL.
 - **Zero Lost Slices:** Workers persist their redacted `result.json` and WAL bundle to 400-day retention-locked Object Storage first.
 - **Automatic Catch-Up:** `p15-job-manager` marks `/readyz` `503` while the primary is unreachable, recycles stale TCP sockets within `< 15s` via `SELECT 1` `pool_pre_ping` + TCP keepalives once the new primary is promoted, and replays unindexed WAL bundles idempotently (`ON CONFLICT DO UPDATE`).

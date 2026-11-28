@@ -20,7 +20,7 @@ Copyright 2026 Google. This software is provided as-is, without warranty or repr
 
 > **Version:** 1.3  
 > **Specification ID:** `PRD-GDC-AG-P15-JOB-ORCHESTRATOR`  
-> **Target Environment:** Google Distributed Cloud Air-Gapped (`GDC-ag` `v1.15.1+`)
+> **Target Environment:** Google Distributed Cloud Air-Gapped (`GDC-ag` `v1.16.2+`)
 
 ---
 
@@ -57,7 +57,7 @@ Disconnected sovereign organisations operating on **Google Distributed Cloud Air
 * **Three Generic Reference Starter Workers (`p15-reference-worker`):**
   * `batch-watermarked-rollup` (UTC windowed shard aggregation + idempotent watermark progression), `monitor-platform-hygiene` (read-only TLS expiry, CrashLoop, unbound PVC, and quota checks), and `enforce-resource-policy` (governed compliance remediation).
 * **Two-Layer Self-Healing & Anti-ClickOps GitOps Protection:**
-  * **Layer 1 (Execution & Ledger):** K8s `Lease` singleton Zombie Reaper, `M=5` consecutive-failure circuit breaker, bounded PostgreSQL pools (`min=1, max=10`, `pool_pre_ping`, `15s/5s/3` keepalives), and Object Storage WAL replay surviving `~90s` `DBCluster` HA failovers with zero lost runs.
+  * **Layer 1 (Execution & Ledger):** K8s `Lease` singleton Zombie Reaper, `M=5` consecutive-failure circuit breaker, bounded PostgreSQL pools (`min=1, max=10`, `pool_pre_ping`, `15s/5s/3` keepalives), and Object Storage WAL replay surviving unplanned PostgreSQL `DBCluster` HA automatic failovers on GDC-ag `v1.16.2+` (`~90s` `3×30s` health-check detection + standby promotion, `~2+ min` typical total RTO; [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)) and planned maintenance windows with zero lost runs.
   * **Layer 2 (Bounded Target Remediation):** `audit` (default) $\rightarrow$ `hitl-approval` (four-eyes + SHA-256/`resourceVersion` `409 Conflict` TOCTOU guard) $\rightarrow$ `auto-remediate` (`maxActionsPerRun=5`, `3600s` cooldown, `< 1h` GitOps tug-of-war downgrade, 1-click snapshot rollback), plus Argo CD / Flux read-only YAML/MR export.
 
 ---
@@ -79,8 +79,8 @@ Pattern 15 is **100% CPU-based (`0 GPUs` required)** across all control-plane an
 | Tier | Target Topology | Compute Pool (`0 GPUs`) | Stage 2 `DBCluster` (`postgresql.dbadmin.gdc.goog/v1`) | Stage 2 `Bucket` (`object.gdc.goog/v1`) |
 | :--- | :--- | :--- | :--- | :--- |
 | **Small — Shared Namespace (`Profile B`)** | Existing GDC-ag Shared Cluster | `~1–2 vCPU`, `2–4 GiB RAM` namespace quota | Shared/Project HA `db-custom-2-8` (`100Gi`) | `defaultObjectRetentionDays: 400` (`50Gi+`) |
-| **Medium — Standard Pilot (`Profile A`, Default)** | Dedicated Standard Cluster | `2x n2-standard-4-gdc` (`8 vCPU`, `32 GiB RAM`) | Dedicated HA `db-custom-2-8` (`enableAutoFailover: true`, `100Gi`) | `defaultObjectRetentionDays: 400` (`250Gi+`) |
-| **Large — Enterprise Enclave (`50+` Jobs)** | Dedicated Standard Cluster | `3–4x n2-standard-8-gdc` (`24–32 vCPU`, `96–128 GiB RAM`) | Dedicated HA `db-custom-4-16` (`enableAutoFailover: true`, `200Gi+`) | `defaultObjectRetentionDays: 400` (`1Ti+`) |
+| **Medium — Standard Pilot (`Profile A`, Default)** | Dedicated Standard Cluster | `2x n2-standard-4-gdc` (`8 vCPU`, `32 GiB RAM`) | Dedicated HA `db-custom-2-8` (`enableHighAvailability: true`, `enableAutoFailover: true`, `100Gi`) | `defaultObjectRetentionDays: 400` (`250Gi+`) |
+| **Large — Enterprise Enclave (`50+` Jobs)** | Dedicated Standard Cluster | `3–4x n2-standard-8-gdc` (`24–32 vCPU`, `96–128 GiB RAM`) | Dedicated HA `db-custom-4-16` (`enableHighAvailability: true`, `enableAutoFailover: true`, `200Gi+`) | `defaultObjectRetentionDays: 400` (`1Ti+`) |
 
 ---
 
@@ -91,7 +91,7 @@ Pattern 15 is **100% CPU-based (`0 GPUs` required)** across all control-plane an
 | Subsystem | Stage 2 / Raw Manifests (`p15-job-orchestrator/manifests/`) | Stage 5 Helm Chart (`p15-job-orchestrator/chart/values.yaml`) | Required Target Cluster Customisation |
 | :--- | :--- | :--- | :--- |
 | **1. Global Network & DEP Ordering** | `gdc/network/pnp-intra-project-egress.yaml`, `gdc/network/pnp-cross-project.yaml`, `gdc/iam/permissions.yaml` | External to Stage 5 (`gdc.enabled: false`) | Apply `pnp-intra-project-egress.yaml` **FIRST** on `GLOBAL_KUBECONFIG` before disabling DEP; replace peer project labels in `pnp-cross-project.yaml` (zero `0.0.0.0/0` CIDRs). |
-| **2. PostgreSQL 15 HA & Bucket** | `gdc/db/postgres.yaml`, `gdc/storage/bucket.yaml` | `database.host`, `storage.bucketName`, `storage.s3Endpoint`, `gdc.failover.enabled` (`false`) | Provision Stage 2 HA `DBCluster` (`v1.15.1+`) and 400-day retention `Bucket`; bind projected credentials (`p15-db-credentials`, `p15-s3-credentials`) into workload cluster. |
+| **2. PostgreSQL 15 HA & Bucket** | `gdc/db/postgres.yaml`, `gdc/storage/bucket.yaml` | `database.host`, `storage.bucketName`, `storage.s3Endpoint`, `gdc.failover.enabled` (`false`) | Provision Stage 2 PostgreSQL HA `DBCluster` on GDC-ag `v1.16.2+` (explicitly setting `enableHighAvailability: true` & `enableAutoFailover: true` on RaaS HA `dbcluster.dbadmin.goog/raasEnabled: "true"`; [Configure high availability](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/application/ao-user/db-configure-ha#about-high-availability)) and 400-day retention `Bucket`; bind projected credentials (`p15-db-credentials`, `p15-s3-credentials`) into workload cluster. |
 | **3. Execution Profile & Quotas** | `apps/argo-ha-workloads.yaml`, `apps/argo-workflow-templates.yaml`, `apps/job-manager.yaml`, `apps/starter-cronjobs-profile-b.yaml` | `engine.mode` (`argo` or `k8s-native`), `jobManager.maxShardsPerRun` | Choose `argo` on Standard Clusters (install Argo v3.6.2 **`manifests/base/crds/minimal`** CRDs first), or `k8s-native` on Shared Clusters (`0` CRDs and `0` `ClusterRole`s rendered automatically). |
 | **4. Gateway TLS & Keycloak OIDC** | `apps/gateway-and-ingress.yaml`, `apps/configmaps.yaml` | `gateway.portalDomain`, `gateway.adminDomain`, `gateway.tlsSecretName`, `auth.allowSimulatedOidc` (`"false"`), `auth.oidcIssuer`, `auth.oidcJwksUrl` | Point `OIDC_ISSUER` / `OIDC_JWKS_URL` to `p12-keycloak`, verify `ALLOW_SIMULATED_OIDC="false"`, rotate `Secret/p15-session-and-webhook-secrets`, and bind `p15-jobs-tls-secret`. |
 

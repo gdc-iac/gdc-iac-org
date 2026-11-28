@@ -15,7 +15,7 @@
 # Stage 5 Workload Cluster (`USER_CLUSTER_KUBECONFIG` — Profile A `engine.mode: "argo"`):
 # 1. `ClusterWorkflowTemplate/gdc-standard-job-runner-v1`: Reusable orchestrator-agnostic runner
 #    with WAL-first execution, non-blocking PostgreSQL drain (`continueOn: {failed: true}` across
-#    ~90s DBCluster failover windows), and `onExit` webhook callback to `p15-job-manager`.
+#    DBCluster HA failover ~2+ min RTO or planned maintenance windows), and `onExit` webhook callback to `p15-job-manager`.
 # 2. Sample `CronWorkflow`s for the three reference starter jobs:
 #    - `batch-watermarked-rollup`
 #    - `monitor-platform-hygiene`

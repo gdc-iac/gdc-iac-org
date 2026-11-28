@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Stage 2 Zonal Management API (`MANAGEMENT_KUBECONFIG`):
+# Stage 2 Zonal Management API (`MANAGEMENT_KUBECONFIG` — GDC-ag v1.16.2+):
 # Managed PostgreSQL 15 High-Availability DBCluster for p15-job-orchestrator (`platform_jobs` ledger & outbox).
+# Explicitly enables opt-in Zonal HA (`enableHighAvailability: true`, `false` by default) and automatic
+# failover (`enableAutoFailover: true`, RaaS HA `dbcluster.dbadmin.goog/raasEnabled: "true"`, triggering
+# after 3 consecutive failed health checks spaced 30s apart, ~2+ min typical end-to-end RTO).
 # Replace the placeholder admin password prior to production apply.
 apiVersion: v1
 kind: Secret
